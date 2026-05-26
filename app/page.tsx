@@ -518,43 +518,6 @@ function MetricCell({
   );
 }
 
-function MediaPreview({ file }: { file?: MediaFile }) {
-  if (!file) {
-    return (
-      <div className="w-full h-[340px] bg-zinc-950 flex items-center justify-center text-zinc-600">
-        Media not found
-      </div>
-    );
-  }
-
-  if (isVideo(file.url)) {
-    return (
-      <video
-        src={file.url}
-        muted
-        loop
-        playsInline
-        className="w-full h-[340px] object-cover bg-zinc-950"
-      />
-    );
-  }
-
-  if (isImage(file.url)) {
-    return (
-      <img
-        src={file.url}
-        alt=""
-        className="w-full h-[340px] object-cover bg-zinc-950"
-      />
-    );
-  }
-
-  return (
-    <div className="w-full h-[340px] bg-zinc-950 flex items-center justify-center text-zinc-600">
-      Unsupported media
-    </div>
-  );
-}
 
 function CreativeModal({
   item,
@@ -573,74 +536,112 @@ function CreativeModal({
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
+  const approach = mediaFile ? getApproach(mediaFile.key) : "unknown";
+  const romiNum = parseNumber(item.romi);
+
   return (
     <div
-      className="fixed inset-0 bg-black/80 z-50 p-6 overflow-y-auto"
+      className="fixed inset-0 bg-black/85 z-50 overflow-y-auto flex items-start md:items-center justify-center p-4 md:p-6"
       onClick={onClose}
     >
       <div
-        className="max-w-5xl mx-auto bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden"
+        className="w-full max-w-[1200px] bg-zinc-950 border border-zinc-800 rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:max-h-[88vh] flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-start gap-4 p-6 border-b border-zinc-800">
-          <div>
-            <h2 className="text-4xl font-bold">{item.creative}</h2>
-            <p className="text-zinc-400 mt-2">
-              Full creative view
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="bg-zinc-800 hover:bg-zinc-700 rounded-xl px-4 py-2"
-          >
-            Закрыть
-          </button>
+        {/* LEFT: media */}
+        <div className="bg-black flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
+          {mediaFile ? (
+            isVideo(mediaFile.url) ? (
+              <video
+                src={mediaFile.url}
+                controls
+                autoPlay
+                loop
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <img
+                src={mediaFile.url}
+                alt={item.creative}
+                className="w-full h-full object-contain"
+              />
+            )
+          ) : (
+            <div className="text-zinc-600 text-sm">Медиа не найдено</div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-          <div className="bg-black flex items-center justify-center min-h-[600px]">
-            {mediaFile ? (
-              isVideo(mediaFile.url) ? (
-                <video
-                  src={mediaFile.url}
-                  controls
-                  autoPlay
-                  loop
-                  className="w-full h-full max-h-[760px] object-contain"
-                />
-              ) : (
-                <img
-                  src={mediaFile.url}
-                  alt={item.creative}
-                  className="w-full h-full max-h-[760px] object-contain"
-                />
-              )
-            ) : (
-              <div className="text-zinc-600">Media not found</div>
-            )}
+        {/* RIGHT: analytics panel */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-y-auto md:max-h-[88vh]">
+
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 p-5 border-b border-zinc-800 flex-shrink-0">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-2xl font-bold leading-tight truncate">
+                {item.creative}
+              </h2>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <RomiBadge value={item.romi} />
+                {approach !== "unknown" && (
+                  <span className="text-xs text-zinc-400 bg-zinc-800 px-2.5 py-0.5 rounded-full border border-zinc-700">
+                    {approach}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="flex-shrink-0 text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
+              aria-label="Закрыть"
+            >
+              ✕
+            </button>
           </div>
 
-          <div className="p-6 space-y-6">
-            <div className="grid grid-cols-2 gap-3">
-              <BigMetric label="Spend" value={item.spend} />
-              <BigMetric label="Revenue" value={item.revenue} />
-              <BigMetric label="Deposits" value={item.deposits} />
-              <BigMetric label="ROMI" value={item.romi} />
-              <BigMetric label="Цена PDP" value={item.pdp} />
-              <BigMetric label="Цена DIA" value={item.dia} />
+          {/* Scrollable content */}
+          <div className="p-5 space-y-5">
+
+            {/* Metrics */}
+            <div>
+              <div className="text-zinc-500 text-xs uppercase tracking-widest mb-3">
+                Метрики
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <ModalMetric label="Spend" value={item.spend} />
+                <ModalMetric label="Revenue" value={item.revenue} />
+                <ModalMetric label="Deposits" value={item.deposits} />
+                <ModalMetric label="ROMI" value={item.romi} romiValue={romiNum} />
+                <ModalMetric label="Цена PDP" value={item.pdp} />
+                <ModalMetric label="Цена DIA" value={item.dia} />
+              </div>
             </div>
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-              <div className="text-zinc-400 text-sm mb-2">Расшифровка</div>
+            {/* Расшифровка */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="text-zinc-500 text-xs uppercase tracking-widest mb-2">
+                Расшифровка
+              </div>
               {item.text ? (
                 <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">
                   {item.text}
                 </p>
               ) : (
-                <p className="text-zinc-600 text-sm">Нет описания</p>
+                <p className="text-zinc-600 text-sm italic">
+                  Расшифровка пока не добавлена
+                </p>
               )}
             </div>
+
+            {/* Заметки */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="text-zinc-500 text-xs uppercase tracking-widest mb-2">
+                Заметки
+              </div>
+              <p className="text-zinc-600 text-sm italic">
+                Заметки будут добавлены позже
+              </p>
+            </div>
+
           </div>
         </div>
       </div>
@@ -648,27 +649,36 @@ function CreativeModal({
   );
 }
 
-function Metrics({ item }: { item: CreativeRow }) {
+function ModalMetric({
+  label,
+  value,
+  romiValue,
+}: {
+  label: string;
+  value: string;
+  romiValue?: number;
+}) {
+  const isRomi = romiValue !== undefined;
+  const valueColor = isRomi
+    ? isNaN(romiValue) ? "text-zinc-300"
+    : romiValue >= 150 ? "text-green-300"
+    : romiValue >= 0 ? "text-yellow-300"
+    : "text-red-300"
+    : "text-white";
+  const borderColor = isRomi
+    ? isNaN(romiValue) ? "border-zinc-800"
+    : romiValue >= 150 ? "border-green-800/50"
+    : romiValue >= 0 ? "border-yellow-800/50"
+    : "border-red-800/50"
+    : "border-zinc-800";
+
   return (
-    <div className="space-y-2 text-zinc-300">
-      <div>Spend: {item.spend}</div>
-      <div>Revenue: {item.revenue}</div>
-      <div>Deposits: {item.deposits}</div>
-      <div>Цена PDP: {item.pdp}</div>
-      <div>Цена DIA: {item.dia}</div>
-      <div className="flex items-center gap-2">
-        <span>ROMI:</span>
-        <RomiBadge value={item.romi} />
+    <div className={`bg-zinc-900/60 border rounded-xl p-4 ${borderColor}`}>
+      <div className="text-zinc-500 text-xs mb-1.5">{label}</div>
+      <div className={`text-lg font-bold truncate ${valueColor}`}>
+        {value || "—"}
       </div>
     </div>
   );
 }
 
-function BigMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-      <div className="text-zinc-500 text-sm">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
-    </div>
-  );
-}
