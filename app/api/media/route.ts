@@ -12,17 +12,30 @@ const s3 = new S3Client({
 
 export async function GET() {
   try {
-    const command = new ListObjectsV2Command({
-      Bucket: process.env.R2_BUCKET_NAME,
-    });
+    const files: { key: string; url: string }[] = [];
+    let continuationToken: string | undefined;
 
-    const response = await s3.send(command);
+    do {
+      const command = new ListObjectsV2Command({
+        Bucket: process.env.R2_BUCKET_NAME,
+        ContinuationToken: continuationToken,
+      });
 
-    const files =
-      response.Contents?.map((file) => ({
-        key: file.Key,
-        url: `${process.env.R2_PUBLIC_URL}/${file.Key}`,
-      })) || [];
+      const response = await s3.send(command);
+
+      for (const file of response.Contents ?? []) {
+        if (file.Key) {
+          files.push({
+            key: file.Key,
+            url: `${process.env.R2_PUBLIC_URL}/${file.Key}`,
+          });
+        }
+      }
+
+      continuationToken = response.IsTruncated
+        ? response.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
 
     return NextResponse.json(files, {
       headers: {
