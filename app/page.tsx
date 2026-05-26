@@ -80,6 +80,7 @@ export default function Home() {
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "win" | "lose" | "test">("all");
   const [activeApproach, setActiveApproach] = useState("all");
+  const [activeSort, setActiveSort] = useState<"none" | "romi" | "spend" | "deposits">("none");
 
   useEffect(() => {
     async function loadCSV() {
@@ -162,7 +163,45 @@ export default function Home() {
     return Array.from(set).sort();
   }, [media]);
 
+  // Счётчики для вкладок (учитывают поиск и approach, но не активную вкладку)
+  const tabCounts = useMemo(() => {
+    const base = rows
+      .filter((item) =>
+        item.creative.toLowerCase().includes(search.toLowerCase())
+      )
+      .filter((item) => {
+        if (activeApproach === "all") return true;
+        const file = findMedia(item.creative, media);
+        const approach = file ? getApproach(file.key) : "unknown";
+        return approach === activeApproach;
+      });
+    return {
+      all: base.length,
+      win: base.filter((item) => parseNumber(item.romi) >= 150).length,
+      lose: base.filter(
+        (item) => parseNumber(item.romi) < 0 && parseNumber(item.spend) > 1000
+      ).length,
+      test: base.filter((item) => parseNumber(item.spend) < 1000).length,
+    };
+  }, [rows, search, activeApproach, media]);
+
   const filtered = useMemo(() => {
+    const sortFn = (a: CreativeRow, b: CreativeRow) => {
+      if (activeSort === "none") return 0;
+      const get = (item: CreativeRow) => {
+        if (activeSort === "romi") return parseNumber(item.romi);
+        if (activeSort === "spend") return parseNumber(item.spend);
+        if (activeSort === "deposits") return parseNumber(item.deposits);
+        return 0;
+      };
+      const aVal = get(a);
+      const bVal = get(b);
+      if (isNaN(aVal) && isNaN(bVal)) return 0;
+      if (isNaN(aVal)) return 1;   // NaN — в конец
+      if (isNaN(bVal)) return -1;
+      return bVal - aVal;          // по убыванию
+    };
+
     return rows
       .filter((item) =>
         item.creative.toLowerCase().includes(search.toLowerCase())
@@ -181,8 +220,9 @@ export default function Home() {
         const file = findMedia(item.creative, media);
         const approach = file ? getApproach(file.key) : "unknown";
         return approach === activeApproach;
-      });
-  }, [rows, search, activeTab, activeApproach, media]);
+      })
+      .sort(sortFn);
+  }, [rows, search, activeTab, activeApproach, activeSort, media]);
 
   return (
     <main className="min-h-screen bg-black text-white p-8">
@@ -191,39 +231,73 @@ export default function Home() {
           Genesis Creative Dashboard
         </h1>
 
-        <input
-          type="text"
-          placeholder="Поиск крео..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mb-8 outline-none"
-        />
+        <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-black/85 backdrop-blur-md border-b border-zinc-800/50">
+          <input
+            type="text"
+            placeholder="Поиск крео..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mb-3 outline-none"
+          />
 
-        <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
           {(["all", "win", "lose", "test"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${
+              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition flex items-center gap-1.5 ${
                 activeTab === tab
                   ? "bg-white text-black"
                   : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
               }`}
             >
               {tab}
+              <span className={`text-xs font-normal tabular-nums ${
+                activeTab === tab ? "text-black/50" : "text-zinc-600"
+              }`}>
+                {tabCounts[tab]}
+              </span>
             </button>
           ))}
 
-          <select
-            value={activeApproach}
-            onChange={(e) => setActiveApproach(e.target.value)}
-            className="ml-auto bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-600 transition"
-          >
-            <option value="all">All approaches</option>
-            {approaches.map((ap) => (
-              <option key={ap} value={ap}>{ap}</option>
-            ))}
-          </select>
+          <div className="ml-auto flex items-center gap-2 flex-wrap">
+            <select
+              value={activeSort}
+              onChange={(e) => setActiveSort(e.target.value as typeof activeSort)}
+              className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-600 transition"
+            >
+              <option value="none">Sort: default</option>
+              <option value="romi">ROMI ↓</option>
+              <option value="spend">Spend ↓</option>
+              <option value="deposits">Deposits ↓</option>
+            </select>
+
+            <select
+              value={activeApproach}
+              onChange={(e) => setActiveApproach(e.target.value)}
+              className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-600 transition"
+            >
+              <option value="all">All approaches</option>
+              {approaches.map((ap) => (
+                <option key={ap} value={ap}>{ap}</option>
+              ))}
+            </select>
+
+            {(search !== "" || activeTab !== "all" || activeApproach !== "all" || activeSort !== "none") && (
+              <button
+                onClick={() => {
+                  setSearch("");
+                  setActiveTab("all");
+                  setActiveApproach("all");
+                  setActiveSort("none");
+                }}
+                className="px-3 py-2 rounded-xl text-sm text-zinc-400 border border-zinc-800 hover:text-white hover:border-zinc-600 transition"
+              >
+                ✕ Сбросить
+              </button>
+            )}
+          </div>
+        </div>
         </div>
 
         {error && (
@@ -274,6 +348,7 @@ export default function Home() {
           <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
             {filtered.map((item, index) => {
               const itemMedia = findMedia(item.creative, media);
+              const itemApproach = itemMedia ? getApproach(itemMedia.key) : "unknown";
 
               return (
                 <div
@@ -288,7 +363,12 @@ export default function Home() {
 
                   {/* header: always visible */}
                   <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-zinc-800/60">
-                    <div className="text-base font-bold truncate">{item.creative}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-base font-bold truncate">{item.creative}</div>
+                      {itemApproach !== "unknown" && (
+                        <div className="text-xs text-zinc-500 mt-0.5 truncate">{itemApproach}</div>
+                      )}
+                    </div>
                     <RomiBadge value={item.romi} />
                   </div>
 
