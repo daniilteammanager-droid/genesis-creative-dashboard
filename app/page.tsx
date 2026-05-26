@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Papa from "papaparse";
 
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr4-3RDwlc7vXIbnBBkZVO9UY8QOxzqSYLceOCU-aHAHM3ETMQP9g7LMtDZORuyafkvAvm4TmCEawl/pub?gid=1832093387&single=true&output=csv";
@@ -13,25 +14,13 @@ type CreativeRow = {
   pdp: string;
   dia: string;
   romi: string;
+  text: string;
 };
 
 type MediaFile = {
   key: string;
   url: string;
 };
-
-function parseCSV(text: string) {
-  return text
-    .split("\n")
-    .map((row) => row.split(",").map((cell) => cell.trim()));
-}
-
-function getValue(row: string[], headers: string[], name: string) {
-  const index = headers.findIndex(
-    (h) => h.toLowerCase() === name.toLowerCase()
-  );
-  return index >= 0 ? row[index] || "" : "";
-}
 
 function normalize(value: string) {
   return value
@@ -67,45 +56,85 @@ export default function Home() {
   const [media, setMedia] = useState<MediaFile[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CreativeRow | null>(null);
+  const [csvLoading, setCsvLoading] = useState(true);
+  const [mediaLoading, setMediaLoading] = useState(true);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadCSV() {
-      const res = await fetch(CSV_URL);
-      const text = await res.text();
+      try {
+        const res = await fetch(CSV_URL);
+        if (!res.ok) throw new Error(`CSV: ошибка сети ${res.status}`);
+        const text = await res.text();
 
-      const parsed = parseCSV(text);
+        // Парсим без header:true — Papa обрабатывает кавычки/запятые/переносы,
+        // а строку-заголовок ищем сами (таблица может иметь служебные строки выше).
+        const result = Papa.parse<string[]>(text, {
+          header: false,
+          skipEmptyLines: true,
+        });
 
-      const headerIndex = parsed.findIndex((row) =>
-        row.some((cell) => cell === "Creative Code")
-      );
+        const allRows = result.data;
 
-      const headers = parsed[headerIndex];
-      const dataRows = parsed.slice(headerIndex + 1);
+        const headerIndex = allRows.findIndex((row) =>
+          row.some((cell) => cell.trim() === "Creative Code")
+        );
 
-      const formatted = dataRows
-        .map((row) => ({
-          creative: getValue(row, headers, "Creative Code"),
-          spend: getValue(row, headers, "Spend"),
-          revenue: getValue(row, headers, "Revenue"),
-          deposits: getValue(row, headers, "Deposits"),
-          pdp: getValue(row, headers, "Цена пдп"),
-          dia: getValue(row, headers, "Цена Диа"),
-          romi: getValue(row, headers, "ROMI"),
-        }))
-        .filter((item) => item.creative);
+        if (headerIndex === -1) {
+          throw new Error("CSV: строка с заголовком 'Creative Code' не найдена");
+        }
 
-      setRows(formatted);
+        const headers = allRows[headerIndex].map((h) => h.trim());
+        const dataRows = allRows.slice(headerIndex + 1);
+
+        const get = (row: string[], name: string) => {
+          const i = headers.findIndex(
+            (h) => h.toLowerCase() === name.toLowerCase()
+          );
+          return i >= 0 ? (row[i] ?? "").trim() : "";
+        };
+
+        const formatted = dataRows
+          .map((row) => ({
+            creative: get(row, "Creative Code"),
+            spend: get(row, "Spend"),
+            revenue: get(row, "Revenue"),
+            deposits: get(row, "Deposits"),
+            pdp: get(row, "Цена пдп"),
+            dia: get(row, "Цена Диа"),
+            romi: get(row, "ROMI"),
+            text: get(row, "TEXT"),
+          }))
+          .filter((item) => item.creative);
+
+        setRows(formatted);
+      } catch (e) {
+        setCsvError(e instanceof Error ? e.message : "Не удалось загрузить данные");
+      } finally {
+        setCsvLoading(false);
+      }
     }
 
     async function loadMedia() {
-      const res = await fetch("/api/media");
-      const data = await res.json();
-      setMedia(Array.isArray(data) ? data : []);
+      try {
+        const res = await fetch("/api/media");
+        if (!res.ok) throw new Error(`Media: ошибка сети ${res.status}`);
+        const data = await res.json();
+        setMedia(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setMediaError(e instanceof Error ? e.message : "Не удалось загрузить медиа");
+      } finally {
+        setMediaLoading(false);
+      }
     }
 
     loadCSV();
     loadMedia();
   }, []);
+
+  const loading = csvLoading || mediaLoading;
+  const error = csvError || mediaError;
 
   const filtered = useMemo(() => {
     return rows.filter((item) =>
@@ -128,29 +157,54 @@ export default function Home() {
           className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mb-8 outline-none"
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filtered.map((item, index) => {
-            const itemMedia = findMedia(item.creative, media);
+        {error && (
+          <div className="bg-red-950 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-8">
+            ⚠ {error}
+          </div>
+        )}
 
-            return (
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
               <div
-                key={index}
-                onClick={() => setSelected(item)}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden cursor-pointer hover:border-zinc-500 transition"
+                key={i}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden animate-pulse"
               >
-                <MediaPreview file={itemMedia} />
-
-                <div className="p-5">
-                  <div className="text-2xl font-bold mb-4">
-                    {item.creative}
-                  </div>
-
-                  <Metrics item={item} />
+                <div className="w-full h-[340px] bg-zinc-800" />
+                <div className="p-5 space-y-3">
+                  <div className="h-6 bg-zinc-800 rounded w-2/3" />
+                  <div className="h-4 bg-zinc-800 rounded w-full" />
+                  <div className="h-4 bg-zinc-800 rounded w-5/6" />
+                  <div className="h-4 bg-zinc-800 rounded w-3/4" />
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filtered.map((item, index) => {
+              const itemMedia = findMedia(item.creative, media);
+
+              return (
+                <div
+                  key={`${item.creative}-${index}`}
+                  onClick={() => setSelected(item)}
+                  className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden cursor-pointer hover:border-zinc-500 transition"
+                >
+                  <MediaPreview file={itemMedia} />
+
+                  <div className="p-5">
+                    <div className="text-2xl font-bold mb-4">
+                      {item.creative}
+                    </div>
+
+                    <Metrics item={item} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {selected && (
@@ -264,10 +318,14 @@ function CreativeModal({
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-              <div className="text-zinc-400 text-sm mb-2">Заметки</div>
-              <p className="text-zinc-300">
-                Тут позже добавим текст крео, angle, hook, статус и выводы.
-              </p>
+              <div className="text-zinc-400 text-sm mb-2">Расшифровка</div>
+              {item.text ? (
+                <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">
+                  {item.text}
+                </p>
+              ) : (
+                <p className="text-zinc-600 text-sm">Нет описания</p>
+              )}
             </div>
           </div>
         </div>
