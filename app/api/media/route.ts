@@ -24,7 +24,12 @@ export async function GET() {
         url: `${process.env.R2_PUBLIC_URL}/${file.Key}`,
       })) || [];
 
-    return NextResponse.json(files);
+    return NextResponse.json(files, {
+      headers: {
+        // Браузер кешует 5 минут, CDN/прокси — до 10 минут
+        "Cache-Control": "public, max-age=300, s-maxage=600, stale-while-revalidate=60",
+      },
+    });
   } catch (error) {
     console.error(error);
 

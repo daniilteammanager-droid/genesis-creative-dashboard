@@ -63,6 +63,12 @@ function parseNumber(value: string): number {
   return parseFloat(s.replace(/,/g, ""));
 }
 
+// "QA/QA-1.mp4" → "QA",  "STATICSOFT-ES/file.png" → "STATICSOFT-ES",  "file.mp4" → "unknown"
+function getApproach(key: string): string {
+  const slash = key.indexOf("/");
+  return slash > 0 ? key.slice(0, slash) : "unknown";
+}
+
 export default function Home() {
   const [rows, setRows] = useState<CreativeRow[]>([]);
   const [media, setMedia] = useState<MediaFile[]>([]);
@@ -73,6 +79,7 @@ export default function Home() {
   const [csvError, setCsvError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "win" | "lose" | "test">("all");
+  const [activeApproach, setActiveApproach] = useState("all");
 
   useEffect(() => {
     async function loadCSV() {
@@ -149,6 +156,12 @@ export default function Home() {
   const loading = csvLoading || mediaLoading;
   const error = csvError || mediaError;
 
+  // Уникальные папки из R2, отсортированные по алфавиту
+  const approaches = useMemo(() => {
+    const set = new Set(media.map((f) => getApproach(f.key)));
+    return Array.from(set).sort();
+  }, [media]);
+
   const filtered = useMemo(() => {
     return rows
       .filter((item) =>
@@ -162,8 +175,14 @@ export default function Home() {
         if (activeTab === "lose") return romi < 0 && spend > 1000;
         if (activeTab === "test") return spend < 1000;
         return true;
+      })
+      .filter((item) => {
+        if (activeApproach === "all") return true;
+        const file = findMedia(item.creative, media);
+        const approach = file ? getApproach(file.key) : "unknown";
+        return approach === activeApproach;
       });
-  }, [rows, search, activeTab]);
+  }, [rows, search, activeTab, activeApproach, media]);
 
   return (
     <main className="min-h-screen bg-black text-white p-8">
@@ -180,7 +199,7 @@ export default function Home() {
           className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mb-8 outline-none"
         />
 
-        <div className="flex gap-2 mb-6">
+        <div className="flex items-center gap-2 mb-6 flex-wrap">
           {(["all", "win", "lose", "test"] as const).map((tab) => (
             <button
               key={tab}
@@ -194,6 +213,17 @@ export default function Home() {
               {tab}
             </button>
           ))}
+
+          <select
+            value={activeApproach}
+            onChange={(e) => setActiveApproach(e.target.value)}
+            className="ml-auto bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-600 transition"
+          >
+            <option value="all">All approaches</option>
+            {approaches.map((ap) => (
+              <option key={ap} value={ap}>{ap}</option>
+            ))}
+          </select>
         </div>
 
         {error && (
@@ -455,9 +485,23 @@ function CreativeModal({
   mediaFile?: MediaFile;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 p-6 overflow-y-auto">
-      <div className="max-w-5xl mx-auto bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden">
+    <div
+      className="fixed inset-0 bg-black/80 z-50 p-6 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-5xl mx-auto bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-start gap-4 p-6 border-b border-zinc-800">
           <div>
             <h2 className="text-4xl font-bold">{item.creative}</h2>
