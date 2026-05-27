@@ -339,20 +339,33 @@ export default function Home() {
   }, [filtered]);
 
   return (
-    <main className="min-h-screen bg-black text-white p-8">
+    <main className="min-h-screen bg-[#0a080f] text-white p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-5xl font-bold mb-8">
-          Genesis Creative Dashboard
-        </h1>
+
+        {/* Header — logo + title inline */}
+        <div className="flex items-center gap-4 mb-8">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-dark.png"
+            alt="Genesis Trade Academy"
+            className="h-24 md:h-32 w-auto object-contain flex-shrink-0"
+          />
+          <div className="w-px h-10 bg-violet-800/40 flex-shrink-0" />
+          <span className="text-white text-4xl md:text-5xl font-semibold tracking-wide">
+            Creative Dashboard
+          </span>
+        </div>
 
         {/* Top-level navigation */}
-        <div className="flex gap-1 mb-6 bg-zinc-900 border border-zinc-800 rounded-2xl p-1 w-fit">
+        <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
           {(["creatives", "analytics"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTopTab(t)}
               className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
-                topTab === t ? "bg-white text-black" : "text-zinc-400 hover:text-white"
+                topTab === t
+                  ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-violet-300"
               }`}
             >
               {t === "creatives" ? "Creatives" : "Analytics"}
@@ -362,184 +375,184 @@ export default function Home() {
 
         {topTab === "creatives" && (
           <>
-            <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-black/85 backdrop-blur-md border-b border-zinc-800/50">
-          <input
-            type="text"
-            placeholder="Поиск крео..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mb-3 outline-none"
-          />
+            <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-[#0a080f]/90 backdrop-blur-md border-b border-violet-900/30">
+              <input
+                type="text"
+                placeholder="Поиск крео..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-[#111118] border border-violet-900/40 rounded-xl px-4 py-3 mb-3 outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600"
+              />
 
-          <div className="flex items-center gap-2 flex-wrap">
-          {(["all", "win", "lose", "test", "favorites"] as const).map((tab) => {
-            const labels: Record<typeof tab, string> = {
-              all: "All", win: "Win", lose: "Lose", test: "Test", favorites: "★ Fav",
-            };
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${
-                  activeTab === tab
-                    ? "bg-white text-black"
-                    : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
-                }`}
-              >
-                {labels[tab]}
-                <span className={`text-xs font-normal tabular-nums ${
-                  activeTab === tab ? "text-black/50" : "text-zinc-600"
-                }`}>
-                  {tabCounts[tab]}
-                </span>
-              </button>
-            );
-          })}
+              <div className="flex items-center gap-2 flex-wrap">
+                {(["all", "win", "lose", "test", "favorites"] as const).map((tab) => {
+                  const labels: Record<typeof tab, string> = {
+                    all: "All", win: "Win", lose: "Lose", test: "Test", favorites: "★ Fav",
+                  };
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${
+                        activeTab === tab
+                          ? "bg-violet-600 text-white shadow-sm"
+                          : "bg-[#111118] text-zinc-400 hover:text-violet-300 border border-violet-900/30 hover:border-violet-600/40"
+                      }`}
+                    >
+                      {labels[tab]}
+                      <span className={`text-xs font-normal tabular-nums ${
+                        activeTab === tab ? "text-white/60" : "text-zinc-600"
+                      }`}>
+                        {tabCounts[tab]}
+                      </span>
+                    </button>
+                  );
+                })}
 
-          <div className="ml-auto flex items-center gap-2 flex-wrap">
-            <select
-              value={activeSort}
-              onChange={(e) => setActiveSort(e.target.value as typeof activeSort)}
-              className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-600 transition"
-            >
-              <option value="none">Sort: default</option>
-              <option value="romi">ROMI ↓</option>
-              <option value="spend">Spend ↓</option>
-              <option value="deposits">Deposits ↓</option>
-            </select>
+                <div className="ml-auto flex items-center gap-2 flex-wrap">
+                  <select
+                    value={activeSort}
+                    onChange={(e) => setActiveSort(e.target.value as typeof activeSort)}
+                    className="bg-[#111118] border border-violet-900/40 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
+                  >
+                    <option value="none">Sort: default</option>
+                    <option value="romi">ROMI ↓</option>
+                    <option value="spend">Spend ↓</option>
+                    <option value="deposits">Deposits ↓</option>
+                  </select>
 
-            <select
-              value={activeApproach}
-              onChange={(e) => setActiveApproach(e.target.value)}
-              className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-600 transition"
-            >
-              <option value="all">All approaches</option>
-              {approaches.map((ap) => (
-                <option key={ap} value={ap}>{ap}</option>
-              ))}
-            </select>
+                  <select
+                    value={activeApproach}
+                    onChange={(e) => setActiveApproach(e.target.value)}
+                    className="bg-[#111118] border border-violet-900/40 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
+                  >
+                    <option value="all">All approaches</option>
+                    {approaches.map((ap) => (
+                      <option key={ap} value={ap}>{ap}</option>
+                    ))}
+                  </select>
 
-            {(search !== "" || activeTab !== "all" || activeApproach !== "all" || activeSort !== "none") && (
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setActiveTab("all");
-                  setActiveApproach("all");
-                  setActiveSort("none");
-                }}
-                className="px-3 py-2 rounded-xl text-sm text-zinc-400 border border-zinc-800 hover:text-white hover:border-zinc-600 transition"
-              >
-                ✕ Сбросить
-              </button>
-            )}
-          </div>
-        </div>
-        </div>
-
-        {error && (
-          <div className="bg-red-950 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-8">
-            ⚠ {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden animate-pulse"
-              >
-                {/* desktop: media at top */}
-                <div className="hidden md:block aspect-square bg-zinc-800" />
-                {/* header */}
-                <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3">
-                  <div className="h-4 bg-zinc-800 rounded w-2/5" />
-                  <div className="h-5 w-14 bg-zinc-800 rounded-full" />
-                </div>
-                {/* mobile: square + metrics row */}
-                <div className="flex gap-3 px-4 pb-4 md:hidden">
-                  <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-zinc-800" />
-                  <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-3 content-start">
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                  </div>
-                </div>
-                {/* desktop: metrics below header */}
-                <div className="hidden md:block px-4 pb-4">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                    <div className="h-3 bg-zinc-800 rounded" />
-                  </div>
+                  {(search !== "" || activeTab !== "all" || activeApproach !== "all" || activeSort !== "none") && (
+                    <button
+                      onClick={() => {
+                        setSearch("");
+                        setActiveTab("all");
+                        setActiveApproach("all");
+                        setActiveSort("none");
+                      }}
+                      className="px-3 py-2 rounded-xl text-sm text-zinc-400 border border-violet-900/30 hover:text-violet-300 hover:border-violet-600/40 transition"
+                    >
+                      ✕ Сбросить
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <>
-            <SummaryPanel summary={summary} />
-            <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
-            {filtered.map((item, index) => {
-              const itemMedia = findMedia(item.creative, media);
-              const itemApproach = itemMedia ? getApproach(itemMedia.key) : "unknown";
-              const itemNote = notes[item.creative];
-
-              return (
-                <div
-                  key={`${item.creative}-${index}`}
-                  onClick={() => setSelected(item)}
-                  className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden cursor-pointer hover:border-zinc-500 transition"
-                >
-                  {/* desktop only: full-width media at top */}
-                  <div className="hidden md:block">
-                    <MediaWide file={itemMedia} />
-                  </div>
-
-                  {/* header: always visible */}
-                  <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-zinc-800/60">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-base font-bold truncate">{item.creative}</div>
-                      {itemApproach !== "unknown" && (
-                        <div className="text-xs text-zinc-500 mt-0.5 truncate">{itemApproach}</div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); toggleFavorite(item.creative); }}
-                        className={`text-base leading-none transition-colors ${
-                          itemNote?.favorite
-                            ? "text-yellow-400"
-                            : "text-zinc-700 hover:text-yellow-400"
-                        }`}
-                        title={itemNote?.favorite ? "Убрать из избранного" : "В избранное"}
-                      >
-                        ★
-                      </button>
-                      <RomiBadge value={item.romi} />
-                    </div>
-                  </div>
-
-                  {/* mobile only: square preview + metrics side by side */}
-                  <div className="flex gap-4 p-4 md:hidden">
-                    <MediaSquare file={itemMedia} />
-                    <MetricsGrid item={item} />
-                  </div>
-
-                  {/* desktop only: metrics below header */}
-                  <div className="hidden md:block px-4 pt-3 pb-4">
-                    <MetricsGrid item={item} />
-                  </div>
-                </div>
-              );
-            })}
             </div>
-          </>
-        )}
+
+            {error && (
+              <div className="bg-red-950 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-8">
+                ⚠ {error}
+              </div>
+            )}
+
+            {loading ? (
+              <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-[#111118] border border-violet-900/20 rounded-2xl overflow-hidden animate-pulse"
+                  >
+                    {/* desktop: media at top */}
+                    <div className="hidden md:block aspect-square bg-violet-900/10" />
+                    {/* header */}
+                    <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3">
+                      <div className="h-4 bg-violet-900/20 rounded w-2/5" />
+                      <div className="h-5 w-14 bg-violet-900/20 rounded-full" />
+                    </div>
+                    {/* mobile: square + metrics row */}
+                    <div className="flex gap-3 px-4 pb-4 md:hidden">
+                      <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-violet-900/10" />
+                      <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-3 content-start">
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                      </div>
+                    </div>
+                    {/* desktop: metrics below header */}
+                    <div className="hidden md:block px-4 pb-4">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                        <div className="h-3 bg-violet-900/20 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <SummaryPanel summary={summary} />
+                <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
+                  {filtered.map((item, index) => {
+                    const itemMedia = findMedia(item.creative, media);
+                    const itemApproach = itemMedia ? getApproach(itemMedia.key) : "unknown";
+                    const itemNote = notes[item.creative];
+
+                    return (
+                      <div
+                        key={`${item.creative}-${index}`}
+                        onClick={() => setSelected(item)}
+                        className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition"
+                      >
+                        {/* desktop only: full-width media at top */}
+                        <div className="hidden md:block">
+                          <MediaWide file={itemMedia} />
+                        </div>
+
+                        {/* header: always visible */}
+                        <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-violet-900/20">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-base font-bold text-white truncate">{item.creative}</div>
+                            {itemApproach !== "unknown" && (
+                              <span className="inline-block text-[10px] font-medium bg-violet-800/35 text-violet-100 border border-violet-700/40 px-1.5 py-0.5 rounded-full mt-1 truncate max-w-full">{itemApproach}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleFavorite(item.creative); }}
+                              className={`text-base leading-none transition-colors ${
+                                itemNote?.favorite
+                                  ? "text-yellow-400"
+                                  : "text-zinc-700 hover:text-yellow-400"
+                              }`}
+                              title={itemNote?.favorite ? "Убрать из избранного" : "В избранное"}
+                            >
+                              ★
+                            </button>
+                            <RomiBadge value={item.romi} />
+                          </div>
+                        </div>
+
+                        {/* mobile only: square preview + metrics side by side */}
+                        <div className="flex gap-4 p-4 md:hidden">
+                          <MediaSquare file={itemMedia} />
+                          <MetricsGrid item={item} />
+                        </div>
+
+                        {/* desktop only: metrics below header */}
+                        <div className="hidden md:block px-4 pt-3 pb-4">
+                          <MetricsGrid item={item} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -582,13 +595,13 @@ function RomiBadge({ value }: { value: string }) {
 }
 
 function MediaSquare({ file }: { file?: MediaFile }) {
-  const wrapCls = "w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-800";
+  const wrapCls = "w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-900";
   const mediaCls = "w-full h-full object-cover";
 
   if (!file) {
     return (
-      <div className={`${wrapCls} flex items-center justify-center text-zinc-600 text-lg`}>
-        —
+      <div className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center bg-gradient-to-br from-violet-900/25 to-[#0d0a1f]">
+        <span className="text-2xl opacity-55">📷</span>
       </div>
     );
   }
@@ -610,20 +623,20 @@ function MediaSquare({ file }: { file?: MediaFile }) {
   }
 
   return (
-    <div className={`${wrapCls} flex items-center justify-center text-zinc-600 text-lg`}>
-      —
+    <div className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center bg-gradient-to-br from-violet-900/25 to-[#0d0a1f]">
+      <span className="text-2xl opacity-55">📷</span>
     </div>
   );
 }
 
 function MediaWide({ file }: { file?: MediaFile }) {
-  const wrapCls = "w-full aspect-square bg-zinc-800";
+  const wrapCls = "w-full aspect-square bg-zinc-900";
   const mediaCls = "w-full h-full object-cover";
 
   if (!file) {
     return (
-      <div className={`${wrapCls} flex items-center justify-center text-zinc-600 text-2xl`}>
-        —
+      <div className="w-full aspect-square flex items-center justify-center bg-gradient-to-br from-violet-900/20 to-[#0a080f]">
+        <span className="text-5xl opacity-40">📷</span>
       </div>
     );
   }
@@ -645,8 +658,8 @@ function MediaWide({ file }: { file?: MediaFile }) {
   }
 
   return (
-    <div className={`${wrapCls} flex items-center justify-center text-zinc-600 text-2xl`}>
-      —
+    <div className="w-full aspect-square flex items-center justify-center bg-gradient-to-br from-violet-900/20 to-[#0a080f]">
+      <span className="text-5xl opacity-40">📷</span>
     </div>
   );
 }
@@ -759,15 +772,15 @@ function CreativeModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/85 z-50 overflow-y-auto flex items-start md:items-center justify-center p-4 md:p-6"
+      className="fixed inset-0 bg-black/80 z-50 overflow-y-auto flex items-start md:items-center justify-center p-4 md:p-6"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1200px] bg-zinc-950 border border-zinc-800 rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:max-h-[88vh] flex flex-col md:flex-row"
+        className="w-full max-w-[1200px] bg-[#0d0b14] border border-violet-900/40 rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:max-h-[88vh] flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         {/* LEFT: media */}
-        <div className="bg-black flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
+        <div className="bg-[#080710] flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
           {mediaFile ? (
             isVideo(mediaFile.url) ? (
               <video
@@ -785,7 +798,12 @@ function CreativeModal({
               />
             )
           ) : (
-            <div className="text-zinc-600 text-sm">Медиа не найдено</div>
+            <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-900/30 to-[#080710]">
+              <span className="text-5xl opacity-40">🎬</span>
+              <p className="text-white/75 text-sm font-semibold text-center px-6">
+                Крео отошел на дейлик 😄
+              </p>
+            </div>
           )}
         </div>
 
@@ -793,15 +811,15 @@ function CreativeModal({
         <div className="flex flex-col flex-1 min-w-0 overflow-y-auto md:max-h-[88vh]">
 
           {/* Header */}
-          <div className="flex items-start justify-between gap-3 p-5 border-b border-zinc-800 flex-shrink-0">
+          <div className="flex items-start justify-between gap-3 p-5 border-b border-violet-900/30 flex-shrink-0">
             <div className="min-w-0 flex-1">
-              <h2 className="text-2xl font-bold leading-tight truncate">
+              <h2 className="text-2xl font-bold text-white leading-tight truncate">
                 {item.creative}
               </h2>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <RomiBadge value={item.romi} />
                 {approach !== "unknown" && (
-                  <span className="text-xs text-zinc-400 bg-zinc-800 px-2.5 py-0.5 rounded-full border border-zinc-700">
+                  <span className="text-xs font-medium text-violet-100 bg-violet-800/35 px-2.5 py-0.5 rounded-full border border-violet-600/40">
                     {approach}
                   </span>
                 )}
@@ -813,7 +831,7 @@ function CreativeModal({
                 className={`w-9 h-9 flex items-center justify-center rounded-xl transition text-xl ${
                   note?.favorite
                     ? "text-yellow-400 bg-yellow-900/30 hover:bg-yellow-900/50"
-                    : "text-zinc-600 bg-zinc-800 hover:text-yellow-400 hover:bg-zinc-700"
+                    : "text-zinc-600 bg-[#1a1826] hover:text-yellow-400 hover:bg-[#221e35]"
                 }`}
                 title={note?.favorite ? "Убрать из избранного" : "В избранное"}
               >
@@ -821,7 +839,7 @@ function CreativeModal({
               </button>
               <button
                 onClick={onClose}
-                className="flex-shrink-0 text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
+                className="flex-shrink-0 text-zinc-400 hover:text-white bg-[#1a1826] hover:bg-[#221e35] rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
                 aria-label="Закрыть"
               >
                 ✕
@@ -834,7 +852,7 @@ function CreativeModal({
 
             {/* Metrics */}
             <div>
-              <div className="text-zinc-500 text-xs uppercase tracking-widest mb-3">
+              <div className="text-violet-400/50 text-xs uppercase tracking-widest mb-3">
                 Метрики
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -848,15 +866,15 @@ function CreativeModal({
             </div>
 
             {/* Расшифровка */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="bg-[#0f0d18] border border-violet-900/20 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-zinc-500 text-xs uppercase tracking-widest">
+                <div className="text-violet-400/50 text-xs uppercase tracking-widest">
                   Расшифровка
                 </div>
                 {!transcriptionEditing && (
                   <button
                     onClick={() => { setTranscriptionDraft(transcriptionText); setTranscriptionEditing(true); }}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                    className="text-xs text-violet-400/60 hover:text-violet-300 transition"
                   >
                     Редактировать
                   </button>
@@ -871,7 +889,7 @@ function CreativeModal({
                     rows={6}
                     autoFocus
                     placeholder="Расшифровка пока не добавлена"
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-zinc-500 transition placeholder:text-zinc-600 mb-3"
+                    className="w-full bg-[#1a1826] border border-violet-900/30 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600 mb-3"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -882,7 +900,7 @@ function CreativeModal({
                         })
                       }
                       disabled={!isSupabaseConfigured || transcriptionStatus === "saving"}
-                      className="px-3 py-1.5 text-xs font-semibold bg-white text-black hover:bg-zinc-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {transcriptionStatus === "saving" ? "Saving..." : "Save"}
                     </button>
@@ -916,15 +934,15 @@ function CreativeModal({
             </div>
 
             {/* Заметки */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="bg-[#0f0d18] border border-violet-900/20 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-zinc-500 text-xs uppercase tracking-widest">
+                <div className="text-violet-400/50 text-xs uppercase tracking-widest">
                   Заметки
                 </div>
                 {!noteEditing && (
                   <button
                     onClick={() => { setNoteDraft(noteText); setNoteEditing(true); }}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                    className="text-xs text-violet-400/60 hover:text-violet-300 transition"
                   >
                     Редактировать
                   </button>
@@ -939,7 +957,7 @@ function CreativeModal({
                     rows={4}
                     autoFocus
                     placeholder="Добавьте заметку..."
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-zinc-500 transition placeholder:text-zinc-600 mb-3"
+                    className="w-full bg-[#1a1826] border border-violet-900/30 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600 mb-3"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -950,7 +968,7 @@ function CreativeModal({
                         })
                       }
                       disabled={!isSupabaseConfigured || noteStatus === "saving"}
-                      className="px-3 py-1.5 text-xs font-semibold bg-white text-black hover:bg-zinc-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {noteStatus === "saving" ? "Saving..." : "Save"}
                     </button>
@@ -1007,14 +1025,14 @@ function ModalMetric({
     : "text-red-300"
     : "text-white";
   const borderColor = isRomi
-    ? isNaN(romiValue) ? "border-zinc-800"
+    ? isNaN(romiValue) ? "border-violet-900/20"
     : romiValue >= 150 ? "border-green-800/50"
     : romiValue >= 0 ? "border-yellow-800/50"
     : "border-red-800/50"
-    : "border-zinc-800";
+    : "border-violet-900/20";
 
   return (
-    <div className={`bg-zinc-900/60 border rounded-xl p-4 ${borderColor}`}>
+    <div className={`bg-[#111118]/60 border rounded-xl p-4 ${borderColor}`}>
       <div className="text-zinc-500 text-xs mb-1.5">{label}</div>
       <div className={`text-lg font-bold truncate ${valueColor}`}>
         {value || "—"}
@@ -1035,7 +1053,7 @@ function SummaryCard({
   colorClass?: string;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+    <div className="bg-[#111118] border border-violet-900/30 rounded-xl px-4 py-3">
       <div className="text-zinc-500 text-xs mb-1 truncate">{label}</div>
       <div className={`text-lg font-bold tabular-nums truncate ${colorClass}`}>{value}</div>
     </div>
@@ -1149,13 +1167,13 @@ function AnalyticsView({
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
-        <div className="h-52 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+        <div className="h-52 bg-[#111118] border border-violet-900/20 rounded-2xl" />
         <div className="grid md:grid-cols-2 gap-6">
-          <div className="h-64 bg-zinc-900 border border-zinc-800 rounded-2xl" />
-          <div className="h-64 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+          <div className="h-64 bg-[#111118] border border-violet-900/20 rounded-2xl" />
+          <div className="h-64 bg-[#111118] border border-violet-900/20 rounded-2xl" />
         </div>
-        <div className="h-72 bg-zinc-900 border border-zinc-800 rounded-2xl" />
-        <div className="h-72 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+        <div className="h-72 bg-[#111118] border border-violet-900/20 rounded-2xl" />
+        <div className="h-72 bg-[#111118] border border-violet-900/20 rounded-2xl" />
       </div>
     );
   }
@@ -1173,7 +1191,7 @@ function AnalyticsView({
     <div className="space-y-6 pb-8">
 
       {/* ROMI Distribution */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
         <h2 className="text-base font-bold mb-1">ROMI Distribution</h2>
         <p className="text-zinc-500 text-xs mb-5">
           {romiWithData} из {rows.length} крео с данными ROMI
@@ -1182,7 +1200,7 @@ function AnalyticsView({
           {romiDist.map((bucket) => (
             <div key={bucket.label} className="flex items-center gap-3">
               <div className="w-24 text-xs text-zinc-400 text-right flex-shrink-0">{bucket.label}</div>
-              <div className="flex-1 h-6 bg-zinc-800 rounded-lg overflow-hidden">
+              <div className="flex-1 h-6 bg-violet-900/15 rounded-lg overflow-hidden">
                 <div
                   className={`h-full ${bucket.color} rounded-lg transition-all`}
                   style={{ width: bucket.count === 0 ? "0%" : `${Math.max((bucket.count / maxRomiCount) * 100, 2)}%` }}
@@ -1197,15 +1215,15 @@ function AnalyticsView({
       {/* Spend by Approach + Winners by Approach */}
       <div className="grid md:grid-cols-2 gap-6">
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
           <h2 className="text-base font-bold mb-5">Spend by Approach</h2>
           <div className="space-y-3">
             {spendByApproach.map(([approach, spend]) => (
               <div key={approach} className="flex items-center gap-3">
                 <div className="w-24 text-xs text-zinc-400 text-right truncate flex-shrink-0">{approach}</div>
-                <div className="flex-1 h-5 bg-zinc-800 rounded-lg overflow-hidden">
+                <div className="flex-1 h-5 bg-violet-900/15 rounded-lg overflow-hidden">
                   <div
-                    className="h-full bg-blue-500/60 rounded-lg"
+                    className="h-full bg-violet-500/60 rounded-lg"
                     style={{ width: `${(spend / maxSpend) * 100}%` }}
                   />
                 </div>
@@ -1215,13 +1233,13 @@ function AnalyticsView({
           </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
           <h2 className="text-base font-bold mb-5">Winners by Approach</h2>
           <div className="space-y-3">
             {winnersByApproach.map(([approach, count]) => (
               <div key={approach} className="flex items-center gap-3">
                 <div className="w-24 text-xs text-zinc-400 text-right truncate flex-shrink-0">{approach}</div>
-                <div className="flex-1 h-5 bg-zinc-800 rounded-lg overflow-hidden">
+                <div className="flex-1 h-5 bg-violet-900/15 rounded-lg overflow-hidden">
                   <div
                     className="h-full bg-green-500/60 rounded-lg"
                     style={{ width: `${(count / maxWinners) * 100}%` }}
@@ -1236,12 +1254,12 @@ function AnalyticsView({
       </div>
 
       {/* Top 10 by ROMI */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
         <h2 className="text-base font-bold mb-5">Top 10 by ROMI</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="text-zinc-500 text-xs border-b border-zinc-800">
+              <tr className="text-zinc-500 text-xs border-b border-violet-900/30">
                 <th className="text-left font-medium pb-3 pr-4">Creative</th>
                 <th className="text-right font-medium pb-3 px-4 w-20">ROMI</th>
                 <th className="text-right font-medium pb-3 px-4 w-24">Spend</th>
@@ -1253,7 +1271,7 @@ function AnalyticsView({
                 const romi = parseNumber(item.romi);
                 const romiCls = romi >= 150 ? "text-green-300" : romi >= 0 ? "text-yellow-300" : "text-red-300";
                 return (
-                  <tr key={item.creative} className="border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors">
+                  <tr key={item.creative} className="border-b border-violet-900/15 hover:bg-violet-900/10 transition-colors">
                     <td className="py-2.5 pr-4">
                       <span className="text-zinc-600 text-xs tabular-nums mr-2">{i + 1}</span>
                       <span className="text-zinc-200">{item.creative}</span>
@@ -1270,12 +1288,12 @@ function AnalyticsView({
       </div>
 
       {/* Top 10 by Deposits */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
         <h2 className="text-base font-bold mb-5">Top 10 by Deposits</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="text-zinc-500 text-xs border-b border-zinc-800">
+              <tr className="text-zinc-500 text-xs border-b border-violet-900/30">
                 <th className="text-left font-medium pb-3 pr-4">Creative</th>
                 <th className="text-right font-medium pb-3 px-4 w-24">Deposits</th>
                 <th className="text-right font-medium pb-3 px-4 w-24">Spend</th>
@@ -1287,7 +1305,7 @@ function AnalyticsView({
                 const romi = parseNumber(item.romi);
                 const romiCls = romi >= 150 ? "text-green-300" : romi >= 0 ? "text-yellow-300" : "text-red-300";
                 return (
-                  <tr key={item.creative} className="border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors">
+                  <tr key={item.creative} className="border-b border-violet-900/15 hover:bg-violet-900/10 transition-colors">
                     <td className="py-2.5 pr-4">
                       <span className="text-zinc-600 text-xs tabular-nums mr-2">{i + 1}</span>
                       <span className="text-zinc-200">{item.creative}</span>
@@ -1306,4 +1324,3 @@ function AnalyticsView({
     </div>
   );
 }
-

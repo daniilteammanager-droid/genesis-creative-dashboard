@@ -1,22 +1,27 @@
 @import "tailwindcss";
 
+/* ─── Brand tokens ─────────────────────────────────────────────────────────── */
+/* To switch themes later, update these variables only.                         */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background:        #0a080f;
+  --foreground:        #f4f4f5;
+  --brand:             #8b5cf6;
+  --brand-light:       #a78bfa;
+  --brand-deep:        #7c3aed;
+  --surface-card:      #111118;
+  --surface-elevated:  #18181f;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background:       var(--background);
+  --color-foreground:       var(--foreground);
+  --color-brand:            var(--brand);
+  --color-brand-light:      var(--brand-light);
+  --color-brand-deep:       var(--brand-deep);
+  --color-surface-card:     var(--surface-card);
+  --color-surface-elevated: var(--surface-elevated);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
