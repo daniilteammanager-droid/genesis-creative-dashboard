@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
+import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
 
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr4-3RDwlc7vXIbnBBkZVO9UY8QOxzqSYLceOCU-aHAHM3ETMQP9g7LMtDZORuyafkvAvm4TmCEawl/pub?gid=1832093387&single=true&output=csv";
@@ -21,6 +22,8 @@ type MediaFile = {
   key: string;
   url: string;
 };
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 function normalize(value: string) {
   return value
@@ -78,9 +81,57 @@ export default function Home() {
   const [mediaLoading, setMediaLoading] = useState(true);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"all" | "win" | "lose" | "test">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "win" | "lose" | "test" | "favorites">("all");
   const [activeApproach, setActiveApproach] = useState("all");
   const [activeSort, setActiveSort] = useState<"none" | "romi" | "spend" | "deposits">("none");
+
+  // Суперbase: заметки, транскрипции и фейвориты
+  const [notes, setNotes] = useState<Record<string, CreativeNote>>({});
+  const [notesLoading, setNotesLoading] = useState(true);
+  const [notesError, setNotesError] = useState<string | null>(null);
+
+  async function toggleFavorite(creativeCode: string) {
+    if (!isSupabaseConfigured) {
+      console.warn("Supabase не настроен — toggle favorite недоступен");
+      return;
+    }
+    const existing = notes[creativeCode];
+    const newFavorite = !(existing?.favorite ?? false);
+
+    // Оптимистичное обновление — UI меняется сразу
+    const updated: CreativeNote = existing
+      ? { ...existing, favorite: newFavorite, updated_at: new Date().toISOString() }
+      : { creative_code: creativeCode, favorite: newFavorite, note: null, transcription_ru: null, updated_at: new Date().toISOString() };
+    setNotes((prev) => ({ ...prev, [creativeCode]: updated }));
+
+    try {
+      const { error } = await supabase
+        .from("creative_notes")
+        .upsert(
+          {
+            creative_code: creativeCode,
+            favorite: newFavorite,
+            note: existing?.note ?? null,
+            transcription_ru: existing?.transcription_ru ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "creative_code" }
+        );
+      if (error) throw error;
+    } catch (e) {
+      console.error("Ошибка сохранения favorite:", e);
+      // Откат к предыдущему состоянию
+      setNotes((prev) => {
+        const reverted = { ...prev };
+        if (existing) {
+          reverted[creativeCode] = existing;
+        } else {
+          delete reverted[creativeCode];
+        }
+        return reverted;
+      });
+    }
+  }
 
   useEffect(() => {
     async function loadCSV() {
@@ -150,12 +201,39 @@ export default function Home() {
       }
     }
 
+    async function loadNotes() {
+      // Если переменные среды не заданы — молча пропускаем
+      if (!isSupabaseConfigured) {
+        setNotesLoading(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("creative_notes")
+          .select("*");
+        if (error) throw error;
+        // Строим словарь creative_code → CreativeNote для O(1) lookup
+        const map: Record<string, CreativeNote> = {};
+        for (const row of (data ?? []) as CreativeNote[]) {
+          map[row.creative_code] = row;
+        }
+        setNotes(map);
+      } catch (e) {
+        setNotesError(
+          e instanceof Error ? e.message : "Не удалось загрузить заметки"
+        );
+      } finally {
+        setNotesLoading(false);
+      }
+    }
+
     loadCSV();
     loadMedia();
+    loadNotes();
   }, []);
 
-  const loading = csvLoading || mediaLoading;
-  const error = csvError || mediaError;
+  const loading = csvLoading || mediaLoading || notesLoading;
+  const error = csvError || mediaError || notesError;
 
   // Уникальные папки из R2, отсортированные по алфавиту
   const approaches = useMemo(() => {
@@ -182,8 +260,9 @@ export default function Home() {
         (item) => parseNumber(item.romi) < 0 && parseNumber(item.spend) > 1000
       ).length,
       test: base.filter((item) => parseNumber(item.spend) < 1000).length,
+      favorites: base.filter((item) => notes[item.creative]?.favorite === true).length,
     };
-  }, [rows, search, activeApproach, media]);
+  }, [rows, search, activeApproach, media, notes]);
 
   const filtered = useMemo(() => {
     const sortFn = (a: CreativeRow, b: CreativeRow) => {
@@ -213,6 +292,7 @@ export default function Home() {
         if (activeTab === "win") return romi >= 150;
         if (activeTab === "lose") return romi < 0 && spend > 1000;
         if (activeTab === "test") return spend < 1000;
+        if (activeTab === "favorites") return notes[item.creative]?.favorite === true;
         return true;
       })
       .filter((item) => {
@@ -222,7 +302,7 @@ export default function Home() {
         return approach === activeApproach;
       })
       .sort(sortFn);
-  }, [rows, search, activeTab, activeApproach, activeSort, media]);
+  }, [rows, search, activeTab, activeApproach, activeSort, media, notes]);
 
   return (
     <main className="min-h-screen bg-black text-white p-8">
@@ -241,24 +321,29 @@ export default function Home() {
           />
 
           <div className="flex items-center gap-2 flex-wrap">
-          {(["all", "win", "lose", "test"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition flex items-center gap-1.5 ${
-                activeTab === tab
-                  ? "bg-white text-black"
-                  : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
-              }`}
-            >
-              {tab}
-              <span className={`text-xs font-normal tabular-nums ${
-                activeTab === tab ? "text-black/50" : "text-zinc-600"
-              }`}>
-                {tabCounts[tab]}
-              </span>
-            </button>
-          ))}
+          {(["all", "win", "lose", "test", "favorites"] as const).map((tab) => {
+            const labels: Record<typeof tab, string> = {
+              all: "All", win: "Win", lose: "Lose", test: "Test", favorites: "★ Fav",
+            };
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${
+                  activeTab === tab
+                    ? "bg-white text-black"
+                    : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
+                }`}
+              >
+                {labels[tab]}
+                <span className={`text-xs font-normal tabular-nums ${
+                  activeTab === tab ? "text-black/50" : "text-zinc-600"
+                }`}>
+                  {tabCounts[tab]}
+                </span>
+              </button>
+            );
+          })}
 
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             <select
@@ -349,6 +434,7 @@ export default function Home() {
             {filtered.map((item, index) => {
               const itemMedia = findMedia(item.creative, media);
               const itemApproach = itemMedia ? getApproach(itemMedia.key) : "unknown";
+              const itemNote = notes[item.creative];
 
               return (
                 <div
@@ -369,7 +455,20 @@ export default function Home() {
                         <div className="text-xs text-zinc-500 mt-0.5 truncate">{itemApproach}</div>
                       )}
                     </div>
-                    <RomiBadge value={item.romi} />
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(item.creative); }}
+                        className={`text-base leading-none transition-colors ${
+                          itemNote?.favorite
+                            ? "text-yellow-400"
+                            : "text-zinc-700 hover:text-yellow-400"
+                        }`}
+                        title={itemNote?.favorite ? "Убрать из избранного" : "В избранное"}
+                      >
+                        ★
+                      </button>
+                      <RomiBadge value={item.romi} />
+                    </div>
                   </div>
 
                   {/* mobile only: square preview + metrics side by side */}
@@ -393,7 +492,12 @@ export default function Home() {
         <CreativeModal
           item={selected}
           mediaFile={findMedia(selected.creative, media)}
+          note={notes[selected.creative]}
           onClose={() => setSelected(null)}
+          onToggleFavorite={toggleFavorite}
+          onNotesUpdated={(updated) =>
+            setNotes((prev) => ({ ...prev, [updated.creative_code]: updated }))
+          }
         />
       )}
     </main>
@@ -522,11 +626,17 @@ function MetricCell({
 function CreativeModal({
   item,
   mediaFile,
+  note,
   onClose,
+  onToggleFavorite,
+  onNotesUpdated,
 }: {
   item: CreativeRow;
   mediaFile?: MediaFile;
+  note?: CreativeNote;
   onClose: () => void;
+  onToggleFavorite: (code: string) => void;
+  onNotesUpdated: (updated: CreativeNote) => void;
 }) {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -535,6 +645,54 @@ function CreativeModal({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
+
+  // Отображаемые (сохранённые) значения
+  const [noteText, setNoteText] = useState(note?.note ?? "");
+  const [noteStatus, setNoteStatus] = useState<SaveStatus>("idle");
+  const [noteEditing, setNoteEditing] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  const [transcriptionText, setTranscriptionText] = useState(
+    note?.transcription_ru || item.text
+  );
+  const [transcriptionStatus, setTranscriptionStatus] = useState<SaveStatus>("idle");
+  const [transcriptionEditing, setTranscriptionEditing] = useState(false);
+  const [transcriptionDraft, setTranscriptionDraft] = useState("");
+
+  async function saveField(
+    field: "note" | "transcription_ru",
+    value: string,
+    setStatus: (s: SaveStatus) => void,
+    onSuccess?: () => void
+  ) {
+    if (!isSupabaseConfigured) {
+      console.warn("Supabase не настроен — сохранение недоступно");
+      return;
+    }
+    setStatus("saving");
+    const payload: CreativeNote = {
+      creative_code: item.creative,
+      favorite: note?.favorite ?? false,
+      note: field === "note" ? (value.trim() || null) : (note?.note ?? null),
+      transcription_ru:
+        field === "transcription_ru" ? (value.trim() || null) : (note?.transcription_ru ?? null),
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const { error } = await supabase
+        .from("creative_notes")
+        .upsert(payload, { onConflict: "creative_code" });
+      if (error) throw error;
+      onNotesUpdated(payload);
+      onSuccess?.();
+      setStatus("saved");
+      setTimeout(() => setStatus("idle"), 2000);
+    } catch (e) {
+      console.error("Ошибка сохранения:", e);
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    }
+  }
 
   const approach = mediaFile ? getApproach(mediaFile.key) : "unknown";
   const romiNum = parseNumber(item.romi);
@@ -589,13 +747,26 @@ function CreativeModal({
                 )}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="flex-shrink-0 text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
-              aria-label="Закрыть"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => onToggleFavorite(item.creative)}
+                className={`w-9 h-9 flex items-center justify-center rounded-xl transition text-xl ${
+                  note?.favorite
+                    ? "text-yellow-400 bg-yellow-900/30 hover:bg-yellow-900/50"
+                    : "text-zinc-600 bg-zinc-800 hover:text-yellow-400 hover:bg-zinc-700"
+                }`}
+                title={note?.favorite ? "Убрать из избранного" : "В избранное"}
+              >
+                {note?.favorite ? "★" : "☆"}
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-shrink-0 text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Scrollable content */}
@@ -618,28 +789,138 @@ function CreativeModal({
 
             {/* Расшифровка */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-              <div className="text-zinc-500 text-xs uppercase tracking-widest mb-2">
-                Расшифровка
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-zinc-500 text-xs uppercase tracking-widest">
+                  Расшифровка
+                </div>
+                {!transcriptionEditing && (
+                  <button
+                    onClick={() => { setTranscriptionDraft(transcriptionText); setTranscriptionEditing(true); }}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                  >
+                    Редактировать
+                  </button>
+                )}
               </div>
-              {item.text ? (
-                <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">
-                  {item.text}
-                </p>
+
+              {transcriptionEditing ? (
+                <>
+                  <textarea
+                    value={transcriptionDraft}
+                    onChange={(e) => setTranscriptionDraft(e.target.value)}
+                    rows={6}
+                    autoFocus
+                    placeholder="Расшифровка пока не добавлена"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-zinc-500 transition placeholder:text-zinc-600 mb-3"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        saveField("transcription_ru", transcriptionDraft, setTranscriptionStatus, () => {
+                          setTranscriptionText(transcriptionDraft);
+                          setTranscriptionEditing(false);
+                        })
+                      }
+                      disabled={!isSupabaseConfigured || transcriptionStatus === "saving"}
+                      className="px-3 py-1.5 text-xs font-semibold bg-white text-black hover:bg-zinc-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {transcriptionStatus === "saving" ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setTranscriptionEditing(false)}
+                      className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition"
+                    >
+                      Отмена
+                    </button>
+                    {transcriptionStatus === "error" && (
+                      <span className="text-red-400 text-xs">Ошибка сохранения</span>
+                    )}
+                  </div>
+                </>
               ) : (
-                <p className="text-zinc-600 text-sm italic">
-                  Расшифровка пока не добавлена
-                </p>
+                <>
+                  {transcriptionText ? (
+                    <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">
+                      {transcriptionText}
+                    </p>
+                  ) : (
+                    <p className="text-zinc-600 text-sm italic">
+                      Расшифровка пока не добавлена
+                    </p>
+                  )}
+                  {transcriptionStatus === "saved" && (
+                    <p className="text-green-400 text-xs mt-2">✓ Сохранено</p>
+                  )}
+                </>
               )}
             </div>
 
             {/* Заметки */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-              <div className="text-zinc-500 text-xs uppercase tracking-widest mb-2">
-                Заметки
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-zinc-500 text-xs uppercase tracking-widest">
+                  Заметки
+                </div>
+                {!noteEditing && (
+                  <button
+                    onClick={() => { setNoteDraft(noteText); setNoteEditing(true); }}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                  >
+                    Редактировать
+                  </button>
+                )}
               </div>
-              <p className="text-zinc-600 text-sm italic">
-                Заметки будут добавлены позже
-              </p>
+
+              {noteEditing ? (
+                <>
+                  <textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    rows={4}
+                    autoFocus
+                    placeholder="Добавьте заметку..."
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-zinc-500 transition placeholder:text-zinc-600 mb-3"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        saveField("note", noteDraft, setNoteStatus, () => {
+                          setNoteText(noteDraft);
+                          setNoteEditing(false);
+                        })
+                      }
+                      disabled={!isSupabaseConfigured || noteStatus === "saving"}
+                      className="px-3 py-1.5 text-xs font-semibold bg-white text-black hover:bg-zinc-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {noteStatus === "saving" ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setNoteEditing(false)}
+                      className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition"
+                    >
+                      Отмена
+                    </button>
+                    {noteStatus === "error" && (
+                      <span className="text-red-400 text-xs">Ошибка сохранения</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {noteText ? (
+                    <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">
+                      {noteText}
+                    </p>
+                  ) : (
+                    <p className="text-zinc-600 text-sm italic">
+                      Заметка пока не добавлена
+                    </p>
+                  )}
+                  {noteStatus === "saved" && (
+                    <p className="text-green-400 text-xs mt-2">✓ Сохранено</p>
+                  )}
+                </>
+              )}
             </div>
 
           </div>
