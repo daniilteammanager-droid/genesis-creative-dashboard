@@ -72,6 +72,18 @@ function getApproach(key: string): string {
   return slash > 0 ? key.slice(0, slash) : "unknown";
 }
 
+// Форматирование числа с разделителями тысяч: 1234567 → "1,234,567"
+function formatSummaryNumber(n: number): string {
+  if (isNaN(n) || !isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
+}
+
+// ROMI → "150%" / "-25%" / "—"
+function formatRomiPct(n: number): string {
+  if (isNaN(n) || !isFinite(n)) return "—";
+  return `${Math.round(n)}%`;
+}
+
 export default function Home() {
   const [rows, setRows] = useState<CreativeRow[]>([]);
   const [media, setMedia] = useState<MediaFile[]>([]);
@@ -84,6 +96,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"all" | "win" | "lose" | "test" | "favorites">("all");
   const [activeApproach, setActiveApproach] = useState("all");
   const [activeSort, setActiveSort] = useState<"none" | "romi" | "spend" | "deposits">("none");
+  const [topTab, setTopTab] = useState<"creatives" | "analytics">("creatives");
 
   // Суперbase: заметки, транскрипции и фейвориты
   const [notes, setNotes] = useState<Record<string, CreativeNote>>({});
@@ -304,6 +317,27 @@ export default function Home() {
       .sort(sortFn);
   }, [rows, search, activeTab, activeApproach, activeSort, media, notes]);
 
+  const summary = useMemo(() => {
+    const validSpend    = filtered.map((r) => parseNumber(r.spend)).filter(isFinite);
+    const validRevenue  = filtered.map((r) => parseNumber(r.revenue)).filter(isFinite);
+    const validDeposits = filtered.map((r) => parseNumber(r.deposits)).filter(isFinite);
+
+    const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+
+    return {
+      total:         filtered.length,
+      totalSpend:    sum(validSpend),
+      totalRevenue:  sum(validRevenue),
+      totalDeposits: sum(validDeposits),
+      totalRomi:     sum(validSpend) > 0
+        ? (sum(validRevenue) - sum(validSpend)) / sum(validSpend) * 100
+        : 0,
+      winners:       filtered.filter((r) => parseNumber(r.romi) >= 150).length,
+      losers:        filtered.filter((r) => parseNumber(r.romi) < 0 && parseNumber(r.spend) > 1000).length,
+      tests:         filtered.filter((r) => parseNumber(r.spend) < 1000).length,
+    };
+  }, [filtered]);
+
   return (
     <main className="min-h-screen bg-black text-white p-8">
       <div className="max-w-7xl mx-auto">
@@ -311,7 +345,24 @@ export default function Home() {
           Genesis Creative Dashboard
         </h1>
 
-        <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-black/85 backdrop-blur-md border-b border-zinc-800/50">
+        {/* Top-level navigation */}
+        <div className="flex gap-1 mb-6 bg-zinc-900 border border-zinc-800 rounded-2xl p-1 w-fit">
+          {(["creatives", "analytics"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTopTab(t)}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
+                topTab === t ? "bg-white text-black" : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              {t === "creatives" ? "Creatives" : "Analytics"}
+            </button>
+          ))}
+        </div>
+
+        {topTab === "creatives" && (
+          <>
+            <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-black/85 backdrop-blur-md border-b border-zinc-800/50">
           <input
             type="text"
             placeholder="Поиск крео..."
@@ -430,7 +481,9 @@ export default function Home() {
             ))}
           </div>
         ) : (
-          <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
+          <>
+            <SummaryPanel summary={summary} />
+            <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
             {filtered.map((item, index) => {
               const itemMedia = findMedia(item.creative, media);
               const itemApproach = itemMedia ? getApproach(itemMedia.key) : "unknown";
@@ -484,7 +537,14 @@ export default function Home() {
                 </div>
               );
             })}
-          </div>
+            </div>
+          </>
+        )}
+          </>
+        )}
+
+        {topTab === "analytics" && (
+          <AnalyticsView rows={rows} media={media} loading={loading} />
         )}
       </div>
 
@@ -959,6 +1019,290 @@ function ModalMetric({
       <div className={`text-lg font-bold truncate ${valueColor}`}>
         {value || "—"}
       </div>
+    </div>
+  );
+}
+
+// ─── Summary panel ────────────────────────────────────────────────────────────
+
+function SummaryCard({
+  label,
+  value,
+  colorClass = "text-white",
+}: {
+  label: string;
+  value: string;
+  colorClass?: string;
+}) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+      <div className="text-zinc-500 text-xs mb-1 truncate">{label}</div>
+      <div className={`text-lg font-bold tabular-nums truncate ${colorClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function SummaryPanel({
+  summary,
+}: {
+  summary: {
+    total: number;
+    totalSpend: number;
+    totalRevenue: number;
+    totalDeposits: number;
+    totalRomi: number;
+    winners: number;
+    losers: number;
+    tests: number;
+  };
+}) {
+  const romiColor = summary.totalRomi >= 150
+    ? "text-green-300"
+    : summary.totalRomi >= 0
+    ? "text-yellow-300"
+    : "text-red-300";
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <SummaryCard label="Всего крео"     value={String(summary.total)} />
+      <SummaryCard label="Total ROMI"     value={formatRomiPct(summary.totalRomi)} colorClass={romiColor} />
+      <SummaryCard label="Winners"        value={String(summary.winners)}  colorClass="text-green-300" />
+      <SummaryCard label="Losers"         value={String(summary.losers)}   colorClass="text-red-300" />
+      <SummaryCard label="Total Spend"    value={formatSummaryNumber(summary.totalSpend)} />
+      <SummaryCard label="Total Revenue"  value={formatSummaryNumber(summary.totalRevenue)} />
+      <SummaryCard label="Total Deposits" value={formatSummaryNumber(summary.totalDeposits)} />
+      <SummaryCard label="Tests"          value={String(summary.tests)}    colorClass="text-purple-300" />
+    </div>
+  );
+}
+
+// ─── Analytics view ───────────────────────────────────────────────────────────
+
+function AnalyticsView({
+  rows,
+  media,
+  loading,
+}: {
+  rows: CreativeRow[];
+  media: MediaFile[];
+  loading: boolean;
+}) {
+  const analytics = useMemo(() => {
+    if (rows.length === 0) return null;
+
+    // 1. ROMI distribution
+    const romiDist = [
+      { label: "< 0%",       color: "bg-red-500/70",      count: 0 },
+      { label: "0 – 50%",    color: "bg-yellow-500/70",   count: 0 },
+      { label: "50 – 150%",  color: "bg-orange-400/70",   count: 0 },
+      { label: "150 – 300%", color: "bg-green-500/70",    count: 0 },
+      { label: "300%+",      color: "bg-emerald-400/70",  count: 0 },
+    ];
+    let romiWithData = 0;
+    for (const item of rows) {
+      const romi = parseNumber(item.romi);
+      if (isNaN(romi)) continue;
+      romiWithData++;
+      if (romi < 0)        romiDist[0].count++;
+      else if (romi < 50)  romiDist[1].count++;
+      else if (romi < 150) romiDist[2].count++;
+      else if (romi < 300) romiDist[3].count++;
+      else                 romiDist[4].count++;
+    }
+
+    // 2. Spend by approach
+    const spendMap = new Map<string, number>();
+    for (const item of rows) {
+      const spend = parseNumber(item.spend);
+      if (isNaN(spend) || spend <= 0) continue;
+      const file = findMedia(item.creative, media);
+      const approach = file ? getApproach(file.key) : "unknown";
+      spendMap.set(approach, (spendMap.get(approach) ?? 0) + spend);
+    }
+    const spendByApproach = [...spendMap.entries()].sort((a, b) => b[1] - a[1]);
+
+    // 3. Winners by approach (ROMI >= 150)
+    const winnersMap = new Map<string, number>();
+    for (const item of rows) {
+      if (parseNumber(item.romi) < 150) continue;
+      const file = findMedia(item.creative, media);
+      const approach = file ? getApproach(file.key) : "unknown";
+      winnersMap.set(approach, (winnersMap.get(approach) ?? 0) + 1);
+    }
+    const winnersByApproach = [...winnersMap.entries()].sort((a, b) => b[1] - a[1]);
+
+    // 4. Top 10 by ROMI (require spend > 0 to exclude noise)
+    const top10Romi = [...rows]
+      .filter((r) => !isNaN(parseNumber(r.romi)) && parseNumber(r.spend) > 0)
+      .sort((a, b) => parseNumber(b.romi) - parseNumber(a.romi))
+      .slice(0, 10);
+
+    // 5. Top 10 by Deposits
+    const top10Deposits = [...rows]
+      .filter((r) => parseNumber(r.deposits) > 0)
+      .sort((a, b) => parseNumber(b.deposits) - parseNumber(a.deposits))
+      .slice(0, 10);
+
+    return { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits };
+  }, [rows, media]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-52 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="h-64 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+          <div className="h-64 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+        </div>
+        <div className="h-72 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+        <div className="h-72 bg-zinc-900 border border-zinc-800 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (!analytics) {
+    return <p className="text-zinc-500 text-sm mt-8">Нет данных для аналитики.</p>;
+  }
+
+  const { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits } = analytics;
+  const maxRomiCount = Math.max(...romiDist.map((b) => b.count), 1);
+  const maxSpend     = Math.max(...spendByApproach.map(([, v]) => v), 1);
+  const maxWinners   = Math.max(...winnersByApproach.map(([, v]) => v), 1);
+
+  return (
+    <div className="space-y-6 pb-8">
+
+      {/* ROMI Distribution */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <h2 className="text-base font-bold mb-1">ROMI Distribution</h2>
+        <p className="text-zinc-500 text-xs mb-5">
+          {romiWithData} из {rows.length} крео с данными ROMI
+        </p>
+        <div className="space-y-3">
+          {romiDist.map((bucket) => (
+            <div key={bucket.label} className="flex items-center gap-3">
+              <div className="w-24 text-xs text-zinc-400 text-right flex-shrink-0">{bucket.label}</div>
+              <div className="flex-1 h-6 bg-zinc-800 rounded-lg overflow-hidden">
+                <div
+                  className={`h-full ${bucket.color} rounded-lg transition-all`}
+                  style={{ width: bucket.count === 0 ? "0%" : `${Math.max((bucket.count / maxRomiCount) * 100, 2)}%` }}
+                />
+              </div>
+              <div className="w-8 text-xs text-zinc-300 tabular-nums text-right">{bucket.count}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Spend by Approach + Winners by Approach */}
+      <div className="grid md:grid-cols-2 gap-6">
+
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h2 className="text-base font-bold mb-5">Spend by Approach</h2>
+          <div className="space-y-3">
+            {spendByApproach.map(([approach, spend]) => (
+              <div key={approach} className="flex items-center gap-3">
+                <div className="w-24 text-xs text-zinc-400 text-right truncate flex-shrink-0">{approach}</div>
+                <div className="flex-1 h-5 bg-zinc-800 rounded-lg overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500/60 rounded-lg"
+                    style={{ width: `${(spend / maxSpend) * 100}%` }}
+                  />
+                </div>
+                <div className="w-20 text-xs text-zinc-300 tabular-nums text-right">{formatSummaryNumber(spend)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h2 className="text-base font-bold mb-5">Winners by Approach</h2>
+          <div className="space-y-3">
+            {winnersByApproach.map(([approach, count]) => (
+              <div key={approach} className="flex items-center gap-3">
+                <div className="w-24 text-xs text-zinc-400 text-right truncate flex-shrink-0">{approach}</div>
+                <div className="flex-1 h-5 bg-zinc-800 rounded-lg overflow-hidden">
+                  <div
+                    className="h-full bg-green-500/60 rounded-lg"
+                    style={{ width: `${(count / maxWinners) * 100}%` }}
+                  />
+                </div>
+                <div className="w-8 text-xs text-zinc-300 tabular-nums text-right">{count}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Top 10 by ROMI */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <h2 className="text-base font-bold mb-5">Top 10 by ROMI</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead>
+              <tr className="text-zinc-500 text-xs border-b border-zinc-800">
+                <th className="text-left font-medium pb-3 pr-4">Creative</th>
+                <th className="text-right font-medium pb-3 px-4 w-20">ROMI</th>
+                <th className="text-right font-medium pb-3 px-4 w-24">Spend</th>
+                <th className="text-right font-medium pb-3 w-24">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top10Romi.map((item, i) => {
+                const romi = parseNumber(item.romi);
+                const romiCls = romi >= 150 ? "text-green-300" : romi >= 0 ? "text-yellow-300" : "text-red-300";
+                return (
+                  <tr key={item.creative} className="border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors">
+                    <td className="py-2.5 pr-4">
+                      <span className="text-zinc-600 text-xs tabular-nums mr-2">{i + 1}</span>
+                      <span className="text-zinc-200">{item.creative}</span>
+                    </td>
+                    <td className={`py-2.5 px-4 text-right font-bold tabular-nums ${romiCls}`}>{item.romi || "—"}</td>
+                    <td className="py-2.5 px-4 text-right text-zinc-300 tabular-nums">{item.spend || "—"}</td>
+                    <td className="py-2.5 text-right text-zinc-300 tabular-nums">{item.revenue || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Top 10 by Deposits */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <h2 className="text-base font-bold mb-5">Top 10 by Deposits</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead>
+              <tr className="text-zinc-500 text-xs border-b border-zinc-800">
+                <th className="text-left font-medium pb-3 pr-4">Creative</th>
+                <th className="text-right font-medium pb-3 px-4 w-24">Deposits</th>
+                <th className="text-right font-medium pb-3 px-4 w-24">Spend</th>
+                <th className="text-right font-medium pb-3 w-20">ROMI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top10Deposits.map((item, i) => {
+                const romi = parseNumber(item.romi);
+                const romiCls = romi >= 150 ? "text-green-300" : romi >= 0 ? "text-yellow-300" : "text-red-300";
+                return (
+                  <tr key={item.creative} className="border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors">
+                    <td className="py-2.5 pr-4">
+                      <span className="text-zinc-600 text-xs tabular-nums mr-2">{i + 1}</span>
+                      <span className="text-zinc-200">{item.creative}</span>
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-bold text-white tabular-nums">{item.deposits || "—"}</td>
+                    <td className="py-2.5 px-4 text-right text-zinc-300 tabular-nums">{item.spend || "—"}</td>
+                    <td className={`py-2.5 text-right font-bold tabular-nums ${romiCls}`}>{item.romi || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   );
 }
