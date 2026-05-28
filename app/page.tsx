@@ -22,6 +22,7 @@ type CreativeRow = {
 type MediaFile = {
   key: string;
   url: string;
+  posterUrl?: string; // thumbnail из папки thumbnails/, только для видео
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -670,6 +671,14 @@ function MediaSquare({ file }: { file?: MediaFile }) {
     );
   }
   if (isVideo(file.url)) {
+    // Если есть poster — показываем лёгкую картинку, видео не грузим
+    if (file.posterUrl) {
+      return (
+        <div className={wrapCls}>
+          <img src={file.posterUrl} alt="" loading="lazy" className={mediaCls} />
+        </div>
+      );
+    }
     return (
       <div className={wrapCls}>
         <video src={file.url} muted loop playsInline preload="none" className={mediaCls} />
@@ -702,6 +711,14 @@ function MediaWide({ file }: { file?: MediaFile }) {
     );
   }
   if (isVideo(file.url)) {
+    // Если есть poster — показываем лёгкую картинку, видео не грузим
+    if (file.posterUrl) {
+      return (
+        <div className={wrapCls}>
+          <img src={file.posterUrl} alt="" loading="lazy" className={mediaCls} />
+        </div>
+      );
+    }
     return (
       <div className={wrapCls}>
         <video src={file.url} muted loop playsInline preload="none" className={mediaCls} />
@@ -824,7 +841,7 @@ function CreativeModal({
         <div className="bg-[#080710] flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
           {mediaFile ? (
             isVideo(mediaFile.url) ? (
-              <video src={mediaFile.url} controls autoPlay loop className="w-full h-full object-contain" />
+              <video src={mediaFile.url} controls autoPlay loop poster={mediaFile.posterUrl} className="w-full h-full object-contain" />
             ) : (
               <img src={mediaFile.url} alt={item.creative} className="w-full h-full object-contain" />
             )

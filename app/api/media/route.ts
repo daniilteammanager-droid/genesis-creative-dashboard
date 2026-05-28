@@ -10,22 +10,28 @@ const s3 = new S3Client({
   },
 });
 
+/** Basename без расширения, нижний регистр — ключ для сопоставления */
+function fileBasename(key: string): string {
+  const filename = key.split("/").pop() ?? "";
+  return filename.toLowerCase().replace(/\.(mov|mp4|jpg|jpeg|png|webp)$/i, "");
+}
+
 export async function GET() {
   try {
-    const files: { key: string; url: string }[] = [];
+    const allFiles: { key: string; url: string }[] = [];
     let continuationToken: string | undefined;
 
+    // Собираем все объекты из bucket с пагинацией
     do {
       const command = new ListObjectsV2Command({
         Bucket: process.env.R2_BUCKET_NAME,
         ContinuationToken: continuationToken,
       });
-
       const response = await s3.send(command);
 
       for (const file of response.Contents ?? []) {
         if (file.Key) {
-          files.push({
+          allFiles.push({
             key: file.Key,
             url: `${process.env.R2_PUBLIC_URL}/${file.Key}`,
           });
@@ -37,7 +43,24 @@ export async function GET() {
         : undefined;
     } while (continuationToken);
 
-    return NextResponse.json(files, {
+    // Строим карту: basename → posterUrl  из папки thumbnails/
+    const thumbnailMap = new Map<string, string>();
+    for (const file of allFiles) {
+      if (file.key.startsWith("thumbnails/")) {
+        thumbnailMap.set(fileBasename(file.key), file.url);
+      }
+    }
+
+    // Возвращаем медиафайлы (без thumbnails/), для видео добавляем posterUrl
+    const mediaFiles = allFiles
+      .filter((f) => !f.key.startsWith("thumbnails/"))
+      .map((f) => {
+        const isVideo = /\.(mov|mp4)$/i.test(f.key);
+        const posterUrl = isVideo ? thumbnailMap.get(fileBasename(f.key)) : undefined;
+        return posterUrl ? { ...f, posterUrl } : f;
+      });
+
+    return NextResponse.json(mediaFiles, {
       headers: {
         // Браузер кешует 5 минут, CDN/прокси — до 10 минут
         "Cache-Control": "public, max-age=300, s-maxage=600, stale-while-revalidate=60",
@@ -45,7 +68,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error(error);
-
     return NextResponse.json(
       { error: "Failed to load media" },
       { status: 500 }
