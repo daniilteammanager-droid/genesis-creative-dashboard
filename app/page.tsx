@@ -33,6 +33,7 @@ type CreativeCardProps = {
   itemMedia: MediaFile | undefined;
   itemApproach: string;
   itemNote: CreativeNote | undefined;
+  supabaseAvailable: boolean;
   onSelect: (item: CreativeRow) => void;
   onToggleFavorite: (code: string) => void;
 };
@@ -101,6 +102,7 @@ export default function Home() {
   const [selected,   setSelected]   = useState<CreativeRow | null>(null);
   const [csvLoading, setCsvLoading] = useState(true);
   const [mediaLoading, setMediaLoading] = useState(true);
+  const [contentVisible, setContentVisible] = useState(false);
   const [csvError,   setCsvError]   = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [activeTab,  setActiveTab]  = useState<"all" | "win" | "lose" | "test" | "favorites">("all");
@@ -268,10 +270,21 @@ export default function Home() {
     loadNotes();
   }, []);
 
+  useEffect(() => {
+    if (!csvLoading && !mediaLoading) {
+      const frame = requestAnimationFrame(() => setContentVisible(true));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [csvLoading, mediaLoading]);
+
   // ─── Derived state ───────────────────────────────────────────────────────
 
-  const loading = csvLoading || mediaLoading || notesLoading;
-  const error   = csvError  || mediaError  || notesError;
+  // CSV + media are critical — they block the grid.
+  // Notes are not critical — Supabase failure should not block creatives.
+  const loading = csvLoading || mediaLoading;
+  const error   = csvError || mediaError;
+  // True only when Supabase is configured but the load request failed (paused project, network issue).
+  const supabaseDown = isSupabaseConfigured && !!notesError;
 
   const approaches = useMemo(() => {
     const set = new Set(media.map((f) => getApproach(f.key)));
@@ -367,8 +380,13 @@ export default function Home() {
 
   // ─── JSX ─────────────────────────────────────────────────────────────────
 
+  if (loading) return <LoadingScreen />;
+
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white p-8">
+    <main
+      className="min-h-screen bg-[#0a080f] text-white p-8"
+      style={{ animation: contentVisible ? "dashboard-fade-in 0.45s ease forwards" : "none", opacity: contentVisible ? undefined : 0 }}
+    >
       <div className="max-w-7xl mx-auto">
 
         {/* Header */}
@@ -481,93 +499,71 @@ export default function Home() {
             </div>
 
             {error && (
-              <div className="bg-red-950 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-8">
+              <div className="bg-red-950 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-4">
                 ⚠ {error}
               </div>
             )}
 
-            {loading ? (
-              /* Skeleton */
-              <div className="flex flex-col gap-3 md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-4">
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <div key={i} className="bg-[#111118] border border-violet-900/20 rounded-2xl overflow-hidden animate-pulse">
-                    <div className="hidden md:block aspect-square bg-violet-900/10" />
-                    <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3">
-                      <div className="h-4 bg-violet-900/20 rounded w-2/5" />
-                      <div className="h-5 w-14 bg-violet-900/20 rounded-full" />
-                    </div>
-                    <div className="flex gap-3 px-4 pb-4 md:hidden">
-                      <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-violet-900/10" />
-                      <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-3 content-start">
-                        {Array.from({ length: 5 }).map((_, j) => (
-                          <div key={j} className="h-3 bg-violet-900/20 rounded" />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="hidden md:block px-4 pb-4">
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                        {Array.from({ length: 5 }).map((_, j) => (
-                          <div key={j} className="h-3 bg-violet-900/20 rounded" />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            {supabaseDown && (
+              <div className="flex items-center gap-2 bg-amber-950/40 border border-amber-700/30 text-amber-300/80 rounded-xl px-4 py-2.5 mb-6 text-sm">
+                <span className="flex-shrink-0">⚠</span>
+                <span>Заметки и избранное временно недоступны — Supabase не отвечает</span>
               </div>
-            ) : (
-              <>
-                <SummaryPanel summary={summary} />
-
-                {/* Virtual grid — only visible rows are rendered */}
-                <div
-                  ref={listRef}
-                  style={{ position: "relative", height: `${virtualizer.getTotalSize()}px` }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const rowItems = gridRows[virtualRow.index];
-                    const gap = columnCount === 1 ? 12 : 16;
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position:              "absolute",
-                          top:                   0,
-                          left:                  0,
-                          width:                 "100%",
-                          transform:             `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
-                          display:               "grid",
-                          gridTemplateColumns:   `repeat(${columnCount}, 1fr)`,
-                          gap:                   `${gap}px`,
-                          paddingBottom:         `${gap}px`,
-                        }}
-                      >
-                        {rowItems.map((item) => (
-                          <CreativeCard
-                            key={item.creative}
-                            item={item}
-                            itemMedia={findMedia(item.creative, media)}
-                            itemApproach={(() => {
-                              const f = findMedia(item.creative, media);
-                              return f ? getApproach(f.key) : "unknown";
-                            })()}
-                            itemNote={notes[item.creative]}
-                            onSelect={handleSetSelected}
-                            onToggleFavorite={toggleFavorite}
-                          />
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
             )}
+
+            <>
+              <SummaryPanel summary={summary} />
+
+              {/* Virtual grid — only visible rows are rendered */}
+              <div
+                ref={listRef}
+                style={{ position: "relative", height: `${virtualizer.getTotalSize()}px` }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const rowItems = gridRows[virtualRow.index];
+                  const gap = columnCount === 1 ? 12 : 16;
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position:              "absolute",
+                        top:                   0,
+                        left:                  0,
+                        width:                 "100%",
+                        transform:             `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+                        display:               "grid",
+                        gridTemplateColumns:   `repeat(${columnCount}, 1fr)`,
+                        gap:                   `${gap}px`,
+                        paddingBottom:         `${gap}px`,
+                      }}
+                    >
+                      {rowItems.map((item) => (
+                        <CreativeCard
+                          key={item.creative}
+                          item={item}
+                          itemMedia={findMedia(item.creative, media)}
+                          itemApproach={(() => {
+                            const f = findMedia(item.creative, media);
+                            return f ? getApproach(f.key) : "unknown";
+                          })()}
+                          itemNote={notes[item.creative]}
+                          supabaseAvailable={!supabaseDown}
+                          onSelect={handleSetSelected}
+                          onToggleFavorite={toggleFavorite}
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           </>
         )}
 
         {topTab === "analytics" && (
-          <AnalyticsView rows={rows} media={media} loading={loading} />
+          <AnalyticsView rows={rows} media={media} />
         )}
       </div>
 
@@ -576,6 +572,7 @@ export default function Home() {
           item={selected}
           mediaFile={findMedia(selected.creative, media)}
           note={notes[selected.creative]}
+          supabaseAvailable={!supabaseDown}
           onClose={() => setSelected(null)}
           onToggleFavorite={toggleFavorite}
           onNotesUpdated={(updated) =>
@@ -594,6 +591,7 @@ const CreativeCard = memo(function CreativeCard({
   itemMedia,
   itemApproach,
   itemNote,
+  supabaseAvailable,
   onSelect,
   onToggleFavorite,
 }: CreativeCardProps) {
@@ -619,11 +617,16 @@ const CreativeCard = memo(function CreativeCard({
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
-            onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.creative); }}
+            onClick={(e) => { e.stopPropagation(); if (supabaseAvailable) onToggleFavorite(item.creative); }}
+            disabled={!supabaseAvailable}
             className={`text-base leading-none transition-colors ${
-              itemNote?.favorite ? "text-yellow-400" : "text-zinc-700 hover:text-yellow-400"
+              !supabaseAvailable
+                ? "text-zinc-700 opacity-30 cursor-not-allowed"
+                : itemNote?.favorite
+                ? "text-yellow-400"
+                : "text-zinc-700 hover:text-yellow-400"
             }`}
-            title={itemNote?.favorite ? "Убрать из избранного" : "В избранное"}
+            title={!supabaseAvailable ? "Избранное временно недоступно" : itemNote?.favorite ? "Убрать из избранного" : "В избранное"}
           >
             ★
           </button>
@@ -777,6 +780,7 @@ function CreativeModal({
   item,
   mediaFile,
   note,
+  supabaseAvailable,
   onClose,
   onToggleFavorite,
   onNotesUpdated,
@@ -784,6 +788,7 @@ function CreativeModal({
   item: CreativeRow;
   mediaFile?: MediaFile;
   note?: CreativeNote;
+  supabaseAvailable: boolean;
   onClose: () => void;
   onToggleFavorite: (code: string) => void;
   onNotesUpdated: (updated: CreativeNote) => void;
@@ -809,7 +814,7 @@ function CreativeModal({
     setStatus: (s: SaveStatus) => void,
     onSuccess?: () => void
   ) {
-    if (!isSupabaseConfigured) { console.warn("Supabase не настроен — сохранение недоступно"); return; }
+    if (!supabaseAvailable) { console.warn("Supabase недоступен — сохранение временно недоступно"); return; }
     setStatus("saving");
     const payload: CreativeNote = {
       creative_code:    item.creative,
@@ -879,13 +884,16 @@ function CreativeModal({
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
-                onClick={() => onToggleFavorite(item.creative)}
+                onClick={() => supabaseAvailable && onToggleFavorite(item.creative)}
+                disabled={!supabaseAvailable}
                 className={`w-9 h-9 flex items-center justify-center rounded-xl transition text-xl ${
-                  note?.favorite
+                  !supabaseAvailable
+                    ? "text-zinc-700 opacity-30 cursor-not-allowed bg-[#1a1826]"
+                    : note?.favorite
                     ? "text-yellow-400 bg-yellow-900/30 hover:bg-yellow-900/50"
                     : "text-zinc-600 bg-[#1a1826] hover:text-yellow-400 hover:bg-[#221e35]"
                 }`}
-                title={note?.favorite ? "Убрать из избранного" : "В избранное"}
+                title={!supabaseAvailable ? "Избранное временно недоступно" : note?.favorite ? "Убрать из избранного" : "В избранное"}
               >
                 {note?.favorite ? "★" : "☆"}
               </button>
@@ -918,13 +926,16 @@ function CreativeModal({
             <div className="bg-[#0f0d18] border border-violet-900/20 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-violet-400/50 text-xs uppercase tracking-widest">Расшифровка</div>
-                {!transcriptionEditing && (
+                {!transcriptionEditing && supabaseAvailable && (
                   <button
                     onClick={() => { setTranscriptionDraft(transcriptionText); setTranscriptionEditing(true); }}
                     className="text-xs text-violet-400/60 hover:text-violet-300 transition"
                   >
                     Редактировать
                   </button>
+                )}
+                {!supabaseAvailable && (
+                  <span className="text-xs text-zinc-600 italic">Сохранение временно недоступно</span>
                 )}
               </div>
               {transcriptionEditing ? (
@@ -938,7 +949,7 @@ function CreativeModal({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => saveField("transcription_ru", transcriptionDraft, setTranscriptionStatus, () => { setTranscriptionText(transcriptionDraft); setTranscriptionEditing(false); })}
-                      disabled={!isSupabaseConfigured || transcriptionStatus === "saving"}
+                      disabled={!supabaseAvailable || transcriptionStatus === "saving"}
                       className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {transcriptionStatus === "saving" ? "Saving..." : "Save"}
@@ -962,13 +973,16 @@ function CreativeModal({
             <div className="bg-[#0f0d18] border border-violet-900/20 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-violet-400/50 text-xs uppercase tracking-widest">Заметки</div>
-                {!noteEditing && (
+                {!noteEditing && supabaseAvailable && (
                   <button
                     onClick={() => { setNoteDraft(noteText); setNoteEditing(true); }}
                     className="text-xs text-violet-400/60 hover:text-violet-300 transition"
                   >
                     Редактировать
                   </button>
+                )}
+                {!supabaseAvailable && (
+                  <span className="text-xs text-zinc-600 italic">Сохранение временно недоступно</span>
                 )}
               </div>
               {noteEditing ? (
@@ -982,7 +996,7 @@ function CreativeModal({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => saveField("note", noteDraft, setNoteStatus, () => { setNoteText(noteDraft); setNoteEditing(false); })}
-                      disabled={!isSupabaseConfigured || noteStatus === "saving"}
+                      disabled={!supabaseAvailable || noteStatus === "saving"}
                       className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {noteStatus === "saving" ? "Saving..." : "Save"}
@@ -1056,9 +1070,28 @@ function SummaryPanel({ summary }: {
   );
 }
 
+// ─── Loading screen ───────────────────────────────────────────────────────────
+
+function LoadingScreen() {
+  return (
+    <div className="fixed inset-0 bg-[#0a080f] flex flex-col items-center justify-center z-50">
+      <div className="flex flex-col items-center gap-8 animate-pulse">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-dark.png" alt="Genesis" className="h-28 w-auto object-contain" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-48 h-0.5 bg-gradient-to-r from-transparent via-violet-600/50 to-transparent rounded-full" />
+          <p className="text-violet-300/50 text-sm font-medium tracking-[0.2em] uppercase">
+            Loading Creative Dashboard...
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Analytics view ───────────────────────────────────────────────────────────
 
-function AnalyticsView({ rows, media, loading }: { rows: CreativeRow[]; media: MediaFile[]; loading: boolean }) {
+function AnalyticsView({ rows, media }: { rows: CreativeRow[]; media: MediaFile[] }) {
   const analytics = useMemo(() => {
     if (rows.length === 0) return null;
 
@@ -1112,20 +1145,6 @@ function AnalyticsView({ rows, media, loading }: { rows: CreativeRow[]; media: M
 
     return { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits };
   }, [rows, media]);
-
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-52 bg-[#111118] border border-violet-900/20 rounded-2xl" />
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="h-64 bg-[#111118] border border-violet-900/20 rounded-2xl" />
-          <div className="h-64 bg-[#111118] border border-violet-900/20 rounded-2xl" />
-        </div>
-        <div className="h-72 bg-[#111118] border border-violet-900/20 rounded-2xl" />
-        <div className="h-72 bg-[#111118] border border-violet-900/20 rounded-2xl" />
-      </div>
-    );
-  }
 
   if (!analytics) return <p className="text-zinc-500 text-sm mt-8">Нет данных для аналитики.</p>;
 
