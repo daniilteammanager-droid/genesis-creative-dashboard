@@ -1,4 +1,4 @@
-import type { Entity, EntityMode, FBItem, MVPItem, ParseFBResult, SheetData } from "./types";
+import type { Entity, EntityMode, FBItem, FBDetailedItem, MVPItem, ParseFBResult, ParseFBDetailedResult, SheetData } from "./types";
 
 // ─── Geo constants ────────────────────────────────────────────────────────────
 
@@ -403,6 +403,150 @@ export function aggregateFBItems(items: FBItem[]): FBItem[] {
     else if (b.views !== null && item.views !== null) b.views += item.views;
   }
   return Array.from(grouped.values()).sort((a, b) => a.firstSeenIndex - b.firstSeenIndex);
+}
+
+// ─── Additional FB header aliases (for detailed ad parsing) ──────────────────
+
+const FB_STATUS_HEADERS = ["статус", "статус показа", "показ", "доставка", "результативность", "status", "delivery", "ad delivery", "campaign delivery", "serving status"];
+const FB_AD_STATUS_HEADERS = ["статус объявления", "статус объявлений", "ad status", "delivery status"];
+const FB_ACCOUNT_STATUS_HEADERS = ["статус кабинета", "статус аккаунта", "статус рекламного аккаунта", "ad account status", "account status", "billing status", "payment status"];
+const FB_ID_HEADERS = ["id", "идентификатор", "campaign id", "ad id", "идентификатор кампании", "идентификатор объявления"];
+
+// ─── Creative label extraction ────────────────────────────────────────────────
+
+function stripCreativeGeoSuffix(value: string): string {
+  const clean = normalizeSpaces(value);
+  if (!clean) return "";
+  return clean.replace(/[-_](?:eng|en|de|es|pl|be|cz|it|fr|pt|nl|no|norw|germ|germany|spain|poland|belgium|czech|czechia|[a-z]{2})$/i, "");
+}
+
+export function extractCreativeLabel(title: string): string {
+  const clean = stripCreativeGeoSuffix(title);
+  if (!clean) return "Без названия крео";
+  const edit = clean.match(/\bEDIT\s*\d+\b/i);
+  if (edit) return edit[0].replace(/\s+/g, "").toUpperCase();
+  const staticName = clean.match(/\b(?:STATIC|STAT|VIDEO|VID|IMG|IMAGE|CREO|CREATIVE|КРЕО)\s*\d*[A-ZА-Я0-9_-]*\b/i);
+  if (staticName) return stripCreativeGeoSuffix(normalizeSpaces(staticName[0])).toUpperCase();
+  const parts = clean.split(/\s+-\s+/).filter(Boolean);
+  const candidate = parts.find((part) => /(?:EDIT|STATIC|VIDEO|IMG|CREO|КРЕО|A\d+|P\d+)/i.test(part));
+  if (candidate) {
+    const base = stripCreativeGeoSuffix(candidate);
+    return base.length > 44 ? base.slice(0, 44) + "…" : base;
+  }
+  return clean.length > 54 ? clean.slice(0, 54) + "…" : clean;
+}
+
+// ─── parseFBDetailed ──────────────────────────────────────────────────────────
+
+export function parseFBDetailed(
+  sheets: SheetData[],
+  { entity = "auto" as EntityMode, includeZeroSpend = true, fileLabel = "FB-файле объявлений" } = {}
+): ParseFBDetailedResult {
+  const nameOptions = entityNameCandidates(entity, "fb");
+  const found = findTableHeader(sheets, {
+    nameCandidates: nameOptions,
+    requiredCandidates: [FB_SPEND_HEADERS],
+    fileLabel,
+  });
+  const resolvedEntity = nameOptions[found.chosenIdx].entity;
+  const spendCol = resolveCol(found.headers, FB_SPEND_HEADERS);
+  const clickCol = resolveCol(found.headers, FB_CLICK_HEADERS);
+  const viewCol = resolveCol(found.headers, FB_VIEW_HEADERS);
+  const statusCol = resolveCol(found.headers, FB_STATUS_HEADERS);
+  const adStatusCol = resolveCol(found.headers, FB_AD_STATUS_HEADERS);
+  const accountStatusCol = resolveCol(found.headers, FB_ACCOUNT_STATUS_HEADERS);
+  const campaignCol = resolveCol(found.headers, FB_CAMPAIGN_HEADERS);
+  const adCol = resolveCol(found.headers, FB_AD_HEADERS);
+  const idCol = resolveCol(found.headers, FB_ID_HEADERS);
+
+  if (spendCol === null) throw new Error(`В ${fileLabel} не найдена колонка расхода`);
+
+  const output: FBDetailedItem[] = [];
+  let seenIndex = 0;
+  for (let i = found.headerIdx + 1; i < found.rows.length; i++) {
+    const excelRow = i + 1;
+    const row = found.rows[i] || [];
+    const rawName = cellVal(row, found.nameCol);
+    if (rawName === null || normalizeSpaces(rawName) === "") continue;
+
+    const { title, budget } = stripFbNameTail(rawName);
+    if (!title) continue;
+    const spend = parseDecimal(cellVal(row, spendCol), { blankIsZero: true, field: `Расход, строка ${excelRow}` });
+    if (spend === 0 && !includeZeroSpend) continue;
+
+    let campaignTitle = "";
+    let campaignNormalizedTitle = "";
+    let campaignRawValue: unknown = null;
+    if (campaignCol !== null) {
+      campaignRawValue = cellVal(row, campaignCol);
+      if (campaignRawValue !== null && normalizeSpaces(campaignRawValue) !== "") {
+        const parsed = stripFbNameTail(campaignRawValue);
+        campaignTitle = parsed.title;
+        campaignNormalizedTitle = normalizeSpaces(parsed.title);
+      }
+    }
+    if (resolvedEntity === "campaign") {
+      campaignTitle = title;
+      campaignNormalizedTitle = normalizeSpaces(title);
+    }
+
+    let adTitle = "";
+    let adNormalizedTitle = "";
+    let adRawValue: unknown = null;
+    if (adCol !== null) {
+      adRawValue = cellVal(row, adCol);
+      if (adRawValue !== null && normalizeSpaces(adRawValue) !== "") {
+        const parsed = stripFbNameTail(adRawValue);
+        adTitle = parsed.title;
+        adNormalizedTitle = normalizeSpaces(parsed.title);
+      }
+    }
+    if (resolvedEntity === "ad") {
+      adTitle = title;
+      adNormalizedTitle = normalizeSpaces(title);
+    }
+
+    const titleForMeta = campaignTitle || title;
+    const meta = extractTitleMeta(titleForMeta);
+    const rawIdValue = idCol !== null ? cellVal(row, idCol) : null;
+    const adId =
+      extractObjectId(adRawValue) ||
+      (resolvedEntity === "ad" ? extractObjectId(rawName) : "") ||
+      extractObjectId(rawIdValue);
+    const campaignId = extractObjectId(campaignRawValue);
+
+    output.push({
+      title,
+      normalizedTitle: normalizeSpaces(title),
+      entity: resolvedEntity,
+      campaignTitle,
+      campaignNormalizedTitle,
+      adTitle,
+      adNormalizedTitle,
+      creative: extractCreativeLabel(adTitle || title),
+      geo: meta.geo,
+      date: meta.date,
+      cabinet: meta.cabinet,
+      spend,
+      budget,
+      clicks: clickCol !== null
+        ? parseDecimal(cellVal(row, clickCol), { blankIsZero: true, field: `Клики, строка ${excelRow}` })
+        : null,
+      views: viewCol !== null
+        ? parseDecimal(cellVal(row, viewCol), { blankIsZero: true, field: `Просмотры, строка ${excelRow}` })
+        : null,
+      status: statusCol !== null ? normalizeSpaces(cellVal(row, statusCol)) : "",
+      adStatus: adStatusCol !== null ? normalizeSpaces(cellVal(row, adStatusCol)) : "",
+      accountStatus: accountStatusCol !== null ? normalizeSpaces(cellVal(row, accountStatusCol)) : "",
+      rawId: idCol !== null ? normalizeSpaces(cellVal(row, idCol)) : "",
+      adId,
+      campaignId,
+      rowNumber: excelRow,
+      firstSeenIndex: seenIndex,
+    });
+    seenIndex++;
+  }
+  return { items: output, resolvedEntity };
 }
 
 export function aggregateMVPItems(

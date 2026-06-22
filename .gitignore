@@ -47,3 +47,4 @@ next-env.d.ts
 /public/creatives/*
 !/public/creatives/.gitkeep
 /public/thumbnails/
+/public/creatives-compressed/
