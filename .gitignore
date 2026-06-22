@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local scripts (not tracked in git)
+/scripts/
+
+# video source files and generated thumbnails (local only)
+/public/creatives/*
+!/public/creatives/.gitkeep
+/public/thumbnails/

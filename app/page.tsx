@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Papa from "papaparse";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
@@ -399,6 +400,12 @@ export default function Home() {
               {t === "creatives" ? "Creatives" : "Analytics"}
             </button>
           ))}
+          <Link
+            href="/check"
+            className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
+          >
+            Checks
+          </Link>
         </div>
 
         {topTab === "creatives" && (

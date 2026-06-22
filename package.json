@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "thumbnails": "node scripts/generate-thumbnails.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",
@@ -15,7 +16,8 @@
     "next": "16.2.6",
     "papaparse": "^5.5.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
