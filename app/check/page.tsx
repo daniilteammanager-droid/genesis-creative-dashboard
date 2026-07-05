@@ -709,6 +709,9 @@ export default function CheckPage() {
           <span className="px-5 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm">
             Checks
           </span>
+          <Link href="/reports" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
+            Reports
+          </Link>
         </div>
 
         {/* Upload card */}

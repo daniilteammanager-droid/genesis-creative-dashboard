@@ -424,6 +424,12 @@ export default function Home() {
           >
             Checks
           </Link>
+          <Link
+            href="/reports"
+            className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
+          >
+            Reports
+          </Link>
         </div>
 
         {topTab === "creatives" && (
