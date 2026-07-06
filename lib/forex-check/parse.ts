@@ -267,8 +267,14 @@ function entityNameCandidates(entity: EntityMode, source: "fb" | "mvp"): NameCan
 }
 
 function stripFbNameTail(rawValue: unknown): { title: string; budget: number | null } {
-  const raw = String(rawValue ?? "").trim();
-  const title = raw.split(/\s+\(/, 1)[0].trimEnd();
+  const raw = normalizeSpaces(rawValue);
+  // Strip only the real FB service tail: "(<8+ digit ad/campaign id>)<STATUS>    Дневной бюджет ... USD".
+  // The 8+ digit threshold matches extractObjectId()'s own convention for a real FB id below,
+  // so a plain duplicate tail like (2) or (3) — never 8+ digits — is never touched.
+  // Campaign and Campaign (2) must remain distinct across matching, filters, and summaries.
+  const title = raw
+    .replace(/\s*\(\d{8,}\)[A-ZА-ЯЁ_]*\s*(?:Дневной\s+бюджет\s+(?:кампании|объявления)?\s*-\s*[\d\s.,]+\s*USD)?\s*$/i, "")
+    .trim();
   const match = raw.match(/Дневной\s+бюджет\s+(?:кампании|объявления)?\s*-\s*([\d\s.,]+)\s*USD/i);
   const budget = match ? parseDecimal(match[1], { field: "дневной бюджет" }) : null;
   return { title, budget };
