@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
-import type { ReportRow, ReportSummary, SourceStatus, FbtoolApiError } from "@/lib/reports/types";
+import type { ReportRow, ReportSummary, SourceStatus, FbtoolApiError, ReportDebugInfo } from "@/lib/reports/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,7 +11,12 @@ interface ReportData {
   summary: ReportSummary;
   generatedAt: string;
   dataFile: { mvp: string; fbtool: string };
+  sheets: string[];
+  selectedSheet: string;
+  dateRange?: { from: string; to: string };
+  fbtoolSource?: "api" | "local";
   apiErrors?: FbtoolApiError[];
+  debug?: ReportDebugInfo;
 }
 
 interface FilteredTotals {
@@ -31,8 +36,9 @@ type SortField = keyof Pick<
   ReportRow,
   "spend" | "clicks" | "impressions" | "pdp" | "dia" | "deposits" | "revenue" | "costPdp" | "costDia" | "romi"
 >;
-type SortDir = "asc" | "desc";
+type SortDir      = "asc" | "desc";
 type ActivityFilter = "all" | "active" | "paused" | "other";
+type ReportMode   = "auto" | "manual";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,7 +113,7 @@ function ApiErrorPanel({ errors }: { errors: FbtoolApiError[] }) {
           <div className="flex items-center gap-3 mb-3">
             <span className="text-red-400 font-semibold text-sm">FBTool API Error</span>
             <span className="bg-red-900/40 text-red-400 text-xs font-mono px-2 py-0.5 rounded border border-red-800/30">
-              HTTP {err.statusCode}
+              {err.statusCode === 0 ? "NO REQUEST SENT" : `HTTP ${err.statusCode}`}
             </span>
             <span className="text-red-700 text-xs ml-auto font-mono">
               {new Date(err.timestamp).toLocaleString()}
@@ -153,12 +159,83 @@ function ApiErrorPanel({ errors }: { errors: FbtoolApiError[] }) {
   );
 }
 
+function DebugStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-zinc-600 uppercase tracking-wide text-[10px] mb-0.5">{label}</p>
+      <p className="text-zinc-300 font-mono">{value}</p>
+    </div>
+  );
+}
+
+function DebugPanel({ debug }: { debug: ReportDebugInfo }) {
+  return (
+    <div className="mb-6">
+      {debug.warnings.length > 0 && (
+        <div className="bg-amber-950/30 border border-amber-700/30 rounded-xl px-4 py-3 mb-3 space-y-1">
+          {debug.warnings.map((w, i) => (
+            <p key={i} className="text-amber-300 text-xs">⚠ {w}</p>
+          ))}
+        </div>
+      )}
+      <details className="bg-[#111118] border border-violet-900/20 rounded-xl px-4 py-3">
+        <summary className="text-xs text-zinc-500 uppercase tracking-wider cursor-pointer hover:text-violet-400 select-none">
+          MVP / FBTool matching diagnostics
+        </summary>
+        <div className="mt-3 space-y-3 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <DebugStat label="Selected sheet"        value={debug.selectedSheet || "—"} />
+            <DebugStat label="MVP raw rows"           value={String(debug.mvpRawRowCount)} />
+            <DebugStat label="MVP parsed campaigns"   value={String(debug.mvpParsedCount)} />
+            <DebugStat label="FBTool campaigns"       value={String(debug.fbtoolCampaignCount)} />
+            <DebugStat label="Matched"                value={String(debug.matchedCount)} />
+          </div>
+
+          <div>
+            <p className="text-zinc-600 uppercase tracking-wide mb-1">Detected MVP columns</p>
+            <pre className="bg-black/30 rounded-lg p-3 text-zinc-400 overflow-x-auto font-mono leading-relaxed">
+              {JSON.stringify(debug.mvpDetectedColumns, null, 2)}
+            </pre>
+          </div>
+
+          <div>
+            <p className="text-zinc-600 uppercase tracking-wide mb-1">First 10 parsed MVP campaign IDs</p>
+            <pre className="bg-black/30 rounded-lg p-3 text-zinc-400 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all">
+              {debug.mvpParsedCampaignIds.join(", ") || "(none)"}
+            </pre>
+          </div>
+
+          <div>
+            <p className="text-zinc-600 uppercase tracking-wide mb-1">First 10 FBTool campaign IDs</p>
+            <pre className="bg-black/30 rounded-lg p-3 text-zinc-400 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all">
+              {debug.fbtoolFirst10CampaignIds.join(", ") || "(none)"}
+            </pre>
+          </div>
+
+          <div>
+            <p className="text-zinc-600 uppercase tracking-wide mb-1">First 5 raw MVP rows</p>
+            <pre className="bg-black/30 rounded-lg p-3 text-zinc-400 overflow-x-auto font-mono leading-relaxed max-h-64 overflow-y-auto">
+              {JSON.stringify(debug.mvpFirst5RawRows, null, 2)}
+            </pre>
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
+  // availableSheets persists even when data is null (survives API errors)
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [mode, setMode] = useState<ReportMode>("auto");
+  const [mvpFile, setMvpFile]       = useState<File | null>(null);
+  const [fbtoolFile, setFbtoolFile] = useState<File | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SourceStatus | "all">("all");
@@ -166,16 +243,68 @@ export default function ReportsPage() {
   const [sortField, setSortField] = useState<SortField>("spend");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  useEffect(() => {
-    fetch("/api/reports/data")
+  const fetchReport = useCallback((sheet?: string) => {
+    setLoading(true);
+    setError(null);
+    const url = sheet ? `/api/reports/data?sheet=${encodeURIComponent(sheet)}` : "/api/reports/data";
+    fetch(url)
       .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) {
+          return r.json().then((b: { error?: string; sheets?: string[]; selectedSheet?: string }) => {
+            // Keep sheet selector alive even on error
+            if (b.sheets?.length) {
+              setAvailableSheets(b.sheets);
+              setSelectedSheet(b.selectedSheet ?? null);
+            }
+            throw new Error(b.error ?? `HTTP ${r.status}`);
+          });
+        }
         return r.json() as Promise<ReportData>;
       })
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        setAvailableSheets(d.sheets);
+        setSelectedSheet(d.selectedSheet || null);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const buildManualReport = useCallback(() => {
+    if (!mvpFile || !fbtoolFile) return;
+    setLoading(true);
+    setError(null);
+    setData(null);
+    const fd = new FormData();
+    fd.append("mvpFile", mvpFile);
+    fd.append("fbtoolFile", fbtoolFile);
+    fetch("/api/reports/manual", { method: "POST", body: fd })
+      .then((r) => {
+        if (!r.ok) return r.json().then((b: { error?: string }) => { throw new Error(b.error ?? `HTTP ${r.status}`); });
+        return r.json() as Promise<ReportData>;
+      })
+      .then((d) => {
+        setData(d);
+        setSelectedSheet(null);
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [mvpFile, fbtoolFile]);
+
+  const handleModeSwitch = useCallback((newMode: ReportMode) => {
+    if (newMode === "manual") setLoading(false);
+    setMode(newMode);
+    setData(null);
+    setError(null);
+    setAvailableSheets([]);
+    setMvpFile(null);
+    setFbtoolFile(null);
+  }, []);
+
+  useEffect(() => {
+    if (mode === "auto") fetchReport();
+    else setLoading(false);
+  }, [mode, fetchReport]);
 
   const handleSort = useCallback((field: SortField) => {
     setSortField((prev) => {
@@ -270,6 +399,82 @@ export default function ReportsPage() {
           </span>
         </div>
 
+        {/* Mode switch */}
+        <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+          {(["auto", "manual"] as ReportMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => handleModeSwitch(m)}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
+                mode === m
+                  ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-violet-300"
+              }`}
+            >
+              {m === "auto" ? "Auto Report" : "Manual Report"}
+            </button>
+          ))}
+        </div>
+
+        {/* Manual upload panel */}
+        {mode === "manual" && !loading && (
+          <div className="bg-[#111118] border border-violet-900/20 rounded-2xl p-6 mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 mb-5">
+              <div className="flex-1">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">MVP File (XLSX)</p>
+                <label className="flex items-center gap-3 bg-[#0f0d18] border border-violet-900/30 rounded-xl px-4 py-3 cursor-pointer hover:border-violet-700/50 transition">
+                  <span className="text-xs text-zinc-400 truncate">{mvpFile ? mvpFile.name : "Choose file..."}</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.csv"
+                    className="hidden"
+                    onChange={(e) => setMvpFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">FBTool File (XLSX)</p>
+                <label className="flex items-center gap-3 bg-[#0f0d18] border border-violet-900/30 rounded-xl px-4 py-3 cursor-pointer hover:border-violet-700/50 transition">
+                  <span className="text-xs text-zinc-400 truncate">{fbtoolFile ? fbtoolFile.name : "Choose file..."}</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.csv"
+                    className="hidden"
+                    onChange={(e) => setFbtoolFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+            </div>
+            <button
+              onClick={buildManualReport}
+              disabled={!mvpFile || !fbtoolFile}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:from-violet-500 hover:to-violet-400 transition"
+            >
+              Build Report
+            </button>
+          </div>
+        )}
+
+        {/* Auto Report — sheet selector (stays visible even during load / on error) */}
+        {mode === "auto" && availableSheets.length > 1 && (
+          <div className="flex items-center gap-2 mb-5 flex-wrap">
+            <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Sheet:</span>
+            {availableSheets.map((sheet) => (
+              <button
+                key={sheet}
+                onClick={() => { setSelectedSheet(sheet); fetchReport(sheet); }}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedSheet === sheet
+                    ? "bg-violet-600 text-white"
+                    : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
+                }`}
+              >
+                {sheet}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Loading */}
         {loading && (
           <div className="flex items-center justify-center py-24">
@@ -291,10 +496,24 @@ export default function ReportsPage() {
         {data && !loading && (
           <>
             {/* Meta bar */}
-            <div className="flex items-center gap-4 mb-6 text-xs text-zinc-600">
-              <span>MVP: <span className="text-zinc-500">{data.dataFile.mvp}</span></span>
+            <div className="flex items-center gap-4 mb-6 text-xs text-zinc-600 flex-wrap">
+              <span>MVP: <span className="text-zinc-500">{data.dataFile.mvp}{data.selectedSheet ? ` · ${data.selectedSheet}` : ""}</span></span>
               <span>•</span>
-              <span>FBTool: <span className="text-zinc-500">{data.dataFile.fbtool}</span></span>
+              {data.dateRange ? (
+                <>
+                  <span>Period: <span className="text-zinc-500">{data.dateRange.from} — {data.dateRange.to}</span></span>
+                  <span>•</span>
+                  {data.apiErrors && data.apiErrors.length > 0 ? (
+                    <span>FBTool: <span className="text-red-400 font-semibold">API ERROR</span></span>
+                  ) : data.fbtoolSource === "local" ? (
+                    <span>FBTool: <span className="text-amber-400 font-medium">TEST DATA (dev fallback)</span></span>
+                  ) : (
+                    <span>FBTool: <span className="text-violet-400 font-medium">API</span></span>
+                  )}
+                </>
+              ) : (
+                <span>FBTool: <span className="text-zinc-500">{data.dataFile.fbtool}</span></span>
+              )}
               <span>•</span>
               <span>Generated: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString()}</span></span>
             </div>
@@ -303,6 +522,9 @@ export default function ReportsPage() {
             {data.apiErrors && data.apiErrors.length > 0 && (
               <ApiErrorPanel errors={data.apiErrors} />
             )}
+
+            {/* MVP / FBTool matching diagnostics — Auto Report only */}
+            {data.debug && <DebugPanel debug={data.debug} />}
 
             {/* Summary */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">

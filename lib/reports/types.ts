@@ -1,3 +1,10 @@
+export type ReportScope      = "all" | "artem" | "matvey" | "andrey";
+export type DatasetType      = "all_data" | "daily" | "weekly";
+export type EntityType       = "campaign" | "creative";
+export type TimeGrain        = "weekly" | "daily";
+// Creative reports match by ad name, not campaign_id
+export type CreativeMatchType = "campaign_id" | "ad_name";
+
 export interface MvpRow {
   campaignId: string;
   pdp: number;
@@ -63,14 +70,29 @@ export interface FbtoolApiError {
   timestamp: string;
 }
 
+// Diagnostics for MVP parsing / FBTool matching — populated for Auto Report only
+export interface ReportDebugInfo {
+  selectedSheet: string;
+  mvpRawRowCount: number;
+  mvpFirst5RawRows: unknown[][];
+  mvpDetectedColumns: Record<string, string | null> | null;
+  mvpParsedCampaignIds: string[]; // first 10
+  mvpParsedCount: number;
+  fbtoolCampaignCount: number;
+  fbtoolFirst10CampaignIds: string[];
+  matchedCount: number;
+  warnings: string[];
+}
+
 export interface ReportData {
   rows: ReportRow[];
   summary: ReportSummary;
   generatedAt: string;
-  dataFile: {
-    mvp: string;
-    fbtool: string;
-  };
-  // Populated when real FBTool API is connected and one or more account requests fail
+  dataFile: { mvp: string; fbtool: string };
+  sheets: string[];
+  selectedSheet: string;
+  dateRange?: { from: string; to: string };
+  fbtoolSource?: "api" | "local";
   apiErrors?: FbtoolApiError[];
+  debug?: ReportDebugInfo;
 }
