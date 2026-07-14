@@ -430,6 +430,12 @@ export default function Home() {
           >
             Reports
           </Link>
+          <Link
+            href="/general-report"
+            className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
+          >
+            General 3.0
+          </Link>
         </div>
 
         {topTab === "creatives" && (

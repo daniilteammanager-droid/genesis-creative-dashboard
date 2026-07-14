@@ -397,6 +397,9 @@ export default function ReportsPage() {
           <span className="px-5 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm">
             Reports
           </span>
+          <Link href="/general-report" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
+            General 3.0
+          </Link>
         </div>
 
         {/* Mode switch */}
