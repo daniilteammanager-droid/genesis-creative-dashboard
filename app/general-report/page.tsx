@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
-import type { GrDayRow, GrSource, GrPeriodRow } from "@/lib/general-report/types";
+import type { GrDayRow, GrSource, GrPeriodRow, GrTotals } from "@/lib/general-report/types";
 import { computeTotals, groupByPeriod } from "@/lib/general-report/aggregate";
 import type { Granularity } from "@/lib/general-report/aggregate";
 
@@ -116,6 +116,42 @@ function SummaryCard({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
+// ─── Configurable total cards ─────────────────────────────────────────────────
+
+interface CardDef {
+  id: string;
+  label: string;
+  value: (t: GrTotals) => string;
+  tone?: (t: GrTotals) => "good" | "bad" | undefined;
+}
+
+const CARD_DEFS: CardDef[] = [
+  { id: "spend",       label: "Spend",         value: (t) => fmtMoney(t.budget, 0) },
+  { id: "revenue",     label: "Revenue",       value: (t) => fmtMoney(t.revenue, 0), tone: (t) => (t.revenue > 0 ? "good" : undefined) },
+  { id: "netProfit",   label: "Net Profit",    value: (t) => fmtMoney(t.netProfit, 0), tone: (t) => (t.netProfit >= 0 ? "good" : "bad") },
+  { id: "romi",        label: "ROMI",          value: (t) => fmtPct(t.romi), tone: (t) => (t.romi === null ? undefined : t.romi >= 0 ? "good" : "bad") },
+  { id: "roas",        label: "ROAS",          value: (t) => (t.roas === null ? "—" : t.roas.toFixed(2)) },
+  { id: "deposits",    label: "Депозиты",      value: (t) => `${fmt(t.depCountCpa + t.depCountIb)} · ${fmtMoney(t.depAmountCpa + t.depAmountIb, 0)}` },
+  { id: "depositsCpa", label: "Депозиты CPA",  value: (t) => `${fmt(t.depCountCpa)} · ${fmtMoney(t.depAmountCpa, 0)}` },
+  { id: "depositsIb",  label: "Депозиты IB",   value: (t) => `${fmt(t.depCountIb)} · ${fmtMoney(t.depAmountIb, 0)}` },
+  { id: "cac",         label: "CAC",           value: (t) => fmtOptMoney(t.cac) },
+  { id: "adClicks",    label: "Клики",         value: (t) => fmt(t.adClicks) },
+  { id: "websiteClicks", label: "Клики на сайт", value: (t) => fmt(t.websiteClicks) },
+  { id: "impressions", label: "Показы",        value: (t) => fmt(t.impressions) },
+  { id: "cpm",         label: "CPM",           value: (t) => fmtOptMoney(t.cpm) },
+  { id: "cpc",         label: "CPC",           value: (t) => fmtOptMoney(t.cpc) },
+  { id: "ctr",         label: "CTR",           value: (t) => fmtPct(t.ctr) },
+  { id: "registrations", label: "Подписчики",  value: (t) => fmt(t.registrations) },
+  { id: "costPerSub",  label: "Цена подписчика", value: (t) => fmtOptMoney(t.costPerSub) },
+  { id: "dialogs",     label: "Диалоги",       value: (t) => fmt(t.dialogs) },
+  { id: "costPerDialog", label: "Цена диалога", value: (t) => fmtOptMoney(t.costPerDialog) },
+  { id: "crDialogToDep", label: "CR% диа → деп", value: (t) => fmtPct(t.crDialogToDep) },
+  { id: "payouts",     label: "Выплаты",       value: (t) => `${fmt(t.payoutsCpa)} + ${fmt(t.payoutsIb)}` },
+];
+
+const DEFAULT_CARDS = ["spend", "revenue", "netProfit", "romi", "deposits", "cac"];
+const CARDS_STORAGE_KEY = "gr3.totalCards";
+
 // Simple SVG line chart: budget vs revenue per period, chronological
 function TrendChart({ periods }: { periods: GrPeriodRow[] }) {
   const data = [...periods].reverse(); // oldest → newest
@@ -163,6 +199,31 @@ export default function GeneralReportPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [granularity, setGranularity] = useState<Granularity>("week");
+
+  // Which total cards to show — persisted in localStorage, loaded after mount
+  // to avoid SSR/hydration mismatch.
+  const [visibleCards, setVisibleCards] = useState<string[]>(DEFAULT_CARDS);
+  const [cardsSettingsOpen, setCardsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CARDS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        const valid = parsed.filter((id) => CARD_DEFS.some((c) => c.id === id));
+        if (valid.length > 0) setVisibleCards(valid);
+      }
+    } catch { /* corrupted value — keep defaults */ }
+  }, []);
+
+  const toggleCard = useCallback((id: string) => {
+    setVisibleCards((prev) => {
+      const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
+      if (next.length === 0) return prev; // keep at least one card
+      localStorage.setItem(CARDS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const fetchData = useCallback((src: GrSource) => {
     setLoading(true);
@@ -287,17 +348,56 @@ export default function GeneralReportPage() {
               <span>Обновлено: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString()}</span>{data.fetchedFrom === "cache" ? " (кэш)" : ""}</span>
             </div>
 
-            {/* All-time totals — never affected by date filter */}
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-              Тотал за всё время{country !== "all" ? ` · ${country}` : ""}
-            </p>
+            {/* All-time totals — never affected by date filter; card set is configurable */}
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                Тотал за всё время{country !== "all" ? ` · ${country}` : ""}
+              </p>
+              <button
+                onClick={() => setCardsSettingsOpen((v) => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+                  cardsSettingsOpen
+                    ? "bg-violet-600 text-white border-violet-600"
+                    : "bg-[#111118] border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
+                }`}
+                title="Настроить карточки"
+              >
+                <span className="text-sm leading-none">⚙</span>
+                Настроить
+              </button>
+            </div>
+
+            {cardsSettingsOpen && (
+              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4 mb-4">
+                <p className="text-xs text-zinc-600 uppercase tracking-wider mb-3">Какие карточки показывать</p>
+                <div className="flex flex-wrap gap-2">
+                  {CARD_DEFS.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => toggleCard(c.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        visibleCards.includes(c.id)
+                          ? "bg-violet-600 text-white"
+                          : "bg-[#0f0d18] border border-violet-900/30 text-zinc-500 hover:text-violet-300 hover:border-violet-700/50"
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-zinc-600 mt-3">Сохраняется в этом браузере. Порядок — как в списке выше.</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-              <SummaryCard label="Spend"      value={fmtMoney(allTimeTotals.budget, 0)} />
-              <SummaryCard label="Revenue"    value={fmtMoney(allTimeTotals.revenue, 0)} tone={allTimeTotals.revenue > 0 ? "good" : undefined} />
-              <SummaryCard label="Net Profit" value={fmtMoney(allTimeTotals.netProfit, 0)} tone={allTimeTotals.netProfit >= 0 ? "good" : "bad"} />
-              <SummaryCard label="ROMI"       value={fmtPct(allTimeTotals.romi)} tone={allTimeTotals.romi !== null && allTimeTotals.romi >= 0 ? "good" : "bad"} />
-              <SummaryCard label="Депозиты"   value={`${fmt(allTimeTotals.depCountCpa + allTimeTotals.depCountIb)} · ${fmtMoney(allTimeTotals.depAmountCpa + allTimeTotals.depAmountIb, 0)}`} />
-              <SummaryCard label="CAC"        value={fmtOptMoney(allTimeTotals.cac)} />
+              {CARD_DEFS.filter((c) => visibleCards.includes(c.id)).map((c) => (
+                <SummaryCard
+                  key={c.id}
+                  label={c.label}
+                  value={c.value(allTimeTotals)}
+                  tone={c.tone?.(allTimeTotals)}
+                />
+              ))}
             </div>
 
             {/* Filters */}
@@ -350,7 +450,7 @@ export default function GeneralReportPage() {
                   <thead className="bg-[#0f0d18] border-b border-violet-900/20">
                     <tr>
                       {["Период", "Spend", "Revenue", "Net Profit", "ROMI", "ROAS",
-                        "Клики", "Показы", "CPM", "CPC", "Подписчики", "Цена подп.",
+                        "Клики", "Клики сайт", "Показы", "CPM", "CPC", "Подписчики", "Цена подп.",
                         "Диалоги", "Цена диа", "Депы (CPA+IB)", "Сумма депов", "CAC"].map((h) => (
                         <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                           {h}
@@ -372,6 +472,7 @@ export default function GeneralReportPage() {
                         <td className={`px-3 py-2.5 tabular-nums whitespace-nowrap font-medium ${romiClass(p.romi)}`}>{fmtPct(p.romi)}</td>
                         <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-zinc-300">{p.roas === null ? "—" : p.roas.toFixed(2)}</td>
                         <td className="px-3 py-2.5 tabular-nums text-zinc-300">{p.adClicks > 0 ? fmt(p.adClicks) : "—"}</td>
+                        <td className="px-3 py-2.5 tabular-nums text-zinc-300">{p.websiteClicks > 0 ? fmt(p.websiteClicks) : "—"}</td>
                         <td className="px-3 py-2.5 tabular-nums text-zinc-500">{p.impressions > 0 ? fmt(p.impressions) : "—"}</td>
                         <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.cpm)}</td>
                         <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.cpc)}</td>
@@ -392,7 +493,7 @@ export default function GeneralReportPage() {
                     ))}
                     {periods.length === 0 && (
                       <tr>
-                        <td colSpan={17} className="px-4 py-12 text-center text-zinc-600 text-sm">
+                        <td colSpan={18} className="px-4 py-12 text-center text-zinc-600 text-sm">
                           Нет данных за выбранный период.
                         </td>
                       </tr>
@@ -414,6 +515,7 @@ export default function GeneralReportPage() {
                         <td className={`px-3 py-3 tabular-nums font-semibold whitespace-nowrap ${romiClass(rangeTotals.romi)}`}>{fmtPct(rangeTotals.romi)}</td>
                         <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{rangeTotals.roas === null ? "—" : rangeTotals.roas.toFixed(2)}</td>
                         <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{fmt(rangeTotals.adClicks)}</td>
+                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{fmt(rangeTotals.websiteClicks)}</td>
                         <td className="px-3 py-3 tabular-nums font-semibold text-zinc-500">{fmt(rangeTotals.impressions)}</td>
                         <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.cpm)}</td>
                         <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.cpc)}</td>
