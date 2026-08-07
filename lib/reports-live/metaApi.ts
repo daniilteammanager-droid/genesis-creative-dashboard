@@ -69,9 +69,10 @@ interface Business {
 }
 
 let accountsCache: { accounts: AdAccount[]; at: number } | null = null;
-// Business/account structure changes slowly (Daniil: "~10 accounts a week") — cache far
-// longer than the 5-min report cache to keep this discovery pass off the rate-limit budget.
-const ACCOUNTS_CACHE_TTL_MS = 60 * 60_000;
+// Matches the route's report-level cache. The hour-long TTL was a workaround for sharing
+// the app's rate limit with other buyers' tools on the old app — this app is dedicated to
+// the dashboard now, so there's no need to hold discovery this stale.
+const ACCOUNTS_CACHE_TTL_MS = 5 * 60_000;
 
 // /me/adaccounts only lists accounts shared directly to this Facebook login — accounts
 // shared as a partner to the app's Business Manager (not to this specific person) never
