@@ -19,7 +19,12 @@ function hasActivity(spend: number, pdp: number, dia: number, deposits: number, 
 // (no spend, no real name) get folded into one bucket instead of cluttering the table.
 export const DOLETYI_ID = "__doletyi__";
 
-export function buildLiveCampaignItems(crm: MvpRow[], meta: MetaCampaignRow[], statuses: Map<string, string>): LiveCampaignItem[] {
+export function buildLiveCampaignItems(
+  crm: MvpRow[],
+  meta: MetaCampaignRow[],
+  statuses: Map<string, string>,
+  campaignBudgets: Map<string, number>
+): LiveCampaignItem[] {
   const metaById = new Map(meta.map((m) => [m.campaignId, m]));
 
   const items: LiveCampaignItem[] = [];
@@ -34,7 +39,7 @@ export function buildLiveCampaignItems(crm: MvpRow[], meta: MetaCampaignRow[], s
 
     if (!m) {
       doletyi ??= {
-        campaignId: DOLETYI_ID, campaignName: "Долёты", accountName: "—", status: "unknown",
+        campaignId: DOLETYI_ID, campaignName: "Долёты", accountName: "—", status: "unknown", dailyBudget: null,
         spend: 0, clicks: 0, impressions: 0, pdp: 0, dia: 0, deposits: 0, revenue: 0,
         romi: null, costPdp: null, costDia: null,
       };
@@ -52,6 +57,7 @@ export function buildLiveCampaignItems(crm: MvpRow[], meta: MetaCampaignRow[], s
       campaignName: m.campaignName,
       accountName: m.accountName,
       status,
+      dailyBudget: status === "active" ? (campaignBudgets.get(c.campaignId) ?? null) : null,
       spend, clicks, impressions,
       pdp: c.pdp, dia: c.dia, deposits: c.deposits, revenue: c.revenue,
       romi: romi(c.revenue, spend),
@@ -83,17 +89,19 @@ export function buildLiveCreativeItems(
   metaAds: MetaAdRow[],
   crmByName: CrmAdByNameRow[],
   crmById: CrmAdRow[],
-  statuses: Map<string, string>
+  statuses: Map<string, string>,
+  campaignBudgets: Map<string, number>
 ): LiveCreativeItem[] {
   const byName = new Map(crmByName.map((r) => [r.adName.trim(), r]));
   const byId = new Map(crmById.map((r) => [r.adId, r]));
 
-  const groups = new Map<string, { adIds: string[]; spend: number; clicks: number; impressions: number }>();
+  const groups = new Map<string, { adIds: string[]; campaignIds: Set<string>; spend: number; clicks: number; impressions: number }>();
   for (const ad of metaAds) {
     if (ad.spend <= 0 && ad.clicks <= 0 && ad.impressions <= 0) continue;
     const name = ad.adName.trim();
-    const g = groups.get(name) ?? { adIds: [], spend: 0, clicks: 0, impressions: 0 };
+    const g = groups.get(name) ?? { adIds: [], campaignIds: new Set<string>(), spend: 0, clicks: 0, impressions: 0 };
     g.adIds.push(ad.adId);
+    if (ad.campaignId) g.campaignIds.add(ad.campaignId);
     g.spend += ad.spend;
     g.clicks += ad.clicks;
     g.impressions += ad.impressions;
@@ -107,7 +115,7 @@ export function buildLiveCreativeItems(
     const name = row.adName.trim();
     const hasCrm = row.pdp > 0 || row.dia > 0 || row.deposits > 0 || row.revenue > 0;
     if (hasCrm && !groups.has(name)) {
-      groups.set(name, { adIds: [], spend: 0, clicks: 0, impressions: 0 });
+      groups.set(name, { adIds: [], campaignIds: new Set(), spend: 0, clicks: 0, impressions: 0 });
     }
   }
 
@@ -128,10 +136,16 @@ export function buildLiveCreativeItems(
     const status: LiveStatus =
       g.adIds.length === 0 ? "unknown" : g.adIds.some((id) => statuses.get(id) === "ACTIVE") ? "active" : "paused";
 
+    // Sum of the distinct active campaigns this creative runs in — a campaign running
+    // several creatives contributes its budget to each of them (intentional, per request).
+    let activeDailyBudget = 0;
+    for (const campaignId of g.campaignIds) activeDailyBudget += campaignBudgets.get(campaignId) ?? 0;
+
     return {
       creativeCode: name,
       adCount: g.adIds.length,
       status,
+      activeDailyBudget,
       spend: g.spend, clicks: g.clicks, impressions: g.impressions,
       pdp: crm.pdp, dia: crm.dia, deposits: crm.deposits, revenue: crm.revenue,
       romi: romi(crm.revenue, g.spend),

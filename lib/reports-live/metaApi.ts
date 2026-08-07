@@ -228,3 +228,42 @@ export async function fetchAdStatuses(): Promise<Map<string, string>> {
   const accounts = await fetchActiveAccounts();
   return fetchStatusesForAllAccounts(accounts, "ads");
 }
+
+// Daily budget of every currently-ACTIVE campaign, in account-currency major units
+// (Meta returns daily_budget in minor units — cents for USD — hence the /100).
+// Some campaigns set their own budget (CBO); others delegate it to their ad sets (ABO),
+// in which case the campaign's own daily_budget is empty and we sum its active ad sets'
+// budgets instead. The ad sets edge is only queried for accounts that actually have an
+// ABO campaign, to avoid paying for it everywhere.
+async function fetchCampaignBudgetsForAccount(account: AdAccount): Promise<[string, number][]> {
+  const campaigns = await fetchEdgePaged<{ id: string; daily_budget?: string; effective_status: string }>(
+    account.id, "campaigns", "id,daily_budget,effective_status"
+  );
+  const active = campaigns.filter((c) => c.effective_status === "ACTIVE");
+  const needsAdSets = active.some((c) => !c.daily_budget);
+
+  const adSetBudgetByCampaign = new Map<string, number>();
+  if (needsAdSets) {
+    const adSets = await fetchEdgePaged<{ campaign_id: string; daily_budget?: string; effective_status: string }>(
+      account.id, "adsets", "campaign_id,daily_budget,effective_status"
+    );
+    for (const a of adSets) {
+      if (a.effective_status !== "ACTIVE" || !a.daily_budget) continue;
+      const cents = parseInt(a.daily_budget, 10) || 0;
+      adSetBudgetByCampaign.set(a.campaign_id, (adSetBudgetByCampaign.get(a.campaign_id) ?? 0) + cents);
+    }
+  }
+
+  const out: [string, number][] = [];
+  for (const c of active) {
+    const cents = c.daily_budget ? parseInt(c.daily_budget, 10) || 0 : adSetBudgetByCampaign.get(c.id);
+    if (cents !== undefined && cents > 0) out.push([c.id, cents / 100]);
+  }
+  return out;
+}
+
+export async function fetchCampaignDailyBudgets(): Promise<Map<string, number>> {
+  const accounts = await fetchActiveAccounts();
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchCampaignBudgetsForAccount(a).catch(() => []));
+  return new Map(perAccount.flat());
+}

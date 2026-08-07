@@ -57,6 +57,7 @@ export interface LiveCampaignItem {
   campaignName: string;
   accountName: string;
   status: LiveStatus;
+  dailyBudget: number | null; // only set when status is "active"; CBO or summed active-adset (ABO)
   spend: number;
   clicks: number;
   impressions: number;
@@ -75,6 +76,9 @@ export interface LiveCreativeItem {
   creativeCode: string; // the exact ad name, untouched — this IS the Creative Code convention
   adCount: number;      // distinct Meta ads rolled into this group, for context
   status: LiveStatus;   // "active" if any of its ads is currently ACTIVE in Meta
+  // Sum of daily_budget across every distinct active campaign this creative appears in —
+  // intentionally overlaps with other creatives sharing the same campaign, by design.
+  activeDailyBudget: number;
   spend: number;
   clicks: number;
   impressions: number;

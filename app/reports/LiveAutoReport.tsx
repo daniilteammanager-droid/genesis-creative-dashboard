@@ -66,6 +66,7 @@ interface LiveApiResponse<T> {
   period: Period;
   periods: Period[];
   items: T[];
+  totalActiveDailyBudget: number;
   generatedAt: string;
   fetchedFrom: "api" | "cache";
   error?: string;
@@ -88,6 +89,7 @@ export default function LiveAutoReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [partialWarning, setPartialWarning] = useState<string | null>(null);
+  const [totalActiveDailyBudget, setTotalActiveDailyBudget] = useState(0);
   const [meta, setMeta] = useState<{ generatedAt: string; fetchedFrom: string } | null>(null);
   const [media, setMedia] = useState<MediaFile[]>([]);
 
@@ -117,6 +119,7 @@ export default function LiveAutoReport() {
         setPeriod(d.period);
         setMeta({ generatedAt: d.generatedAt, fetchedFrom: d.fetchedFrom });
         setPartialWarning(d.warning ?? null);
+        setTotalActiveDailyBudget(d.totalActiveDailyBudget ?? 0);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -135,6 +138,7 @@ export default function LiveAutoReport() {
         setPeriod(d.period);
         setMeta({ generatedAt: d.generatedAt, fetchedFrom: d.fetchedFrom });
         setPartialWarning(d.warning ?? null);
+        setTotalActiveDailyBudget(d.totalActiveDailyBudget ?? 0);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -286,7 +290,8 @@ export default function LiveAutoReport() {
       )}
 
       {!loading && !error && subMode === "campaigns" && sortedCampaigns.length > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-2 mb-4">
+        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-11 gap-2 mb-4">
+          <Stat label="Актив. бюджет/день" value={fmtMoney(totalActiveDailyBudget)} />
           <Stat label="Spend" value={fmtMoney(campaignTotals.spend)} />
           <Stat label="Клики" value={fmt(campaignTotals.clicks)} />
           <Stat label="Показы" value={fmt(campaignTotals.impressions)} />
@@ -306,7 +311,7 @@ export default function LiveAutoReport() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-[#0f0d18] border-b border-violet-900/20">
                 <tr>
-                  {["", "Кампания", "Кабинет", "Spend", "Клики", "Показы", "ПДП", "Cost ПДП", "Диа", "Cost Диа", "Депозиты", "Revenue", "ROMI"].map((h) => (
+                  {["", "Кампания", "Кабинет", "Бюджет/день", "Spend", "Клики", "Показы", "ПДП", "Cost ПДП", "Диа", "Cost Диа", "Депозиты", "Revenue", "ROMI"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -326,6 +331,7 @@ export default function LiveAutoReport() {
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-zinc-500 text-xs whitespace-nowrap">{c.accountName}</td>
+                    <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-violet-300">{fmtMoney(c.dailyBudget ?? 0)}</td>
                     <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-white">{fmtMoney(c.spend)}</td>
                     <td className="px-3 py-2.5 tabular-nums text-zinc-300">{fmt(c.clicks)}</td>
                     <td className="px-3 py-2.5 tabular-nums text-zinc-500">{fmt(c.impressions)}</td>
@@ -342,7 +348,7 @@ export default function LiveAutoReport() {
                 ))}
                 {sortedCampaigns.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-zinc-600 text-sm">
+                    <td colSpan={14} className="px-4 py-12 text-center text-zinc-600 text-sm">
                       Нет данных за выбранный период.
                     </td>
                   </tr>
@@ -354,7 +360,8 @@ export default function LiveAutoReport() {
       )}
 
       {!loading && !error && subMode === "ads" && sortedCreatives.length > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-2 mb-4">
+        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-11 gap-2 mb-4">
+          <Stat label="Актив. бюджет/день" value={fmtMoney(totalActiveDailyBudget)} />
           <Stat label="Spend" value={fmtMoney(creativeTotals.spend)} />
           <Stat label="Клики" value={fmt(creativeTotals.clicks)} />
           <Stat label="Показы" value={fmt(creativeTotals.impressions)} />
@@ -374,7 +381,7 @@ export default function LiveAutoReport() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-[#0f0d18] border-b border-violet-900/20">
                 <tr>
-                  {["", "Крео", "Объявл.", "Spend", "Клики", "Показы", "ПДП", "Cost ПДП", "Диа", "Cost Диа", "Депозиты", "Revenue", "ROMI"].map((h) => (
+                  {["", "Крео", "Объявл.", "Бюджет/день", "Spend", "Клики", "Показы", "ПДП", "Cost ПДП", "Диа", "Cost Диа", "Депозиты", "Revenue", "ROMI"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -385,7 +392,7 @@ export default function LiveAutoReport() {
                 {creativesByGeo.map(({ geo, items, totals }) => (
                   <Fragment key={geo}>
                     <tr className="bg-[#0f0d18]">
-                      <td colSpan={13} className="px-3 py-2 text-xs font-semibold text-violet-300 uppercase tracking-wider">
+                      <td colSpan={14} className="px-3 py-2 text-xs font-semibold text-violet-300 uppercase tracking-wider">
                         {geo} · {items.length} крео
                       </td>
                     </tr>
@@ -403,6 +410,7 @@ export default function LiveAutoReport() {
                         <td className="px-3 py-2.5 tabular-nums text-xs">
                           {c.adCount === 0 ? <span className="text-amber-400" title="Нет данных Meta API">⚠ 0</span> : <span className="text-zinc-500">{c.adCount}</span>}
                         </td>
+                        <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-violet-300">{fmtMoney(c.activeDailyBudget)}</td>
                         <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-white">{fmtMoney(c.spend)}</td>
                         <td className="px-3 py-2.5 tabular-nums text-zinc-300">{fmt(c.clicks)}</td>
                         <td className="px-3 py-2.5 tabular-nums text-zinc-500">{fmt(c.impressions)}</td>
@@ -419,6 +427,7 @@ export default function LiveAutoReport() {
                     ))}
                     <tr className="bg-violet-950/20 font-semibold border-t border-violet-900/20">
                       <td colSpan={3} className="px-3 py-2 text-zinc-300">Итого — {geo}</td>
+                      <td className="px-3 py-2 tabular-nums text-zinc-600" title="Бюджет пересекается между крео одной кампании — сумма по группе была бы задвоена">—</td>
                       <td className="px-3 py-2 tabular-nums whitespace-nowrap text-white">{fmtMoney(totals.spend)}</td>
                       <td className="px-3 py-2 tabular-nums text-zinc-300">{fmt(totals.clicks)}</td>
                       <td className="px-3 py-2 tabular-nums text-zinc-500">{fmt(totals.impressions)}</td>
@@ -436,7 +445,7 @@ export default function LiveAutoReport() {
                 ))}
                 {sortedCreatives.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-zinc-600 text-sm">
+                    <td colSpan={14} className="px-4 py-12 text-center text-zinc-600 text-sm">
                       Нет данных за выбранный период.
                     </td>
                   </tr>

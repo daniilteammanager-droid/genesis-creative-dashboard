@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchCampaignInsights, fetchAdInsights, fetchCampaignStatuses, fetchAdStatuses } from "@/lib/reports-live/metaApi";
+import { fetchCampaignInsights, fetchAdInsights, fetchCampaignStatuses, fetchAdStatuses, fetchCampaignDailyBudgets } from "@/lib/reports-live/metaApi";
 import { buildLiveCampaignItems, buildLiveCreativeItems } from "@/lib/reports-live/buildLiveItems";
 import { loadCampaignPeriod, loadCreativePeriod } from "@/lib/reports-live/crmSource";
 import type { LiveMode } from "@/lib/reports-live/types";
@@ -23,6 +23,7 @@ export async function GET(req: Request) {
     let period: Period;
     let items: unknown[];
     let failedAccounts = 0;
+    let totalActiveDailyBudget = 0;
 
     if (mode === "campaigns") {
       const loaded = await loadCampaignPeriod(requestedPeriod);
@@ -33,12 +34,18 @@ export async function GET(req: Request) {
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return NextResponse.json({ ...(hit.data as object), periods, fetchedFrom: "cache" });
       }
-      const [meta, statuses] = await Promise.all([
+      const [meta, statuses, campaignBudgets] = await Promise.all([
         fetchCampaignInsights(period.since, period.until),
         fetchCampaignStatuses(),
+        fetchCampaignDailyBudgets(),
       ]);
       failedAccounts = meta.failedAccounts;
-      items = buildLiveCampaignItems(loaded.rows, meta.items, statuses);
+      items = buildLiveCampaignItems(loaded.rows, meta.items, statuses, campaignBudgets);
+      // Sum every distinct active campaign's budget once — not per-row — so this total
+      // stays correct even though a campaign can appear once per creative in Ads mode.
+      totalActiveDailyBudget = [...new Set(meta.items.map((c) => c.campaignId))].reduce(
+        (sum, id) => sum + (campaignBudgets.get(id) ?? 0), 0
+      );
     } else {
       const loaded = await loadCreativePeriod(requestedPeriod);
       periods = loaded.periods;
@@ -48,12 +55,16 @@ export async function GET(req: Request) {
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return NextResponse.json({ ...(hit.data as object), periods, fetchedFrom: "cache" });
       }
-      const [meta, statuses] = await Promise.all([
+      const [meta, statuses, campaignBudgets] = await Promise.all([
         fetchAdInsights(period.since, period.until),
         fetchAdStatuses(),
+        fetchCampaignDailyBudgets(),
       ]);
       failedAccounts = meta.failedAccounts;
-      items = buildLiveCreativeItems(meta.items, loaded.crmByName, loaded.crmById, statuses);
+      items = buildLiveCreativeItems(meta.items, loaded.crmByName, loaded.crmById, statuses, campaignBudgets);
+      totalActiveDailyBudget = [...new Set(meta.items.map((a) => a.campaignId))].reduce(
+        (sum, id) => sum + (campaignBudgets.get(id) ?? 0), 0
+      );
     }
 
     // Surface partial data loss (e.g. Meta rate limits) instead of silently under-reporting.
@@ -62,7 +73,7 @@ export async function GET(req: Request) {
         ? `Не удалось загрузить данные по ${failedAccounts} рекламным кабинетам (Meta API) — цифры могут быть занижены. Обновите отчёт через минуту.`
         : undefined;
 
-    const data = { mode, period, items, generatedAt: new Date().toISOString(), warning };
+    const data = { mode, period, items, totalActiveDailyBudget, generatedAt: new Date().toISOString(), warning };
     // Don't cache a partial-failure response — a retry a moment later should get real data.
     if (!warning) cache.set(`${mode}:${period.key}`, { data, at: Date.now() });
     return NextResponse.json({ ...data, periods, fetchedFrom: "api" });
