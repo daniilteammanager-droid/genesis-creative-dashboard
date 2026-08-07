@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import type { ReportRow, ReportSummary, SourceStatus, FbtoolApiError, ReportDebugInfo } from "@/lib/reports/types";
+import LiveAutoReport from "./LiveAutoReport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -302,9 +303,10 @@ export default function ReportsPage() {
   }, []);
 
   useEffect(() => {
-    if (mode === "auto") fetchReport();
-    else setLoading(false);
-  }, [mode, fetchReport]);
+    // Auto mode now renders <LiveAutoReport /> (Meta API + CRM), which manages
+    // its own fetch/loading state — nothing to trigger here for it anymore.
+    setLoading(false);
+  }, [mode]);
 
   const handleSort = useCallback((field: SortField) => {
     setSortField((prev) => {
@@ -418,6 +420,9 @@ export default function ReportsPage() {
             </button>
           ))}
         </div>
+
+        {/* Auto Report — live Meta Marketing API + CRM, replaces FBTool */}
+        {mode === "auto" && <LiveAutoReport />}
 
         {/* Manual upload panel */}
         {mode === "manual" && !loading && (

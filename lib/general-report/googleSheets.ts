@@ -55,7 +55,7 @@ async function getAccessToken(): Promise<string> {
 // Sheets to never treat as country/source data
 const EXCLUDED_SHEETS = /^(TOTAL|📋|_DATA)/;
 
-export async function listCountrySheets(spreadsheetId: string): Promise<string[]> {
+export async function listSheetTitles(spreadsheetId: string): Promise<string[]> {
   const token = await getAccessToken();
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
@@ -66,9 +66,12 @@ export async function listCountrySheets(spreadsheetId: string): Promise<string[]
     error?: { message: string };
   };
   if (json.error) throw new Error(`Sheets meta failed: ${json.error.message}`);
-  return (json.sheets ?? [])
-    .map((s) => s.properties.title)
-    .filter((t) => !EXCLUDED_SHEETS.test(t));
+  return (json.sheets ?? []).map((s) => s.properties.title);
+}
+
+export async function listCountrySheets(spreadsheetId: string): Promise<string[]> {
+  const titles = await listSheetTitles(spreadsheetId);
+  return titles.filter((t) => !EXCLUDED_SHEETS.test(t));
 }
 
 // Fetch raw values for all given sheets in one batchGet.
