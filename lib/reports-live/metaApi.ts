@@ -7,6 +7,25 @@ import type { MetaCampaignRow, MetaAdRow } from "./types";
 const API_VERSION = "v26.0";
 const BASE = `https://graph.facebook.com/${API_VERSION}`;
 
+// Meta throttles by rolling call volume per app, not per account — firing 90+ accounts'
+// worth of requests in one unbounded Promise.all reliably trips "(#4) Application request
+// limit reached" and (since failures are caught per-account) silently drops data instead
+// of erroring loudly. Capping concurrency spreads the same calls over more wall-clock time.
+const CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 function token(): string {
   const t = process.env.META_ACCESS_TOKEN;
   if (!t) throw new Error("Missing META_ACCESS_TOKEN env var");
@@ -50,7 +69,9 @@ interface Business {
 }
 
 let accountsCache: { accounts: AdAccount[]; at: number } | null = null;
-const ACCOUNTS_CACHE_TTL_MS = 5 * 60_000;
+// Business/account structure changes slowly (Daniil: "~10 accounts a week") — cache far
+// longer than the 5-min report cache to keep this discovery pass off the rate-limit budget.
+const ACCOUNTS_CACHE_TTL_MS = 60 * 60_000;
 
 // /me/adaccounts only lists accounts shared directly to this Facebook login — accounts
 // shared as a partner to the app's Business Manager (not to this specific person) never
@@ -67,19 +88,21 @@ export async function fetchActiveAccounts(): Promise<AdAccount[]> {
     fetchEdgePaged<Business>("me", "businesses", "id").catch(() => []),
   ]);
 
-  const viaBusinesses = await Promise.all(
-    businesses.flatMap((b) => [
+  const viaBusinesses = await mapWithConcurrency(businesses, CONCURRENCY, async (b) => {
+    const [owned, client] = await Promise.all([
       fetchEdgePaged<AdAccount>(b.id, "owned_ad_accounts", "id,name,account_status").catch(() => []),
       fetchEdgePaged<AdAccount>(b.id, "client_ad_accounts", "id,name,account_status").catch(() => []),
-    ])
-  );
+    ]);
+    return [...owned, ...client];
+  });
 
   const byId = new Map<string, AdAccount>();
   for (const a of [...direct, ...viaBusinesses.flat()]) {
     if (a.account_status === 1) byId.set(a.id, a);
   }
 
-  const accounts = [...byId.values()];
+  // Stale cache beats an empty report if this pass itself got rate-limited.
+  const accounts = byId.size > 0 ? [...byId.values()] : (accountsCache?.accounts ?? []);
   accountsCache = { accounts, at: Date.now() };
   return accounts;
 }
@@ -117,10 +140,32 @@ async function fetchInsights(account: AdAccount, level: "campaign" | "ad", since
   return out;
 }
 
-export async function fetchCampaignInsights(since: string, until: string): Promise<MetaCampaignRow[]> {
+// Fetches per account with bounded concurrency; returns rows plus how many accounts
+// failed (rate-limited or otherwise) so the caller can surface a "partial data" warning
+// instead of quietly under-reporting spend.
+async function fetchInsightsForAllAccounts(
+  accounts: AdAccount[],
+  level: "campaign" | "ad",
+  since: string,
+  until: string
+): Promise<{ rows: InsightRow[]; failedAccounts: number }> {
+  let failedAccounts = 0;
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) =>
+    fetchInsights(a, level, since, until).catch(() => {
+      failedAccounts++;
+      return [];
+    })
+  );
+  return { rows: perAccount.flat(), failedAccounts };
+}
+
+export async function fetchCampaignInsights(
+  since: string,
+  until: string
+): Promise<{ items: MetaCampaignRow[]; failedAccounts: number }> {
   const accounts = await fetchActiveAccounts();
-  const perAccount = await Promise.all(accounts.map((a) => fetchInsights(a, "campaign", since, until).catch(() => [])));
-  return perAccount.flat().map((r) => ({
+  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(accounts, "campaign", since, until);
+  const items = rows.map((r) => ({
     campaignId: r.campaign_id ?? "",
     campaignName: r.campaign_name ?? "",
     accountId: r.account_id,
@@ -129,12 +174,16 @@ export async function fetchCampaignInsights(since: string, until: string): Promi
     clicks: parseInt(r.clicks ?? "0", 10) || 0,
     impressions: parseInt(r.impressions ?? "0", 10) || 0,
   }));
+  return { items, failedAccounts };
 }
 
-export async function fetchAdInsights(since: string, until: string): Promise<MetaAdRow[]> {
+export async function fetchAdInsights(
+  since: string,
+  until: string
+): Promise<{ items: MetaAdRow[]; failedAccounts: number }> {
   const accounts = await fetchActiveAccounts();
-  const perAccount = await Promise.all(accounts.map((a) => fetchInsights(a, "ad", since, until).catch(() => [])));
-  return perAccount.flat().map((r) => ({
+  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(accounts, "ad", since, until);
+  const items = rows.map((r) => ({
     adId: r.ad_id ?? "",
     adName: r.ad_name ?? "",
     campaignId: r.campaign_id ?? "",
@@ -145,6 +194,7 @@ export async function fetchAdInsights(since: string, until: string): Promise<Met
     clicks: parseInt(r.clicks ?? "0", 10) || 0,
     impressions: parseInt(r.impressions ?? "0", 10) || 0,
   }));
+  return { items, failedAccounts };
 }
 
 // Current object status (ACTIVE/PAUSED/...) — insights doesn't carry this, it's a
@@ -164,14 +214,17 @@ async function fetchObjectStatuses(account: AdAccount, edge: "campaigns" | "ads"
   return out;
 }
 
+async function fetchStatusesForAllAccounts(accounts: AdAccount[], edge: "campaigns" | "ads"): Promise<Map<string, string>> {
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchObjectStatuses(a, edge).catch(() => []));
+  return new Map(perAccount.flat());
+}
+
 export async function fetchCampaignStatuses(): Promise<Map<string, string>> {
   const accounts = await fetchActiveAccounts();
-  const perAccount = await Promise.all(accounts.map((a) => fetchObjectStatuses(a, "campaigns").catch(() => [])));
-  return new Map(perAccount.flat());
+  return fetchStatusesForAllAccounts(accounts, "campaigns");
 }
 
 export async function fetchAdStatuses(): Promise<Map<string, string>> {
   const accounts = await fetchActiveAccounts();
-  const perAccount = await Promise.all(accounts.map((a) => fetchObjectStatuses(a, "ads").catch(() => [])));
-  return new Map(perAccount.flat());
+  return fetchStatusesForAllAccounts(accounts, "ads");
 }

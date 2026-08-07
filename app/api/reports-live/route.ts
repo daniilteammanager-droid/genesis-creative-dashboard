@@ -22,6 +22,7 @@ export async function GET(req: Request) {
     let periods: Period[];
     let period: Period;
     let items: unknown[];
+    let failedAccounts = 0;
 
     if (mode === "campaigns") {
       const loaded = await loadCampaignPeriod(requestedPeriod);
@@ -36,7 +37,8 @@ export async function GET(req: Request) {
         fetchCampaignInsights(period.since, period.until),
         fetchCampaignStatuses(),
       ]);
-      items = buildLiveCampaignItems(loaded.rows, meta, statuses);
+      failedAccounts = meta.failedAccounts;
+      items = buildLiveCampaignItems(loaded.rows, meta.items, statuses);
     } else {
       const loaded = await loadCreativePeriod(requestedPeriod);
       periods = loaded.periods;
@@ -50,11 +52,19 @@ export async function GET(req: Request) {
         fetchAdInsights(period.since, period.until),
         fetchAdStatuses(),
       ]);
-      items = buildLiveCreativeItems(meta, loaded.crmByName, loaded.crmById, statuses);
+      failedAccounts = meta.failedAccounts;
+      items = buildLiveCreativeItems(meta.items, loaded.crmByName, loaded.crmById, statuses);
     }
 
-    const data = { mode, period, items, generatedAt: new Date().toISOString() };
-    cache.set(`${mode}:${period.key}`, { data, at: Date.now() });
+    // Surface partial data loss (e.g. Meta rate limits) instead of silently under-reporting.
+    const warning =
+      failedAccounts > 0
+        ? `Не удалось загрузить данные по ${failedAccounts} рекламным кабинетам (Meta API) — цифры могут быть занижены. Обновите отчёт через минуту.`
+        : undefined;
+
+    const data = { mode, period, items, generatedAt: new Date().toISOString(), warning };
+    // Don't cache a partial-failure response — a retry a moment later should get real data.
+    if (!warning) cache.set(`${mode}:${period.key}`, { data, at: Date.now() });
     return NextResponse.json({ ...data, periods, fetchedFrom: "api" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -69,6 +69,7 @@ interface LiveApiResponse<T> {
   generatedAt: string;
   fetchedFrom: "api" | "cache";
   error?: string;
+  warning?: string;
 }
 
 const SUB_MODES: { id: LiveMode; label: string }[] = [
@@ -86,6 +87,7 @@ export default function LiveAutoReport() {
   const [period, setPeriod] = useState<Period | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [partialWarning, setPartialWarning] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ generatedAt: string; fetchedFrom: string } | null>(null);
   const [media, setMedia] = useState<MediaFile[]>([]);
 
@@ -114,6 +116,7 @@ export default function LiveAutoReport() {
         setPeriods(d.periods);
         setPeriod(d.period);
         setMeta({ generatedAt: d.generatedAt, fetchedFrom: d.fetchedFrom });
+        setPartialWarning(d.warning ?? null);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -131,6 +134,7 @@ export default function LiveAutoReport() {
         setPeriods(d.periods);
         setPeriod(d.period);
         setMeta({ generatedAt: d.generatedAt, fetchedFrom: d.fetchedFrom });
+        setPartialWarning(d.warning ?? null);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -257,6 +261,12 @@ export default function LiveAutoReport() {
       {notFoundNotice && (
         <div className="bg-amber-950/40 border border-amber-700/30 text-amber-300/90 rounded-xl px-4 py-2.5 mb-4 text-sm">
           {notFoundNotice}
+        </div>
+      )}
+
+      {partialWarning && !loading && (
+        <div className="bg-amber-950/40 border border-amber-700/30 text-amber-300/90 rounded-xl px-4 py-2.5 mb-4 text-sm">
+          ⚠ {partialWarning}
         </div>
       )}
 
