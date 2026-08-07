@@ -30,19 +30,57 @@ interface AdAccount {
   account_status: number;
 }
 
-// account_status: 1 = ACTIVE. Only pull from active accounts.
-export async function fetchActiveAccounts(): Promise<AdAccount[]> {
-  const accounts: AdAccount[] = [];
+async function fetchEdgePaged<T>(parentId: string, edge: string, fields: string): Promise<T[]> {
+  const out: T[] = [];
   let after: string | undefined;
   for (;;) {
-    const json = await graphGet<{ data: AdAccount[]; paging?: { cursors?: { after?: string } } }>(
-      "/me/adaccounts",
-      { fields: "id,name,account_status", limit: "200", ...(after ? { after } : {}) }
+    const json = await graphGet<{ data: T[]; paging?: { cursors?: { after?: string } } }>(
+      `/${parentId}/${edge}`,
+      { fields, limit: "200", ...(after ? { after } : {}) }
     );
-    accounts.push(...json.data.filter((a) => a.account_status === 1));
+    out.push(...json.data);
     after = json.paging?.cursors?.after;
     if (!after || json.data.length === 0) break;
   }
+  return out;
+}
+
+interface Business {
+  id: string;
+}
+
+let accountsCache: { accounts: AdAccount[]; at: number } | null = null;
+const ACCOUNTS_CACHE_TTL_MS = 5 * 60_000;
+
+// /me/adaccounts only lists accounts shared directly to this Facebook login — accounts
+// shared as a partner to the app's Business Manager (not to this specific person) never
+// show up there, even though the token can query them directly by ID. Business Manager
+// discovery closes that gap: every account owned by, or shared as a client to, any
+// Business this token belongs to. Merged + deduped with the direct list, active only.
+export async function fetchActiveAccounts(): Promise<AdAccount[]> {
+  if (accountsCache && Date.now() - accountsCache.at < ACCOUNTS_CACHE_TTL_MS) {
+    return accountsCache.accounts;
+  }
+
+  const [direct, businesses] = await Promise.all([
+    fetchEdgePaged<AdAccount>("me", "adaccounts", "id,name,account_status").catch(() => []),
+    fetchEdgePaged<Business>("me", "businesses", "id").catch(() => []),
+  ]);
+
+  const viaBusinesses = await Promise.all(
+    businesses.flatMap((b) => [
+      fetchEdgePaged<AdAccount>(b.id, "owned_ad_accounts", "id,name,account_status").catch(() => []),
+      fetchEdgePaged<AdAccount>(b.id, "client_ad_accounts", "id,name,account_status").catch(() => []),
+    ])
+  );
+
+  const byId = new Map<string, AdAccount>();
+  for (const a of [...direct, ...viaBusinesses.flat()]) {
+    if (a.account_status === 1) byId.set(a.id, a);
+  }
+
+  const accounts = [...byId.values()];
+  accountsCache = { accounts, at: Date.now() };
   return accounts;
 }
 
