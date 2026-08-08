@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { parseMvpXlsx } from "@/lib/reports/parseMvpXlsx";
+import { parseMvpXlsxWithPlaceholders } from "@/lib/reports/parseMvpXlsx";
 import { parseCrmAdExport } from "./parseCrmAdExport";
 import { parseCrmAdByNameExport } from "./parseCrmAdByNameExport";
 import { fetchSheetValues, listSheetTitles } from "@/lib/general-report/googleSheets";
@@ -31,7 +31,7 @@ export async function loadCampaignPeriod(
   const period = pickPeriod(periods, requestedKey);
   const ws = wb.Sheets[period.key];
   const rawRows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false });
-  return { periods, period, rows: parseMvpXlsx(rawRows) };
+  return { periods, period, rows: parseMvpXlsxWithPlaceholders(rawRows) };
 }
 
 // Primary source for Ads mode — CRM export keyed by ad NAME, matched to Meta's ad_name.

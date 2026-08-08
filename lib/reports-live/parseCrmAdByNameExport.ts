@@ -1,19 +1,14 @@
 import type { CrmAdByNameRow } from "./types";
+import { resolveCrmColumns, crmAt } from "./crmColumns";
 
-// Parses the CRM ad-level export keyed by ad NAME (not Ad ID) — same column layout
-// as parseCrmAdExport, but "Название" holds the raw Meta ad name (occasionally falls
-// back to a bare numeric ad id when the name wasn't resolved on the CRM side).
-// Header: Название | Подписчики | Диалоги | Кол-во регистраций |
-//         Кол-во продаж | Сумма продаж | Кол-во повторных продаж | Сумма повторных продаж | Отписки | ...
-
-function n(v: unknown): number {
-  const s = String(v ?? "").replace(/[$,\s]/g, "");
-  const num = parseFloat(s);
-  return Number.isFinite(num) ? num : 0;
-}
+// Parses the CRM ad-level export keyed by ad NAME (not Ad ID) — "Название" holds the raw
+// Meta ad name (occasionally falls back to a bare numeric ad id when the name wasn't
+// resolved on the CRM side). Columns are resolved by header text, not fixed position —
+// this sheet's own column order does not match the by-id export's (see crmColumns.ts).
 
 export function parseCrmAdByNameExport(rows: unknown[][]): CrmAdByNameRow[] {
   if (rows.length < 2) return [];
+  const col = resolveCrmColumns(rows[0] ?? []);
   const out: CrmAdByNameRow[] = [];
 
   for (let i = 1; i < rows.length; i++) {
@@ -23,12 +18,12 @@ export function parseCrmAdByNameExport(rows: unknown[][]): CrmAdByNameRow[] {
 
     out.push({
       adName,
-      pdp: n(row[1]),
-      dia: n(row[2]),
-      registrations: n(row[3]),
-      deposits: n(row[4]) + n(row[6]),
-      revenue: n(row[5]) + n(row[7]),
-      unsubscribes: n(row[8]),
+      pdp: crmAt(row, col, "pdp"),
+      dia: crmAt(row, col, "dia"),
+      registrations: crmAt(row, col, "registrations"),
+      deposits: crmAt(row, col, "depCount") + crmAt(row, col, "redepCount"),
+      revenue: crmAt(row, col, "depSummary") + crmAt(row, col, "redepSummary"),
+      unsubscribes: crmAt(row, col, "unsubscribes"),
     });
   }
   return out;

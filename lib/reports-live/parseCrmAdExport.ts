@@ -1,17 +1,13 @@
 import type { CrmAdRow } from "./types";
+import { resolveCrmColumns, crmAt } from "./crmColumns";
 
 // Parses the CRM ad-level export (weekly sheet or "All Data"): flat table, one row per Ad ID.
-// Header: Название | Подписчики | Диалоги | Кол-во регистраций |
-//         Кол-во продаж | Сумма продаж | Кол-во повторных продаж | Сумма повторных продаж | Отписки | ...
-
-function n(v: unknown): number {
-  const s = String(v ?? "").replace(/[$,\s]/g, "");
-  const num = parseFloat(s);
-  return Number.isFinite(num) ? num : 0;
-}
+// Columns are resolved by header text, not fixed position — this sheet's column order
+// does not match the by-name export's (see crmColumns.ts).
 
 export function parseCrmAdExport(rows: unknown[][]): CrmAdRow[] {
   if (rows.length < 2) return [];
+  const col = resolveCrmColumns(rows[0] ?? []);
   const out: CrmAdRow[] = [];
 
   for (let i = 1; i < rows.length; i++) {
@@ -21,12 +17,12 @@ export function parseCrmAdExport(rows: unknown[][]): CrmAdRow[] {
 
     out.push({
       adId,
-      pdp: n(row[1]),
-      dia: n(row[2]),
-      registrations: n(row[3]),
-      deposits: n(row[4]) + n(row[6]), // Кол-во продаж + Кол-во повторных продаж
-      revenue: n(row[5]) + n(row[7]),  // Сумма продаж + Сумма повторных продаж
-      unsubscribes: n(row[8]),
+      pdp: crmAt(row, col, "pdp"),
+      dia: crmAt(row, col, "dia"),
+      registrations: crmAt(row, col, "registrations"),
+      deposits: crmAt(row, col, "depCount") + crmAt(row, col, "redepCount"),
+      revenue: crmAt(row, col, "depSummary") + crmAt(row, col, "redepSummary"),
+      unsubscribes: crmAt(row, col, "unsubscribes"),
     });
   }
   return out;

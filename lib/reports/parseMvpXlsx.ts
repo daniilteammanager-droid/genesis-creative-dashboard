@@ -88,6 +88,36 @@ export function parseMvpXlsx(rawRows: unknown[][]): MvpRow[] {
   return results;
 }
 
+// Same parse, but keeps rows whose campaign id is a CRM placeholder ("not_exists",
+// "{{campaign.id}}", "__CAMPAIGN_ID__", ...) instead of dropping them — those still
+// carry real deposits/revenue from clients with no linked ad-campaign data, and should
+// still count toward totals (they just won't match any real Meta campaign — same
+// "Долёты" bucket as a campaign_id with no current Meta counterpart). Used only by
+// Reports Live; parseMvpXlsx()/parseMvpXlsxWithDebug() keep the original strict
+// behavior for Manual Report and the legacy FBTool route.
+export function parseMvpXlsxWithPlaceholders(rawRows: unknown[][]): MvpRow[] {
+  if (rawRows.length < 2) return [];
+  const col = resolveMvpColumns(rawRows[0] as unknown[]);
+  if (col.id === -1) return [];
+
+  const results: MvpRow[] = [];
+  for (let i = 1; i < rawRows.length; i++) {
+    const row = rawRows[i] as unknown[];
+    const campaignId = normalizeCampaignId(row[col.id]);
+    if (!campaignId) continue;
+    results.push({
+      campaignId,
+      pdp:      col.pdp      !== -1 ? n(row[col.pdp])      : 0,
+      dia:      col.dia      !== -1 ? n(row[col.dia])      : 0,
+      deposits: (col.depCount   !== -1 ? n(row[col.depCount])   : 0) +
+                (col.redepCount !== -1 ? n(row[col.redepCount]) : 0),
+      revenue:  (col.depSummary   !== -1 ? n(row[col.depSummary])   : 0) +
+                (col.redepSummary !== -1 ? n(row[col.redepSummary]) : 0),
+    });
+  }
+  return results;
+}
+
 // Same parse, plus a debug snapshot for diagnosing column-detection / matching issues.
 export function parseMvpXlsxWithDebug(rawRows: unknown[][]): { rows: MvpRow[]; debug: MvpParseDebug } {
   const header = (rawRows[0] as unknown[]) ?? [];
