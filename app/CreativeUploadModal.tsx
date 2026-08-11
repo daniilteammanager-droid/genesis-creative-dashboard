@@ -61,6 +61,7 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
   const [items, setItems] = useState<UploadItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadingAll, setUploadingAll] = useState(false);
+  const [showCongrats, setShowCongrats] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function patch(id: string, changes: Partial<UploadItem>) {
@@ -75,10 +76,10 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
     patch(id, { name });
   }
 
-  async function processFile(item: UploadItem, overwrite = false) {
+  async function processFile(item: UploadItem, overwrite = false): Promise<boolean> {
     if (!ALLOWED_EXT.test(item.name)) {
       patch(item.id, { status: "error", error: "Недопустимое имя файла — разрешены mp4, mov, jpg, jpeg, png, webp" });
-      return;
+      return false;
     }
     patch(item.id, { status: "checking" });
     try {
@@ -92,15 +93,17 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
 
       if (data.exists && !overwrite) {
         patch(item.id, { status: "exists" });
-        return;
+        return false;
       }
 
       patch(item.id, { status: "uploading", progress: 0 });
       await uploadWithProgress(data.uploadUrl, item.file, (pct) => patch(item.id, { progress: pct }));
       patch(item.id, { status: "processing", progress: 100 });
       watchForProcessing(normalize(item.name), () => patch(item.id, { status: "ready" }));
+      return true;
     } catch (e) {
       patch(item.id, { status: "error", error: e instanceof Error ? e.message : "Ошибка загрузки" });
+      return false;
     }
   }
 
@@ -116,11 +119,14 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
     setItems((prev) => [...prev, ...newItems]);
   }, []);
 
+  const CONGRATS_THRESHOLD = 5;
+
   async function uploadAll() {
     setUploadingAll(true);
     const queued = items.filter((it) => it.status === "queued");
-    await Promise.all(queued.map((it) => processFile(it)));
+    const results = await Promise.all(queued.map((it) => processFile(it)));
     setUploadingAll(false);
+    if (results.filter(Boolean).length >= CONGRATS_THRESHOLD) setShowCongrats(true);
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -194,6 +200,31 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
             </div>
           )}
         </div>
+      </div>
+
+      {showCongrats && <CongratsModal onClose={() => setShowCongrats(false)} />}
+    </div>
+  );
+}
+
+function CongratsModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-[360px] bg-gradient-to-b from-amber-50 to-yellow-100 border-[6px] border-double border-amber-600 rounded-lg p-8 text-center shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-5xl mb-3">🏆</div>
+        <div className="text-amber-800 text-xs font-bold tracking-[0.3em] uppercase mb-2">Грамота</div>
+        <div className="text-amber-950 text-2xl font-black leading-tight mb-1">5+ КРЕО</div>
+        <div className="text-amber-950 text-2xl font-black leading-tight mb-4">ЗА РАЗ</div>
+        <p className="text-amber-800 text-sm font-semibold mb-6">Красавчик, знай мы гордимся тобой! 🎉</p>
+        <button
+          onClick={onClose}
+          className="px-5 py-2 rounded-xl text-sm font-semibold bg-amber-700 text-white hover:bg-amber-800 transition"
+        >
+          Спасибо
+        </button>
       </div>
     </div>
   );
