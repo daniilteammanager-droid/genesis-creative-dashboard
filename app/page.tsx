@@ -10,6 +10,7 @@ import { type MediaFile, findMedia, isVideo, isImage, getApproach } from "@/lib/
 import { parseNumber, formatSummaryNumber, formatRomiPct } from "@/lib/creatives/format";
 import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
+import MediaLibrary from "@/components/MediaLibrary";
 import CreativeUploadModal from "./CreativeUploadModal";
 
 type CreativeCardProps = {
@@ -45,6 +46,7 @@ export default function Home() {
   const [activeSort, setActiveSort] = useState<"none" | "romi" | "spend" | "deposits">("none");
   const [topTab,     setTopTab]     = useState<"creatives" | "analytics">("creatives");
   const [showUpload, setShowUpload] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [notes,      setNotes]      = useState<Record<string, CreativeNote>>({});
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState<string | null>(null);
@@ -86,17 +88,26 @@ export default function Home() {
 
   // ─── Stable callbacks ────────────────────────────────────────────────────
 
-  const toggleFavorite = useCallback(async (creativeCode: string) => {
+  // Shared by favorite/ignored — both are boolean flags on creative_notes toggled optimistically.
+  const toggleFlag = useCallback(async (field: "favorite" | "ignored", creativeCode: string) => {
     if (!isSupabaseConfigured) {
-      console.warn("Supabase не настроен — toggle favorite недоступен");
+      console.warn(`Supabase не настроен — toggle ${field} недоступен`);
       return;
     }
-    const existing   = notesRef.current[creativeCode];
-    const newFavorite = !(existing?.favorite ?? false);
+    const existing = notesRef.current[creativeCode];
+    const newValue  = !(existing?.[field] ?? false);
 
     const updated: CreativeNote = existing
-      ? { ...existing, favorite: newFavorite, updated_at: new Date().toISOString() }
-      : { creative_code: creativeCode, favorite: newFavorite, note: null, transcription_ru: null, updated_at: new Date().toISOString() };
+      ? { ...existing, [field]: newValue, updated_at: new Date().toISOString() }
+      : {
+          creative_code: creativeCode,
+          favorite: false,
+          note: null,
+          transcription_ru: null,
+          ignored: false,
+          [field]: newValue,
+          updated_at: new Date().toISOString(),
+        };
 
     setNotes((prev) => ({ ...prev, [creativeCode]: updated }));
 
@@ -106,16 +117,17 @@ export default function Home() {
         .upsert(
           {
             creative_code:    creativeCode,
-            favorite:         newFavorite,
-            note:             existing?.note ?? null,
-            transcription_ru: existing?.transcription_ru ?? null,
-            updated_at:       new Date().toISOString(),
+            favorite:         updated.favorite,
+            note:             updated.note,
+            transcription_ru: updated.transcription_ru,
+            ignored:          updated.ignored ?? false,
+            updated_at:       updated.updated_at,
           },
           { onConflict: "creative_code" }
         );
       if (error) throw error;
     } catch (e) {
-      console.error("Ошибка сохранения favorite:", e);
+      console.error(`Ошибка сохранения ${field}:`, e);
       setNotes((prev) => {
         const reverted = { ...prev };
         if (existing) reverted[creativeCode] = existing;
@@ -125,9 +137,25 @@ export default function Home() {
     }
   }, []); // stable — reads latest notes from notesRef
 
+  const toggleFavorite = useCallback((creativeCode: string) => toggleFlag("favorite", creativeCode), [toggleFlag]);
+  const toggleIgnored  = useCallback((creativeCode: string) => toggleFlag("ignored", creativeCode), [toggleFlag]);
+
   const handleSetSelected = useCallback((item: CreativeRow) => setSelected(item), []);
 
   // ─── Data loading ────────────────────────────────────────────────────────
+
+  const loadMedia = useCallback(async () => {
+    try {
+      const res = await fetch("/api/media");
+      if (!res.ok) throw new Error(`Media: ошибка сети ${res.status}`);
+      const data = await res.json();
+      setMedia(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setMediaError(e instanceof Error ? e.message : "Не удалось загрузить медиа");
+    } finally {
+      setMediaLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     async function loadCSV() {
@@ -137,19 +165,6 @@ export default function Home() {
         setCsvError(e instanceof Error ? e.message : "Не удалось загрузить данные");
       } finally {
         setCsvLoading(false);
-      }
-    }
-
-    async function loadMedia() {
-      try {
-        const res = await fetch("/api/media");
-        if (!res.ok) throw new Error(`Media: ошибка сети ${res.status}`);
-        const data = await res.json();
-        setMedia(Array.isArray(data) ? data : []);
-      } catch (e) {
-        setMediaError(e instanceof Error ? e.message : "Не удалось загрузить медиа");
-      } finally {
-        setMediaLoading(false);
       }
     }
 
@@ -411,6 +426,13 @@ export default function Home() {
                   )}
 
                   <button
+                    onClick={() => setShowLibrary(true)}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5"
+                  >
+                    📁 Медиатека
+                  </button>
+
+                  <button
                     onClick={() => setShowUpload(true)}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5"
                   >
@@ -504,6 +526,18 @@ export default function Home() {
       )}
 
       {showUpload && <CreativeUploadModal onClose={() => setShowUpload(false)} />}
+
+      {showLibrary && (
+        <MediaLibrary
+          rows={rows}
+          media={media}
+          notes={notes}
+          supabaseAvailable={!supabaseDown}
+          onRefresh={loadMedia}
+          onToggleIgnored={toggleIgnored}
+          onClose={() => setShowLibrary(false)}
+        />
+      )}
     </main>
   );
 }

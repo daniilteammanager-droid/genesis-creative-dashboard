@@ -8,6 +8,9 @@ import { supabase } from "@/lib/supabase";
 // Compression / thumbnails / transcription are handled entirely by a separate
 // worker that polls R2 on its own cron; this component only uploads the raw file
 // and, optionally, watches Supabase for the worker to pick it up.
+//
+// Files are queued on selection (renameable, removable) and only actually sent
+// to R2 once the user presses "Загрузить".
 
 const ALLOWED_EXT = /\.(mov|mp4|jpg|jpeg|png|webp)$/i;
 
@@ -15,11 +18,12 @@ function normalize(filename: string): string {
   return filename.toLowerCase().trim().replace(/\.(mov|mp4|jpg|jpeg|png|webp)$/i, "");
 }
 
-type FileStatus = "pending" | "checking" | "exists" | "uploading" | "uploaded" | "processing" | "ready" | "error";
+type FileStatus = "queued" | "checking" | "exists" | "uploading" | "processing" | "ready" | "error";
 
 type UploadItem = {
   id: string;
   file: File;
+  name: string; // editable target filename — defaults to file.name
   status: FileStatus;
   progress: number; // 0-100
   error?: string;
@@ -56,19 +60,32 @@ function watchForProcessing(creativeCode: string, onReady: () => void) {
 export default function CreativeUploadModal({ onClose }: { onClose: () => void }) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadingAll, setUploadingAll] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function patch(id: string, changes: Partial<UploadItem>) {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...changes } : it)));
   }
 
+  function removeItem(id: string) {
+    setItems((prev) => prev.filter((it) => it.id !== id));
+  }
+
+  function renameItem(id: string, name: string) {
+    patch(id, { name });
+  }
+
   async function processFile(item: UploadItem, overwrite = false) {
+    if (!ALLOWED_EXT.test(item.name)) {
+      patch(item.id, { status: "error", error: "Недопустимое имя файла — разрешены mp4, mov, jpg, jpeg, png, webp" });
+      return;
+    }
     patch(item.id, { status: "checking" });
     try {
       const res = await fetch("/api/media/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: item.file.name, contentType: item.file.type }),
+        body: JSON.stringify({ filename: item.name, contentType: item.file.type }),
       });
       const data = (await res.json()) as { uploadUrl?: string; key?: string; exists?: boolean; error?: string };
       if (!res.ok || !data.uploadUrl) throw new Error(data.error ?? "Не удалось получить ссылку на загрузку");
@@ -81,7 +98,7 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
       patch(item.id, { status: "uploading", progress: 0 });
       await uploadWithProgress(data.uploadUrl, item.file, (pct) => patch(item.id, { progress: pct }));
       patch(item.id, { status: "processing", progress: 100 });
-      watchForProcessing(normalize(item.file.name), () => patch(item.id, { status: "ready" }));
+      watchForProcessing(normalize(item.name), () => patch(item.id, { status: "ready" }));
     } catch (e) {
       patch(item.id, { status: "error", error: e instanceof Error ? e.message : "Ошибка загрузки" });
     }
@@ -92,13 +109,19 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
     const newItems: UploadItem[] = files.map((file) => ({
       id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
       file,
-      status: "pending",
+      name: file.name,
+      status: "queued",
       progress: 0,
     }));
     setItems((prev) => [...prev, ...newItems]);
-    newItems.forEach((it) => processFile(it));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function uploadAll() {
+    setUploadingAll(true);
+    const queued = items.filter((it) => it.status === "queued");
+    await Promise.all(queued.map((it) => processFile(it)));
+    setUploadingAll(false);
+  }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -106,7 +129,8 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
     if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   }
 
-  const doneCount = items.filter((i) => i.status === "ready" || i.status === "processing" || i.status === "uploaded").length;
+  const queuedCount = items.filter((i) => i.status === "queued").length;
+  const doneCount = items.filter((i) => i.status === "ready" || i.status === "processing").length;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-start md:items-center justify-center p-4 md:p-6" onClick={onClose}>
@@ -144,11 +168,28 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
 
           {items.length > 0 && (
             <div className="mt-5 space-y-2">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider">
-                Загружено {doneCount}/{items.length}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                  Готово {doneCount}/{items.length}
+                </p>
+                {queuedCount > 0 && (
+                  <button
+                    onClick={uploadAll}
+                    disabled={uploadingAll}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50"
+                  >
+                    {uploadingAll ? "Загрузка…" : `⬆ Загрузить (${queuedCount})`}
+                  </button>
+                )}
+              </div>
               {items.map((it) => (
-                <UploadRow key={it.id} item={it} onOverwrite={() => processFile(it, true)} />
+                <UploadRow
+                  key={it.id}
+                  item={it}
+                  onOverwrite={() => processFile(it, true)}
+                  onRemove={() => removeItem(it.id)}
+                  onRename={(name) => renameItem(it.id, name)}
+                />
               ))}
             </div>
           )}
@@ -158,13 +199,39 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
   );
 }
 
-function UploadRow({ item, onOverwrite }: { item: UploadItem; onOverwrite: () => void }) {
-  const { file, status, progress, error } = item;
+function UploadRow({
+  item,
+  onOverwrite,
+  onRemove,
+  onRename,
+}: {
+  item: UploadItem;
+  onOverwrite: () => void;
+  onRemove: () => void;
+  onRename: (name: string) => void;
+}) {
+  const { status, progress, error, name } = item;
+  const editable = status === "queued" || status === "error";
+
   return (
     <div className="bg-[#111118] border border-violet-900/20 rounded-xl px-3 py-2.5">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-sm text-zinc-200 truncate">{file.name}</span>
-        <StatusBadge status={status} />
+        {editable ? (
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => onRename(e.target.value)}
+            className="text-sm text-zinc-200 bg-transparent border-b border-violet-900/40 focus:border-violet-500 outline-none flex-1 min-w-0 py-0.5"
+          />
+        ) : (
+          <span className="text-sm text-zinc-200 truncate">{name}</span>
+        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <StatusBadge status={status} />
+          {status === "queued" && (
+            <button onClick={onRemove} className="text-zinc-600 hover:text-red-400 text-sm leading-none" title="Убрать">✕</button>
+          )}
+        </div>
       </div>
 
       {status === "uploading" && (
@@ -192,11 +259,10 @@ function UploadRow({ item, onOverwrite }: { item: UploadItem; onOverwrite: () =>
 
 function StatusBadge({ status }: { status: FileStatus }) {
   const map: Record<FileStatus, { label: string; cls: string }> = {
-    pending:    { label: "В очереди",      cls: "text-zinc-500" },
+    queued:     { label: "В очереди",      cls: "text-zinc-500" },
     checking:   { label: "Проверка…",      cls: "text-zinc-500" },
     exists:     { label: "Уже существует", cls: "text-amber-400" },
     uploading:  { label: "Загрузка…",      cls: "text-violet-400" },
-    uploaded:   { label: "Загружено",      cls: "text-zinc-400" },
     processing: { label: "Обрабатывается", cls: "text-violet-400" },
     ready:      { label: "Готово ✓",       cls: "text-green-400" },
     error:      { label: "Ошибка",         cls: "text-red-400" },

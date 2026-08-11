@@ -18,7 +18,7 @@ function fileBasename(key: string): string {
 
 export async function GET() {
   try {
-    const allFiles: { key: string; url: string }[] = [];
+    const allFiles: { key: string; url: string; size: number }[] = [];
     let continuationToken: string | undefined;
 
     // Собираем все объекты из bucket с пагинацией
@@ -34,6 +34,7 @@ export async function GET() {
           allFiles.push({
             key: file.Key,
             url: `${process.env.R2_PUBLIC_URL}/${file.Key}`,
+            size: file.Size ?? 0,
           });
         }
       }

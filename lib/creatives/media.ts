@@ -1,6 +1,7 @@
 export type MediaFile = {
   key: string;
   url: string;
+  size?: number; // байты, из R2 ListObjectsV2
   posterUrl?: string; // thumbnail из папки thumbnails/, только для видео
 };
 

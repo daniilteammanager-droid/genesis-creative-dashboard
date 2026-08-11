@@ -19,4 +19,7 @@ export type CreativeNote = {
   note: string | null;
   transcription_ru: string | null;
   updated_at: string;
+  // Скрывает битое/неактуальное название крео из списка "Ещё не загружено" в Медиатеке.
+  // Требует колонку `ignored boolean default false` в таблице creative_notes.
+  ignored?: boolean;
 };
