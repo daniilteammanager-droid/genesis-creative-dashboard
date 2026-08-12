@@ -57,7 +57,13 @@ function watchForProcessing(creativeCode: string, onReady: () => void) {
   setTimeout(tick, POLL_INTERVAL_MS);
 }
 
-export default function CreativeUploadModal({ onClose }: { onClose: () => void }) {
+export default function CreativeUploadModal({
+  onClose,
+  onUploaded,
+}: {
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadingAll, setUploadingAll] = useState(false);
@@ -126,7 +132,9 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
     const queued = items.filter((it) => it.status === "queued");
     const results = await Promise.all(queued.map((it) => processFile(it)));
     setUploadingAll(false);
-    if (results.filter(Boolean).length >= CONGRATS_THRESHOLD) setShowCongrats(true);
+    const successCount = results.filter(Boolean).length;
+    if (successCount > 0) onUploaded();
+    if (successCount >= CONGRATS_THRESHOLD) setShowCongrats(true);
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -192,7 +200,7 @@ export default function CreativeUploadModal({ onClose }: { onClose: () => void }
                 <UploadRow
                   key={it.id}
                   item={it}
-                  onOverwrite={() => processFile(it, true)}
+                  onOverwrite={() => processFile(it, true).then((ok) => ok && onUploaded())}
                   onRemove={() => removeItem(it.id)}
                   onRename={(name) => renameItem(it.id, name)}
                 />

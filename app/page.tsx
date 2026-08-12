@@ -148,9 +148,13 @@ export default function Home() {
 
   // ─── Data loading ────────────────────────────────────────────────────────
 
-  const loadMedia = useCallback(async () => {
+  // fresh=true bypasses the browser/CDN cache (cache-busting query + no-store) — used after
+  // an upload/rename/delete, where the R2 list must reflect the change immediately instead
+  // of the up-to-10-minute Cache-Control on /api/media (fine for the initial page load).
+  const loadMedia = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch("/api/media");
+      const url = fresh ? `/api/media?_=${Date.now()}` : "/api/media";
+      const res = await fetch(url, fresh ? { cache: "no-store" } : undefined);
       if (!res.ok) throw new Error(`Media: ошибка сети ${res.status}`);
       const data = await res.json();
       setMedia(Array.isArray(data) ? data : []);
@@ -544,7 +548,9 @@ export default function Home() {
         />
       )}
 
-      {showUpload && <CreativeUploadModal onClose={() => setShowUpload(false)} />}
+      {showUpload && (
+        <CreativeUploadModal onClose={() => setShowUpload(false)} onUploaded={() => loadMedia(true)} />
+      )}
 
       {showLibrary && (
         <MediaLibrary
@@ -553,7 +559,7 @@ export default function Home() {
           notes={notes}
           matchSuffixes={matchSuffixes}
           supabaseAvailable={!supabaseDown}
-          onRefresh={loadMedia}
+          onRefresh={() => loadMedia(true)}
           onSuffixesChanged={loadMatchSuffixes}
           onToggleIgnored={toggleIgnored}
           onClose={() => setShowLibrary(false)}
