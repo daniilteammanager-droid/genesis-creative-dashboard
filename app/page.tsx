@@ -6,7 +6,7 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
-import { type MediaFile, findMedia, isVideo, isImage, getApproach } from "@/lib/creatives/media";
+import { type MediaFile, findMediaMatch, isVideo, isImage, getApproach } from "@/lib/creatives/media";
 import { parseNumber, formatSummaryNumber, formatRomiPct } from "@/lib/creatives/format";
 import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
@@ -16,6 +16,7 @@ import CreativeUploadModal from "./CreativeUploadModal";
 type CreativeCardProps = {
   item: CreativeRow;
   itemMedia: MediaFile | undefined;
+  itemMediaExact: boolean; // false = matched by base name (geo/variant suffix stripped), not the exact file
   itemApproach: string;
   itemNote: CreativeNote | undefined;
   supabaseAvailable: boolean;
@@ -50,6 +51,9 @@ export default function Home() {
   const [notes,      setNotes]      = useState<Record<string, CreativeNote>>({});
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState<string | null>(null);
+  // Known geo/variant naming suffixes ("es", "ar", "v2"...) — lets matching fall back
+  // from an exact filename to a shared base name (edit1-ar -> edit1). Editable in Медиатека.
+  const [matchSuffixes, setMatchSuffixes] = useState<string[]>([]);
 
   // JS-driven column count (mirrors Tailwind responsive breakpoints)
   const [columnCount, setColumnCount] = useState(1);
@@ -157,6 +161,19 @@ export default function Home() {
     }
   }, []);
 
+  const loadMatchSuffixes = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const { data, error } = await supabase.from("creative_match_suffixes").select("suffix");
+    if (error) { console.error("Ошибка загрузки суффиксов мэтчинга:", error); return; }
+    setMatchSuffixes((data ?? []).map((r) => r.suffix as string));
+  }, []);
+
+  const matchSuffixSet = useMemo(() => new Set(matchSuffixes), [matchSuffixes]);
+  const findMedia = useCallback(
+    (creative: string) => findMediaMatch(creative, media, matchSuffixSet),
+    [media, matchSuffixSet]
+  );
+
   useEffect(() => {
     async function loadCSV() {
       try {
@@ -186,7 +203,8 @@ export default function Home() {
     loadCSV();
     loadMedia();
     loadNotes();
-  }, []);
+    loadMatchSuffixes();
+  }, [loadMedia, loadMatchSuffixes]);
 
   useEffect(() => {
     if (!csvLoading && !mediaLoading) {
@@ -214,8 +232,8 @@ export default function Home() {
       .filter((item) => item.creative.toLowerCase().includes(search.toLowerCase()))
       .filter((item) => {
         if (activeApproach === "all") return true;
-        const file = findMedia(item.creative, media);
-        return (file ? getApproach(file.key) : "unknown") === activeApproach;
+        const match = findMedia(item.creative);
+        return (match ? getApproach(match.file.key) : "unknown") === activeApproach;
       });
     return {
       all:       base.length,
@@ -224,7 +242,7 @@ export default function Home() {
       test:      base.filter((item) => parseNumber(item.spend) < 1000).length,
       favorites: base.filter((item) => notes[item.creative]?.favorite === true).length,
     };
-  }, [rows, search, activeApproach, media, notes]);
+  }, [rows, search, activeApproach, notes, findMedia]);
 
   const filtered = useMemo(() => {
     const sortFn = (a: CreativeRow, b: CreativeRow) => {
@@ -255,11 +273,11 @@ export default function Home() {
       })
       .filter((item) => {
         if (activeApproach === "all") return true;
-        const file = findMedia(item.creative, media);
-        return (file ? getApproach(file.key) : "unknown") === activeApproach;
+        const match = findMedia(item.creative);
+        return (match ? getApproach(match.file.key) : "unknown") === activeApproach;
       })
       .sort(sortFn);
-  }, [rows, search, activeTab, activeApproach, activeSort, media, notes]);
+  }, [rows, search, activeTab, activeApproach, activeSort, notes, findMedia]);
 
   const summary = useMemo(() => {
     const validSpend    = filtered.map((r) => parseNumber(r.spend)).filter(isFinite);
@@ -483,21 +501,22 @@ export default function Home() {
                         paddingBottom:         `${gap}px`,
                       }}
                     >
-                      {rowItems.map((item) => (
-                        <CreativeCard
-                          key={item.creative}
-                          item={item}
-                          itemMedia={findMedia(item.creative, media)}
-                          itemApproach={(() => {
-                            const f = findMedia(item.creative, media);
-                            return f ? getApproach(f.key) : "unknown";
-                          })()}
-                          itemNote={notes[item.creative]}
-                          supabaseAvailable={!supabaseDown}
-                          onSelect={handleSetSelected}
-                          onToggleFavorite={toggleFavorite}
-                        />
-                      ))}
+                      {rowItems.map((item) => {
+                        const match = findMedia(item.creative);
+                        return (
+                          <CreativeCard
+                            key={item.creative}
+                            item={item}
+                            itemMedia={match?.file}
+                            itemMediaExact={match?.exact ?? true}
+                            itemApproach={match ? getApproach(match.file.key) : "unknown"}
+                            itemNote={notes[item.creative]}
+                            supabaseAvailable={!supabaseDown}
+                            onSelect={handleSetSelected}
+                            onToggleFavorite={toggleFavorite}
+                          />
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -507,14 +526,14 @@ export default function Home() {
         )}
 
         {topTab === "analytics" && (
-          <AnalyticsView rows={rows} media={media} />
+          <AnalyticsView rows={rows} media={media} matchSuffixes={matchSuffixes} />
         )}
       </div>
 
       {selected && (
         <CreativeModal
           item={selected}
-          mediaFile={findMedia(selected.creative, media)}
+          mediaFile={findMedia(selected.creative)?.file}
           note={notes[selected.creative]}
           supabaseAvailable={!supabaseDown}
           onClose={() => setSelected(null)}
@@ -532,8 +551,10 @@ export default function Home() {
           rows={rows}
           media={media}
           notes={notes}
+          matchSuffixes={matchSuffixes}
           supabaseAvailable={!supabaseDown}
           onRefresh={loadMedia}
+          onSuffixesChanged={loadMatchSuffixes}
           onToggleIgnored={toggleIgnored}
           onClose={() => setShowLibrary(false)}
         />
@@ -547,6 +568,7 @@ export default function Home() {
 const CreativeCard = memo(function CreativeCard({
   item,
   itemMedia,
+  itemMediaExact,
   itemApproach,
   itemNote,
   supabaseAvailable,
@@ -567,11 +589,21 @@ const CreativeCard = memo(function CreativeCard({
       <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-violet-900/20">
         <div className="min-w-0 flex-1">
           <div className="text-base font-bold text-white truncate">{item.creative}</div>
-          {itemApproach !== "unknown" && (
-            <span className="inline-block text-[10px] font-medium bg-violet-800/35 text-violet-100 border border-violet-700/40 px-1.5 py-0.5 rounded-full mt-1 truncate max-w-full">
-              {itemApproach}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+            {itemApproach !== "unknown" && (
+              <span className="inline-block text-[10px] font-medium bg-violet-800/35 text-violet-100 border border-violet-700/40 px-1.5 py-0.5 rounded-full truncate max-w-full">
+                {itemApproach}
+              </span>
+            )}
+            {itemMedia && !itemMediaExact && (
+              <span
+                className="inline-block text-[10px] font-medium bg-amber-800/25 text-amber-300/90 border border-amber-700/40 px-1.5 py-0.5 rounded-full"
+                title="Точного файла нет — превью подставлено по похожему названию"
+              >
+                ≈ похоже
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
@@ -763,7 +795,8 @@ function LoadingScreen() {
 
 // ─── Analytics view ───────────────────────────────────────────────────────────
 
-function AnalyticsView({ rows, media }: { rows: CreativeRow[]; media: MediaFile[] }) {
+function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; media: MediaFile[]; matchSuffixes: string[] }) {
+  const suffixSet = useMemo(() => new Set(matchSuffixes), [matchSuffixes]);
   const analytics = useMemo(() => {
     if (rows.length === 0) return null;
 
@@ -790,8 +823,8 @@ function AnalyticsView({ rows, media }: { rows: CreativeRow[]; media: MediaFile[
     for (const item of rows) {
       const spend = parseNumber(item.spend);
       if (isNaN(spend) || spend <= 0) continue;
-      const file     = findMedia(item.creative, media);
-      const approach = file ? getApproach(file.key) : "unknown";
+      const match    = findMediaMatch(item.creative, media, suffixSet);
+      const approach = match ? getApproach(match.file.key) : "unknown";
       spendMap.set(approach, (spendMap.get(approach) ?? 0) + spend);
     }
     const spendByApproach = [...spendMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -799,8 +832,8 @@ function AnalyticsView({ rows, media }: { rows: CreativeRow[]; media: MediaFile[
     const winnersMap = new Map<string, number>();
     for (const item of rows) {
       if (parseNumber(item.romi) < 150) continue;
-      const file     = findMedia(item.creative, media);
-      const approach = file ? getApproach(file.key) : "unknown";
+      const match    = findMediaMatch(item.creative, media, suffixSet);
+      const approach = match ? getApproach(match.file.key) : "unknown";
       winnersMap.set(approach, (winnersMap.get(approach) ?? 0) + 1);
     }
     const winnersByApproach = [...winnersMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -816,7 +849,7 @@ function AnalyticsView({ rows, media }: { rows: CreativeRow[]; media: MediaFile[
       .slice(0, 10);
 
     return { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits };
-  }, [rows, media]);
+  }, [rows, media, suffixSet]);
 
   if (!analytics) return <p className="text-zinc-500 text-sm mt-8">Нет данных для аналитики.</p>;
 

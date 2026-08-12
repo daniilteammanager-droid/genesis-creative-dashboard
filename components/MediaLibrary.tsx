@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import type { CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
-import { type MediaFile, findMedia, getFileBaseName, isVideo, getApproach } from "@/lib/creatives/media";
+import { type MediaFile, findMediaMatch, getFileBaseName, isVideo, getApproach } from "@/lib/creatives/media";
 
 // "Медиатека" — modal opened from the Creatives toolbar (next to "Загрузить").
 // Shows what's already in R2 vs. what's still missing per CSV creative code
-// (with an ignore toggle for known-broken CSV names), plus rename/delete on
-// uploaded files and their processing status (thumbnail / RU transcription / ready).
+// (with an ignore toggle for known-broken CSV names and a "possible match" bucket
+// for base-name matches — see findMediaMatch), plus rename/delete on uploaded files,
+// their processing status (thumbnail / RU transcription / ready), and the editable
+// list of geo/variant naming suffixes that drives the base-name fallback.
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -22,21 +25,26 @@ export default function MediaLibrary({
   rows,
   media,
   notes,
+  matchSuffixes,
   supabaseAvailable,
   onRefresh,
+  onSuffixesChanged,
   onToggleIgnored,
   onClose,
 }: {
   rows: CreativeRow[];
   media: MediaFile[];
   notes: Record<string, CreativeNote>;
+  matchSuffixes: string[];
   supabaseAvailable: boolean;
   onRefresh: () => void;
+  onSuffixesChanged: () => void;
   onToggleIgnored: (creativeCode: string) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [showIgnored, setShowIgnored] = useState(false);
+  const suffixSet = useMemo(() => new Set(matchSuffixes), [matchSuffixes]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -44,9 +52,18 @@ export default function MediaLibrary({
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
+  // Truly missing (no file at all, even by base name) vs. found under a different
+  // geo/variant suffix — the latter isn't "missing", just not an exact filename match.
   const missingAll = useMemo(
-    () => rows.filter((r) => !findMedia(r.creative, media)),
-    [rows, media]
+    () => rows.filter((r) => !findMediaMatch(r.creative, media, suffixSet)),
+    [rows, media, suffixSet]
+  );
+  const possibleMatches = useMemo(
+    () =>
+      rows
+        .map((r) => ({ row: r, match: findMediaMatch(r.creative, media, suffixSet) }))
+        .filter((x): x is { row: CreativeRow; match: { file: MediaFile; exact: false } } => !!x.match && !x.match.exact),
+    [rows, media, suffixSet]
   );
   const ignoredCount = missingAll.filter((r) => notes[r.creative]?.ignored).length;
   const missing = useMemo(
@@ -141,6 +158,31 @@ export default function MediaLibrary({
               </div>
             </div>
           )}
+
+          {possibleMatches.length > 0 && (
+            <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
+              <h3 className="text-sm font-bold text-zinc-300 mb-1">
+                Похоже, уже загружено под другим гео ({possibleMatches.length})
+              </h3>
+              <p className="text-xs text-zinc-600 mb-3">
+                Точного файла нет, но по базовому названию совпадает с уже загруженным — превью на карточке подставится автоматически.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {possibleMatches
+                  .filter(({ row }) => row.creative.toLowerCase().includes(search.toLowerCase()))
+                  .map(({ row, match }) => (
+                    <span
+                      key={row.creative}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-violet-900/20 text-violet-300/90 border border-violet-700/30"
+                    >
+                      {row.creative} → {match.file.key.split("/").pop()}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          <SuffixManager suffixes={matchSuffixes} onChanged={onSuffixesChanged} />
 
           <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
             <h3 className="text-sm font-bold text-zinc-300 mb-4">Загружено ({files.length})</h3>
@@ -286,6 +328,79 @@ function ProcessingBadges({ file, note }: { file: MediaFile; note: CreativeNote 
         </span>
       ))}
     </>
+  );
+}
+
+// Geo/variant suffixes ("es", "ar", "v2"...) that findMediaMatch strips from the end
+// of a name to find a base-name fallback match. Naming isn't a fixed convention, so
+// this list lives in Supabase (creative_match_suffixes) and is editable here.
+function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged: () => void }) {
+  const [newSuffix, setNewSuffix] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function addSuffix() {
+    const value = newSuffix.trim().toLowerCase();
+    if (!value || suffixes.includes(value)) { setNewSuffix(""); return; }
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("creative_match_suffixes").insert({ suffix: value });
+    setBusy(false);
+    if (error) { setError(error.message); return; }
+    setNewSuffix("");
+    onChanged();
+  }
+
+  async function removeSuffix(value: string) {
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("creative_match_suffixes").delete().eq("suffix", value);
+    setBusy(false);
+    if (error) { setError(error.message); return; }
+    onChanged();
+  }
+
+  return (
+    <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
+      <h3 className="text-sm font-bold text-zinc-300 mb-1">Суффиксы для мэтчинга по базовому имени</h3>
+      <p className="text-xs text-zinc-600 mb-3">
+        "edit1-ar" совпадёт с "edit1-es", если "ar" и "es" здесь — крео с одинаковой базой, но разным гео/вариантом в конце названия.
+      </p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {suffixes.map((s) => (
+          <span key={s} className="flex items-center gap-1.5 text-xs pl-2.5 pr-1.5 py-1 rounded-lg bg-violet-900/20 text-violet-300/90 border border-violet-700/30">
+            {s}
+            <button
+              onClick={() => removeSuffix(s)}
+              disabled={busy}
+              className="text-current opacity-60 hover:opacity-100 transition disabled:opacity-30 leading-none px-0.5"
+              title="Убрать суффикс"
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        {suffixes.length === 0 && <p className="text-xs text-zinc-600">Пусто — мэтчинг по базовому имени выключен.</p>}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newSuffix}
+          onChange={(e) => setNewSuffix(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addSuffix()}
+          placeholder="например: uk"
+          className="flex-1 bg-[#0d0b14] border border-violet-900/40 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600"
+        />
+        <button
+          onClick={addSuffix}
+          disabled={busy || !newSuffix.trim()}
+          className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition disabled:opacity-50"
+        >
+          Добавить
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-400 mt-2">{error}</p>}
+    </div>
   );
 }
 

@@ -22,6 +22,36 @@ export function findMedia(creative: string, media: MediaFile[]) {
   return media.find((file) => getFileBaseName(file.key) === creativeKey);
 }
 
+// Strips trailing dash-tokens that are known geo/variant tags ("edit1-ar" -> "edit1"),
+// stopping at the first token that isn't in the list ("qa-6-es" -> "qa-6", not "qa").
+// The tag list isn't a fixed convention — buyers keep inventing new ones — so it's
+// data-driven (creative_match_suffixes in Supabase), never hardcoded here.
+export function stripKnownSuffixes(normalizedName: string, suffixes: ReadonlySet<string>): string {
+  if (suffixes.size === 0) return normalizedName;
+  const parts = normalizedName.split("-");
+  while (parts.length > 1 && suffixes.has(parts[parts.length - 1])) parts.pop();
+  return parts.join("-");
+}
+
+export type MediaMatch = { file: MediaFile; exact: boolean };
+
+// Exact match first; if none, falls back to matching on the base name with known
+// geo/variant suffixes stripped from both sides — so "edit1-ar" can reuse the media
+// already uploaded as "edit1-es" instead of showing up as missing / duplicate.
+export function findMediaMatch(
+  creative: string,
+  media: MediaFile[],
+  suffixes: ReadonlySet<string>
+): MediaMatch | undefined {
+  const exact = findMedia(creative, media);
+  if (exact) return { file: exact, exact: true };
+  if (suffixes.size === 0) return undefined;
+
+  const targetBase = stripKnownSuffixes(normalize(creative), suffixes);
+  const file = media.find((f) => stripKnownSuffixes(getFileBaseName(f.key), suffixes) === targetBase);
+  return file ? { file, exact: false } : undefined;
+}
+
 export function isVideo(url: string) {
   return /\.(mov|mp4)$/i.test(url);
 }
