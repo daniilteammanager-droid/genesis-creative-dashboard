@@ -9,6 +9,10 @@ export function normalize(value: string) {
   return value
     .toLowerCase()
     .trim()
+    // CSV creative codes sometimes use "/" (from the Facebook ad name) where the actual
+    // uploaded filename used ":" instead, since "/" isn't a valid filename character —
+    // treat them as the same separator so "balance/5f-es" matches "balance:5f-es".
+    .replace(/\//g, ":")
     .replace(/\.(mov|mp4|jpg|jpeg|png|webp)$/i, "");
 }
 
