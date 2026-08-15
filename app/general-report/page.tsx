@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import type { GrDayRow, GrSource, GrPeriodRow, GrTotals } from "@/lib/general-report/types";
 import { computeTotals, groupByPeriod } from "@/lib/general-report/aggregate";
@@ -185,6 +185,74 @@ function TrendChart({ periods }: { periods: GrPeriodRow[] }) {
     </div>
   );
 }
+
+// ─── Table columns ────────────────────────────────────────────────────────────
+// Order is the one Daniil specified directly (26.08.2026), matching the exact
+// column names from the source sheet (see parseCountrySheet.ts).
+
+interface ColDef {
+  id: string;
+  label: string;
+  cell: (p: GrPeriodRow) => ReactNode;
+}
+
+// No field in GrTotals for this one — cheap enough to derive inline.
+const overallCrLp = (p: GrPeriodRow) => (p.adClicks > 0 ? p.registrations / p.adClicks : null);
+
+const COLUMNS: ColDef[] = [
+  { id: "period", label: "Ad Date",
+    cell: (p) => <span className="text-zinc-200 font-medium">{p.periodLabel}</span> },
+  { id: "revenue", label: "Revenue",
+    cell: (p) => p.revenue > 0 ? <span className="text-green-400">{fmtMoney(p.revenue, 0)}</span> : <span className="text-zinc-700">—</span> },
+  { id: "netProfit", label: "Net Profit",
+    cell: (p) => <span className={p.netProfit >= 0 ? "text-green-400" : "text-red-400"}>{fmtMoney(p.netProfit, 0)}</span> },
+  { id: "romiTotal", label: "ROMI TOTAL",
+    cell: (p) => <span className={`font-medium ${romiClass(p.romi)}`}>{fmtPct(p.romi)}</span> },
+  { id: "roas", label: "ROAS",
+    cell: (p) => <span className="text-zinc-300">{p.roas === null ? "—" : p.roas.toFixed(2)}</span> },
+  { id: "spend", label: "Ad Budget",
+    cell: (p) => <span className="text-white">{p.budget > 0 ? fmtMoney(p.budget) : "—"}</span> },
+  { id: "adClicks", label: "Ad Clicks",
+    cell: (p) => <span className="text-zinc-300">{p.adClicks > 0 ? fmt(p.adClicks) : "—"}</span> },
+  { id: "websiteClicks", label: "Website Clicks",
+    cell: (p) => <span className="text-zinc-300">{p.websiteClicks > 0 ? fmt(p.websiteClicks) : "—"}</span> },
+  { id: "impressions", label: "Impressions",
+    cell: (p) => <span className="text-zinc-500">{p.impressions > 0 ? fmt(p.impressions) : "—"}</span> },
+  { id: "cpm", label: "CPM",
+    cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.cpm)}</span> },
+  { id: "cpc", label: "CPC",
+    cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.cpc)}</span> },
+  { id: "ctr", label: "CTR %",
+    cell: (p) => <span className="text-zinc-300">{fmtPct(p.ctr)}</span> },
+  { id: "crAdToLp", label: "CR% Ad to LP",
+    cell: (p) => <span className="text-zinc-300">{fmtPct(p.crAdToLp)}</span> },
+  { id: "crLpToChannel", label: "CR% LP to Channel",
+    cell: (p) => <span className="text-zinc-300">{fmtPct(p.crLpToChannel)}</span> },
+  { id: "registrations", label: "Subscribers",
+    cell: (p) => <span className="text-zinc-300">{p.registrations > 0 ? fmt(p.registrations) : "—"}</span> },
+  { id: "overallCrLp", label: "Общая CR LP %",
+    cell: (p) => <span className="text-zinc-300">{fmtPct(overallCrLp(p))}</span> },
+  { id: "costPerSub", label: "Cost per Subscriber",
+    cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.costPerSub)}</span> },
+  { id: "dialogs", label: "Dialog MVP",
+    cell: (p) => <span className="text-zinc-300">{p.dialogs > 0 ? fmt(p.dialogs) : "—"}</span> },
+  { id: "crToDialog", label: "CR% Conversion to Dialog",
+    cell: (p) => <span className="text-zinc-300">{fmtPct(p.crToDialog)}</span> },
+  { id: "costPerDialog", label: "Total Cost per Dialog",
+    cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.costPerDialog)}</span> },
+  { id: "deposits", label: "Number of Deposits",
+    cell: (p) => <span className="text-zinc-300">{p.depCountCpa + p.depCountIb > 0 ? fmt(p.depCountCpa + p.depCountIb) : "—"}</span> },
+  { id: "depAmount", label: "Total Deposit Amount",
+    cell: (p) => p.depAmountCpa + p.depAmountIb > 0 ? <span className="text-green-400">{fmtMoney(p.depAmountCpa + p.depAmountIb, 0)}</span> : <span className="text-zinc-700">—</span> },
+  { id: "crDialogToDep", label: "CR% Dialog to Deposit",
+    cell: (p) => <span className="text-zinc-300">{fmtPct(p.crDialogToDep)}</span> },
+  { id: "payoutsCpa", label: "Number of CPA Payouts",
+    cell: (p) => <span className="text-zinc-300">{p.payoutsCpa > 0 ? fmt(p.payoutsCpa) : "—"}</span> },
+  { id: "revenueCpa", label: "Revenue from CPA Payouts",
+    cell: (p) => p.revenueCpa > 0 ? <span className="text-green-400">{fmtMoney(p.revenueCpa, 0)}</span> : <span className="text-zinc-700">—</span> },
+  { id: "cac", label: "CAC",
+    cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.cac)}</span> },
+];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -449,11 +517,9 @@ export default function GeneralReportPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-[#0f0d18] border-b border-violet-900/20">
                     <tr>
-                      {["Период", "Spend", "Revenue", "Net Profit", "ROMI", "ROAS",
-                        "Клики", "Клики сайт", "Показы", "CPM", "CPC", "Подписчики", "Цена подп.",
-                        "Диалоги", "Цена диа", "Депы (CPA+IB)", "Сумма депов", "CAC"].map((h) => (
-                        <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
-                          {h}
+                      {COLUMNS.map((c) => (
+                        <th key={c.id} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
+                          {c.label}
                         </th>
                       ))}
                     </tr>
@@ -461,39 +527,14 @@ export default function GeneralReportPage() {
                   <tbody className="divide-y divide-violet-900/10">
                     {periods.map((p) => (
                       <tr key={p.periodKey} className="hover:bg-violet-900/5 transition-colors">
-                        <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap font-medium">{p.periodLabel}</td>
-                        <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-white">{p.budget > 0 ? fmtMoney(p.budget) : "—"}</td>
-                        <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">
-                          {p.revenue > 0 ? <span className="text-green-400">{fmtMoney(p.revenue, 0)}</span> : <span className="text-zinc-700">—</span>}
-                        </td>
-                        <td className={`px-3 py-2.5 tabular-nums whitespace-nowrap ${p.netProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
-                          {fmtMoney(p.netProfit, 0)}
-                        </td>
-                        <td className={`px-3 py-2.5 tabular-nums whitespace-nowrap font-medium ${romiClass(p.romi)}`}>{fmtPct(p.romi)}</td>
-                        <td className="px-3 py-2.5 tabular-nums whitespace-nowrap text-zinc-300">{p.roas === null ? "—" : p.roas.toFixed(2)}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-300">{p.adClicks > 0 ? fmt(p.adClicks) : "—"}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-300">{p.websiteClicks > 0 ? fmt(p.websiteClicks) : "—"}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-500">{p.impressions > 0 ? fmt(p.impressions) : "—"}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.cpm)}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.cpc)}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-300">{p.registrations > 0 ? fmt(p.registrations) : "—"}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.costPerSub)}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-300">{p.dialogs > 0 ? fmt(p.dialogs) : "—"}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.costPerDialog)}</td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-300 whitespace-nowrap">
-                          {p.depCountCpa + p.depCountIb > 0 ? `${fmt(p.depCountCpa)} + ${fmt(p.depCountIb)}` : "—"}
-                        </td>
-                        <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">
-                          {p.depAmountCpa + p.depAmountIb > 0
-                            ? <span className="text-green-400">{fmtMoney(p.depAmountCpa + p.depAmountIb, 0)}</span>
-                            : <span className="text-zinc-700">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 tabular-nums text-zinc-400">{fmtOptMoney(p.cac)}</td>
+                        {COLUMNS.map((c) => (
+                          <td key={c.id} className="px-3 py-2.5 tabular-nums whitespace-nowrap">{c.cell(p)}</td>
+                        ))}
                       </tr>
                     ))}
                     {periods.length === 0 && (
                       <tr>
-                        <td colSpan={18} className="px-4 py-12 text-center text-zinc-600 text-sm">
+                        <td colSpan={COLUMNS.length} className="px-4 py-12 text-center text-zinc-600 text-sm">
                           Нет данных за выбранный период.
                         </td>
                       </tr>
@@ -502,34 +543,13 @@ export default function GeneralReportPage() {
                   {periods.length > 0 && (
                     <tfoot>
                       <tr className="bg-[#0f0d18] border-t-2 border-violet-800/30">
-                        <td className="px-3 py-3 text-xs font-semibold text-violet-400 uppercase tracking-wider whitespace-nowrap">
-                          Итог ({periods.length})
-                        </td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-white whitespace-nowrap">{fmtMoney(rangeTotals.budget)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
-                          {rangeTotals.revenue > 0 ? <span className="text-green-400">{fmtMoney(rangeTotals.revenue, 0)}</span> : "—"}
-                        </td>
-                        <td className={`px-3 py-3 tabular-nums font-semibold whitespace-nowrap ${rangeTotals.netProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
-                          {fmtMoney(rangeTotals.netProfit, 0)}
-                        </td>
-                        <td className={`px-3 py-3 tabular-nums font-semibold whitespace-nowrap ${romiClass(rangeTotals.romi)}`}>{fmtPct(rangeTotals.romi)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{rangeTotals.roas === null ? "—" : rangeTotals.roas.toFixed(2)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{fmt(rangeTotals.adClicks)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{fmt(rangeTotals.websiteClicks)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-500">{fmt(rangeTotals.impressions)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.cpm)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.cpc)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{fmt(rangeTotals.registrations)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.costPerSub)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300">{fmt(rangeTotals.dialogs)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.costPerDialog)}</td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-300 whitespace-nowrap">
-                          {fmt(rangeTotals.depCountCpa)} + {fmt(rangeTotals.depCountIb)}
-                        </td>
-                        <td className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
-                          <span className="text-green-400">{fmtMoney(rangeTotals.depAmountCpa + rangeTotals.depAmountIb, 0)}</span>
-                        </td>
-                        <td className="px-3 py-3 tabular-nums font-semibold text-zinc-400">{fmtOptMoney(rangeTotals.cac)}</td>
+                        {COLUMNS.map((c, i) => (
+                          <td key={c.id} className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
+                            {i === 0
+                              ? <span className="text-xs text-violet-400 uppercase tracking-wider">Итог ({periods.length})</span>
+                              : c.cell({ ...rangeTotals, periodKey: "total", periodLabel: `Итог (${periods.length})` })}
+                          </td>
+                        ))}
                       </tr>
                     </tfoot>
                   )}

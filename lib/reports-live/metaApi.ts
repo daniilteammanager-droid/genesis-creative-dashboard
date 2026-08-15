@@ -84,9 +84,19 @@ export async function fetchActiveAccounts(): Promise<AdAccount[]> {
     return accountsCache.accounts;
   }
 
+  // Track discovery errors (bad/expired token, revoked permissions) instead of swallowing
+  // them into an empty list — an empty list looks identical to "no ad accounts" and used to
+  // render a report with zero spend and no indication anything was wrong.
+  let discoveryError: Error | undefined;
   const [direct, businesses] = await Promise.all([
-    fetchEdgePaged<AdAccount>("me", "adaccounts", "id,name,account_status").catch(() => []),
-    fetchEdgePaged<Business>("me", "businesses", "id").catch(() => []),
+    fetchEdgePaged<AdAccount>("me", "adaccounts", "id,name,account_status").catch((e) => {
+      discoveryError = e;
+      return [];
+    }),
+    fetchEdgePaged<Business>("me", "businesses", "id").catch((e) => {
+      discoveryError = e;
+      return [];
+    }),
   ]);
 
   const viaBusinesses = await mapWithConcurrency(businesses, CONCURRENCY, async (b) => {
@@ -100,6 +110,10 @@ export async function fetchActiveAccounts(): Promise<AdAccount[]> {
   const byId = new Map<string, AdAccount>();
   for (const a of [...direct, ...viaBusinesses.flat()]) {
     if (a.account_status === 1) byId.set(a.id, a);
+  }
+
+  if (byId.size === 0 && discoveryError && !accountsCache) {
+    throw new Error(`Meta account discovery failed: ${discoveryError.message}`);
   }
 
   // Stale cache beats an empty report if this pass itself got rate-limited.
