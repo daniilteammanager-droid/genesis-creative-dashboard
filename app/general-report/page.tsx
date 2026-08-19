@@ -7,15 +7,19 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 import type { TooltipContentProps } from "recharts";
-import type { GrDayRow, GrSource, GrPeriodRow, GrTotals } from "@/lib/general-report/types";
-import { computeTotals, groupByPeriod } from "@/lib/general-report/aggregate";
+import type {
+  GrDayRow, GrSource, GrKind, GrPeriodRow, GrTotals,
+  WaDayRow, WaPeriodRow, WaTotals,
+} from "@/lib/general-report/types";
+import { computeTotals, groupByPeriod, computeWaTotals, groupWaByPeriod } from "@/lib/general-report/aggregate";
 import type { Granularity } from "@/lib/general-report/aggregate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface GrApiResponse {
   source: GrSource;
-  rows: GrDayRow[];
+  kind: GrKind;
+  rows: GrDayRow[] | WaDayRow[];
   countries: string[];
   generatedAt: string;
   fetchedFrom: "api" | "cache";
@@ -24,12 +28,20 @@ interface GrApiResponse {
 
 type DatePreset = "all" | "this_week" | "last_week" | "this_month" | "last_month" | "custom";
 
-const SOURCES: { id: GrSource; label: string }[] = [
-  { id: "summary", label: "Саммари (баеры)" },
-  { id: "main",    label: "Главная" },
+// Two levels: company-wide tables, then the per-buyer tables. One source is
+// active at a time — a buyer table already contains every geo as its own sheet.
+const MAIN_SOURCES: { id: GrSource; label: string }[] = [
+  { id: "main",  label: "🇪🇺 EU" },
+  { id: "latam", label: "🌎 LATAM" },
+  { id: "wa",    label: "💬 WA" },
+];
+
+const BUYER_SOURCES: { id: GrSource; label: string }[] = [
+  { id: "summary", label: "Сводная" },
   { id: "artem",   label: "Артём" },
   { id: "matvey",  label: "Матвей" },
   { id: "andrey",  label: "Андрей" },
+  { id: "sayan",   label: "Саян" },
 ];
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -123,14 +135,14 @@ function SummaryCard({ label, value, tone }: { label: string; value: string; ton
 
 // ─── Configurable total cards ─────────────────────────────────────────────────
 
-interface CardDef {
+interface CardDef<T> {
   id: string;
   label: string;
-  value: (t: GrTotals) => string;
-  tone?: (t: GrTotals) => "good" | "bad" | undefined;
+  value: (t: T) => string;
+  tone?: (t: T) => "good" | "bad" | undefined;
 }
 
-const CARD_DEFS: CardDef[] = [
+const CARD_DEFS: CardDef<GrTotals>[] = [
   { id: "spend",       label: "Spend",         value: (t) => fmtMoney(t.budget, 0) },
   { id: "revenue",     label: "Revenue",       value: (t) => fmtMoney(t.revenue, 0), tone: (t) => (t.revenue > 0 ? "good" : undefined) },
   { id: "netProfit",   label: "Net Profit",    value: (t) => fmtMoney(t.netProfit, 0), tone: (t) => (t.netProfit >= 0 ? "good" : "bad") },
@@ -154,8 +166,35 @@ const CARD_DEFS: CardDef[] = [
   { id: "payouts",     label: "Выплаты",       value: (t) => `${fmt(t.payoutsCpa)} + ${fmt(t.payoutsIb)}` },
 ];
 
+const WA_CARD_DEFS: CardDef<WaTotals>[] = [
+  { id: "spend",         label: "Spend",             value: (t) => fmtMoney(t.budget, 0) },
+  { id: "registrations", label: "Регистрации",       value: (t) => fmt(t.registrations) },
+  { id: "costPerReg",    label: "Цена регистрации",  value: (t) => fmtOptMoney(t.costPerReg) },
+  { id: "applications",  label: "Заявки",            value: (t) => fmt(t.applications) },
+  { id: "payments",      label: "Оплаты",            value: (t) => fmt(t.payments), tone: (t) => (t.payments > 0 ? "good" : undefined) },
+  { id: "cac",           label: "CAC",               value: (t) => fmtOptMoney(t.cac) },
+  { id: "clicks",        label: "Клики",             value: (t) => fmt(t.clicks) },
+  { id: "impressions",   label: "Показы",            value: (t) => fmt(t.impressions) },
+  { id: "cpm",           label: "CPM",               value: (t) => fmtOptMoney(t.cpm) },
+  { id: "cpc",           label: "CPC",               value: (t) => fmtOptMoney(t.cpc) },
+  { id: "ctr",           label: "CTR",               value: (t) => fmtPct(t.ctr) },
+  { id: "siteCr",        label: "Конверсия сайта",   value: (t) => fmtPct(t.siteCr) },
+  { id: "wroteForBonus", label: "Написали за бонусом", value: (t) => fmt(t.wroteForBonus) },
+  { id: "enteredBot",    label: "Зашли в бота",      value: (t) => fmt(t.enteredBot) },
+  { id: "costPerActivation", label: "Цена активации", value: (t) => fmtOptMoney(t.costPerActivation) },
+  { id: "opened1",       label: "Открыли 1 статью",  value: (t) => fmt(t.opened1) },
+  { id: "opened2",       label: "Открыли 2 статью",  value: (t) => fmt(t.opened2) },
+  { id: "filledForm",    label: "Заполнили анкету",  value: (t) => fmt(t.filledForm) },
+  { id: "enteredWeb",    label: "Зашли на веб",      value: (t) => fmt(t.enteredWeb) },
+  { id: "costPerWeb",    label: "Стоимость участника", value: (t) => fmtOptMoney(t.costPerWeb) },
+  { id: "costPerApp",    label: "Стоимость заявки",  value: (t) => fmtOptMoney(t.costPerApp) },
+  { id: "crAppToPay",    label: "CR% заявка → оплата", value: (t) => fmtPct(t.crAppToPay) },
+];
+
 const DEFAULT_CARDS = ["spend", "revenue", "netProfit", "romi", "deposits", "cac"];
+const WA_DEFAULT_CARDS = ["spend", "registrations", "costPerReg", "applications", "payments", "cac"];
 const CARDS_STORAGE_KEY = "gr3.totalCards";
+const WA_CARDS_STORAGE_KEY = "gr3.waTotalCards";
 
 // ─── Charts ───────────────────────────────────────────────────────────────────
 
@@ -195,13 +234,13 @@ function ChartTooltip({
   );
 }
 
-interface ChartDef {
+interface ChartDef<T> {
   id: string;
   label: string;
-  render: (data: ChartPoint[]) => ReactNode;
+  render: (data: T) => ReactNode;
 }
 
-const CHART_DEFS: ChartDef[] = [
+const CHART_DEFS: ChartDef<ChartPoint[]>[] = [
   {
     id: "spendRevenue",
     label: "Spend vs Revenue",
@@ -286,20 +325,129 @@ const CHART_DEFS: ChartDef[] = [
 const DEFAULT_CHARTS = ["spendRevenue"];
 const CHARTS_STORAGE_KEY = "gr3.visibleCharts";
 
+// ─── WA charts ────────────────────────────────────────────────────────────────
+
+interface WaChartPoint {
+  name: string;
+  spend: number;
+  registrations: number;
+  costPerReg: number | null;
+  applications: number;
+  payments: number;
+  cac: number | null;
+}
+
+// The funnel chart is a snapshot of the selected range rather than a time
+// series, so the WA charts get both shapes.
+interface WaChartData {
+  points: WaChartPoint[];
+  totals: WaTotals;
+}
+
+const WA_CHART_DEFS: ChartDef<WaChartData>[] = [
+  {
+    id: "spendRegs",
+    label: "Spend vs Регистрации",
+    render: ({ points }) => (
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="wa-spend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis yAxisId="money" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
+          <YAxis yAxisId="count" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
+          <Tooltip content={(props) => <ChartTooltip {...props} money={["spend"]} plain={["registrations"]} />} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
+          <Area yAxisId="money" type="monotone" dataKey="spend" name="Spend" stroke="#8b5cf6" strokeWidth={2} fill="url(#wa-spend)" />
+          <Line yAxisId="count" type="monotone" dataKey="registrations" name="Регистрации" stroke="#4ade80" strokeWidth={2} dot={{ r: 2 }} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: "funnel",
+    label: "Воронка за период",
+    render: ({ totals }) => {
+      const stages = [
+        { name: "Клики", value: totals.clicks, fill: "#8b5cf6" },
+        { name: "Регистрации", value: totals.registrations, fill: "#a78bfa" },
+        { name: "Написали/бот", value: totals.wroteForBonus + totals.enteredBot, fill: "#c4b5fd" },
+        { name: "Анкета", value: totals.filledForm, fill: "#818cf8" },
+        { name: "Зашли на веб", value: totals.enteredWeb, fill: "#38bdf8" },
+        { name: "Заявка", value: totals.applications, fill: "#facc15" },
+        { name: "Оплата", value: totals.payments, fill: "#4ade80" },
+      ];
+      return (
+        <ResponsiveContainer width="100%" height={260}>
+          <ComposedChart data={stages} layout="vertical" margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={GRID_STROKE} horizontal={false} />
+            <XAxis type="number" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} width={110} />
+            <Tooltip content={(props) => <ChartTooltip {...props} plain={["value"]} />} />
+            <Bar dataKey="value" name="Кол-во" radius={[0, 3, 3, 0]}>
+              {stages.map((s, i) => <Cell key={i} fill={s.fill} />)}
+            </Bar>
+          </ComposedChart>
+        </ResponsiveContainer>
+      );
+    },
+  },
+  {
+    id: "costPerReg",
+    label: "Цена регистрации",
+    render: ({ points }) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
+          <Tooltip content={(props) => <ChartTooltip {...props} money={["costPerReg"]} />} />
+          <Line type="monotone" dataKey="costPerReg" name="Цена рег." stroke="#38bdf8" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: "waCac",
+    label: "Заявки и оплаты",
+    render: ({ points }) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
+          <Tooltip content={(props) => <ChartTooltip {...props} plain={["applications", "payments"]} />} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
+          <Bar dataKey="applications" name="Заявки" fill="#facc15" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="payments" name="Оплаты" fill="#4ade80" radius={[3, 3, 0, 0]} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+];
+
+const WA_DEFAULT_CHARTS = ["spendRegs", "funnel"];
+const WA_CHARTS_STORAGE_KEY = "gr3.waVisibleCharts";
+
 // ─── Table columns ────────────────────────────────────────────────────────────
 // Order is the one Daniil specified directly (26.08.2026), matching the exact
 // column names from the source sheet (see parseCountrySheet.ts).
 
-interface ColDef {
+interface ColDef<T> {
   id: string;
   label: string;
-  cell: (p: GrPeriodRow) => ReactNode;
+  cell: (p: T) => ReactNode;
 }
 
 // No field in GrTotals for this one — cheap enough to derive inline.
 const overallCrLp = (p: GrPeriodRow) => (p.adClicks > 0 ? p.registrations / p.adClicks : null);
 
-const COLUMNS: ColDef[] = [
+const COLUMNS: ColDef<GrPeriodRow>[] = [
   { id: "period", label: "Ad Date",
     cell: (p) => <span className="text-zinc-200 font-medium">{p.periodLabel}</span> },
   { id: "revenue", label: "Revenue",
@@ -354,7 +502,55 @@ const COLUMNS: ColDef[] = [
     cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.cac)}</span> },
 ];
 
+// WA table columns — the union of both funnel sheets, each in its source
+// position. A column belonging to only one sheet reads "—" for the other.
+const count = (v: number) => <span className="text-zinc-300">{v > 0 ? fmt(v) : "—"}</span>;
+const pct = (v: number | null) => <span className="text-zinc-300">{fmtPct(v)}</span>;
+const money = (v: number | null) => <span className="text-zinc-400">{fmtOptMoney(v)}</span>;
+
+const WA_COLUMNS: ColDef<WaPeriodRow>[] = [
+  { id: "period", label: "AD DATE",
+    cell: (p) => <span className="text-zinc-200 font-medium">{p.periodLabel}</span> },
+  { id: "budget", label: "Ad Budget",
+    cell: (p) => <span className="text-white">{p.budget > 0 ? fmtMoney(p.budget) : "—"}</span> },
+  { id: "clicks", label: "Ad Clicks", cell: (p) => count(p.clicks) },
+  { id: "impressions", label: "Impressions",
+    cell: (p) => <span className="text-zinc-500">{p.impressions > 0 ? fmt(p.impressions) : "—"}</span> },
+  { id: "cpm", label: "CPM", cell: (p) => money(p.cpm) },
+  { id: "cpc", label: "CPC", cell: (p) => money(p.cpc) },
+  { id: "ctr", label: "CTR %", cell: (p) => pct(p.ctr) },
+  { id: "siteCr", label: "% конверсия сайта", cell: (p) => pct(p.siteCr) },
+  { id: "registrations", label: "Регистраций",
+    cell: (p) => <span className="text-green-400">{p.registrations > 0 ? fmt(p.registrations) : "—"}</span> },
+  { id: "costPerReg", label: "Цена регистрации", cell: (p) => money(p.costPerReg) },
+  { id: "crRegToWrote", label: "CV % рега - написали", cell: (p) => pct(p.crRegToWrote) },
+  { id: "wroteForBonus", label: "Написали за бонусом", cell: (p) => count(p.wroteForBonus) },
+  { id: "crRegToBot", label: "CV % рега - зашли в бота", cell: (p) => pct(p.crRegToBot) },
+  { id: "enteredBot", label: "Зашли в бота", cell: (p) => count(p.enteredBot) },
+  { id: "costPerActivation", label: "Стоимость активации", cell: (p) => money(p.costPerActivation) },
+  { id: "crRegToOpen1", label: "CV % рега - открыли 1 статью", cell: (p) => pct(p.crRegToOpen1) },
+  { id: "opened1", label: "Открыли 1 статью", cell: (p) => count(p.opened1) },
+  { id: "crRegToOpen2", label: "CV % рега - открыли 2 статью", cell: (p) => pct(p.crRegToOpen2) },
+  { id: "opened2", label: "Открыли 2 статью", cell: (p) => count(p.opened2) },
+  { id: "filledForm", label: "Заполнили анкету", cell: (p) => count(p.filledForm) },
+  { id: "crRegToWeb", label: "CV % из регистрации - зашли на веб", cell: (p) => pct(p.crRegToWeb) },
+  { id: "enteredWeb", label: "Зашли на веб", cell: (p) => count(p.enteredWeb) },
+  { id: "costPerWeb", label: "Стоимость участника", cell: (p) => money(p.costPerWeb) },
+  { id: "crWebToApp", label: "CV % зашли на веб - заявка", cell: (p) => pct(p.crWebToApp) },
+  { id: "applications", label: "Заявка", cell: (p) => count(p.applications) },
+  { id: "costPerApp", label: "Стоимость заявки", cell: (p) => money(p.costPerApp) },
+  { id: "crAppToPay", label: "CV % из заявки - оплата", cell: (p) => pct(p.crAppToPay) },
+  { id: "payments", label: "Оплат",
+    cell: (p) => <span className="text-green-400">{p.payments > 0 ? fmt(p.payments) : "—"}</span> },
+  { id: "cac", label: "CAC", cell: (p) => money(p.cac) },
+];
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+type AnyPeriodRow = GrPeriodRow | WaPeriodRow;
+
+// Country sheets are labelled by country, WA sheets by funnel name.
+const groupLabelOf = (r: GrDayRow | WaDayRow): string => ("country" in r ? r.country : r.funnel);
 
 export default function GeneralReportPage() {
   const [source, setSource] = useState<GrSource>("summary");
@@ -368,52 +564,58 @@ export default function GeneralReportPage() {
   const [customTo, setCustomTo] = useState("");
   const [granularity, setGranularity] = useState<Granularity>("week");
 
+  // WA has its own metrics, so its cards/charts/columns and their saved
+  // selections are kept separate from the country-sheet ones.
+  const isWa = source === "wa";
+  const chartDefs = isWa ? WA_CHART_DEFS : CHART_DEFS;
+  const cardsKey = isWa ? WA_CARDS_STORAGE_KEY : CARDS_STORAGE_KEY;
+  const chartsKey = isWa ? WA_CHARTS_STORAGE_KEY : CHARTS_STORAGE_KEY;
+
   // Which total cards to show — persisted in localStorage, loaded after mount
   // to avoid SSR/hydration mismatch.
   const [visibleCards, setVisibleCards] = useState<string[]>(DEFAULT_CARDS);
   const [cardsSettingsOpen, setCardsSettingsOpen] = useState(false);
 
   useEffect(() => {
+    const fallback = isWa ? WA_DEFAULT_CARDS : DEFAULT_CARDS;
+    const defs = isWa ? WA_CARD_DEFS : CARD_DEFS;
     try {
-      const saved = localStorage.getItem(CARDS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as string[];
-        const valid = parsed.filter((id) => CARD_DEFS.some((c) => c.id === id));
-        if (valid.length > 0) setVisibleCards(valid);
-      }
-    } catch { /* corrupted value — keep defaults */ }
-  }, []);
+      const saved = localStorage.getItem(isWa ? WA_CARDS_STORAGE_KEY : CARDS_STORAGE_KEY);
+      const parsed = saved ? (JSON.parse(saved) as string[]) : [];
+      const valid = parsed.filter((id) => defs.some((c) => c.id === id));
+      setVisibleCards(valid.length > 0 ? valid : fallback);
+    } catch { setVisibleCards(fallback); }
+  }, [isWa]);
 
   const toggleCard = useCallback((id: string) => {
     setVisibleCards((prev) => {
       const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
       if (next.length === 0) return prev; // keep at least one card
-      localStorage.setItem(CARDS_STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(cardsKey, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [cardsKey]);
 
   // Which chart panels to show — same persisted-checkbox pattern as visibleCards.
   const [visibleCharts, setVisibleCharts] = useState<string[]>(DEFAULT_CHARTS);
 
   useEffect(() => {
+    const fallback = isWa ? WA_DEFAULT_CHARTS : DEFAULT_CHARTS;
+    const defs = isWa ? WA_CHART_DEFS : CHART_DEFS;
     try {
-      const saved = localStorage.getItem(CHARTS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as string[];
-        const valid = parsed.filter((id) => CHART_DEFS.some((c) => c.id === id));
-        setVisibleCharts(valid); // valid to be empty — "no charts" is a legitimate choice here
-      }
-    } catch { /* corrupted value — keep defaults */ }
-  }, []);
+      const saved = localStorage.getItem(isWa ? WA_CHARTS_STORAGE_KEY : CHARTS_STORAGE_KEY);
+      // No saved value at all → defaults; a saved empty list is a real "no charts" choice.
+      setVisibleCharts(saved ? (JSON.parse(saved) as string[]).filter((id) => defs.some((c) => c.id === id)) : fallback);
+    } catch { setVisibleCharts(fallback); }
+  }, [isWa]);
 
   const toggleChart = useCallback((id: string) => {
     setVisibleCharts((prev) => {
       const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
-      localStorage.setItem(CHARTS_STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(chartsKey, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [chartsKey]);
 
   const fetchData = useCallback((src: GrSource) => {
     setLoading(true);
@@ -433,19 +635,17 @@ export default function GeneralReportPage() {
     fetchData(source);
   }, [source, fetchData]);
 
-  // Countries that actually have data (26 sheets exist, most are empty)
+  // Country sheets group by country, WA sheets by funnel — one filter drives both.
   const activeCountries = useMemo(() => {
     if (!data) return [];
-    return [...new Set(data.rows.map((r) => r.country))].sort((a, b) => a.localeCompare(b, "ru"));
+    return [...new Set(data.rows.map(groupLabelOf))].sort((a, b) => a.localeCompare(b, "ru"));
   }, [data]);
 
   const countryRows = useMemo(() => {
     if (!data) return [];
-    return country === "all" ? data.rows : data.rows.filter((r) => r.country === country);
+    const rows: (GrDayRow | WaDayRow)[] = data.rows;
+    return country === "all" ? rows : rows.filter((r) => groupLabelOf(r) === country);
   }, [data, country]);
-
-  // All-time total: respects country filter, ignores date filter — never disappears
-  const allTimeTotals = useMemo(() => computeTotals(countryRows), [countryRows]);
 
   const rangeRows = useMemo(() => {
     const range = preset === "custom"
@@ -455,8 +655,20 @@ export default function GeneralReportPage() {
     return countryRows.filter((r) => r.date >= range.from && r.date <= range.to);
   }, [countryRows, preset, customFrom, customTo]);
 
-  const periods = useMemo(() => groupByPeriod(rangeRows, granularity), [rangeRows, granularity]);
-  const rangeTotals = useMemo(() => computeTotals(rangeRows), [rangeRows]);
+  // isWa gates which of these two parallel sets is real; the other stays empty.
+  const grAll  = useMemo(() => (isWa ? [] : (countryRows as GrDayRow[])), [isWa, countryRows]);
+  const waAll  = useMemo(() => (isWa ? (countryRows as WaDayRow[]) : []), [isWa, countryRows]);
+  const grRange = useMemo(() => (isWa ? [] : (rangeRows as GrDayRow[])), [isWa, rangeRows]);
+  const waRange = useMemo(() => (isWa ? (rangeRows as WaDayRow[]) : []), [isWa, rangeRows]);
+
+  // All-time total: respects the country filter, ignores the date filter — never disappears
+  const allTimeTotals = useMemo(() => computeTotals(grAll), [grAll]);
+  const waAllTimeTotals = useMemo(() => computeWaTotals(waAll), [waAll]);
+
+  const periods = useMemo(() => groupByPeriod(grRange, granularity), [grRange, granularity]);
+  const waPeriods = useMemo(() => groupWaByPeriod(waRange, granularity), [waRange, granularity]);
+  const rangeTotals = useMemo(() => computeTotals(grRange), [grRange]);
+  const waRangeTotals = useMemo(() => computeWaTotals(waRange), [waRange]);
 
   const chartData: ChartPoint[] = useMemo(() => [...periods].reverse().map((p) => ({
     name: p.periodLabel,
@@ -467,6 +679,41 @@ export default function GeneralReportPage() {
     depCount: p.depCountCpa + p.depCountIb,
     depAmount: p.depAmountCpa + p.depAmountIb,
   })), [periods]);
+
+  const waChartData: WaChartData = useMemo(() => ({
+    points: [...waPeriods].reverse().map((p) => ({
+      name: p.periodLabel,
+      spend: p.budget,
+      registrations: p.registrations,
+      costPerReg: p.costPerReg,
+      applications: p.applications,
+      payments: p.payments,
+      cac: p.cac,
+    })),
+    totals: waRangeTotals,
+  }), [waPeriods, waRangeTotals]);
+
+  // View models — one shape for the JSX regardless of which kind is loaded.
+  // The casts are safe because isWa picks the row type and the defs together.
+  const periodRows = (isWa ? waPeriods : periods) as AnyPeriodRow[];
+  const activeColumns = (isWa ? WA_COLUMNS : COLUMNS) as unknown as ColDef<AnyPeriodRow>[];
+  const activeCards = (isWa ? WA_CARD_DEFS : CARD_DEFS) as unknown as CardDef<GrTotals | WaTotals>[];
+  const cardTotals: GrTotals | WaTotals = isWa ? waAllTimeTotals : allTimeTotals;
+  const footTotals = {
+    ...(isWa ? waRangeTotals : rangeTotals),
+    periodKey: "total",
+    periodLabel: `Итог (${periodRows.length})`,
+  } as AnyPeriodRow;
+
+  const chartPanels = (isWa ? WA_CHART_DEFS : CHART_DEFS)
+    .filter((c) => visibleCharts.includes(c.id))
+    .map((c) => ({
+      id: c.id,
+      label: c.label,
+      node: isWa
+        ? (c as ChartDef<WaChartData>).render(waChartData)
+        : (c as ChartDef<ChartPoint[]>).render(chartData),
+    }));
 
   const chip = (active: boolean) =>
     `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -510,13 +757,28 @@ export default function GeneralReportPage() {
           </span>
         </div>
 
-        {/* Source switcher */}
-        <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
-          {SOURCES.map((s) => (
-            <button key={s.id} onClick={() => setSource(s.id)} className={chip(source === s.id)}>
-              {s.label}
-            </button>
-          ))}
+        {/* Source switcher — two levels: company tables, then buyer tables */}
+        <div className="flex flex-col gap-3 mb-6">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Таблицы</span>
+            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
+              {MAIN_SOURCES.map((s) => (
+                <button key={s.id} onClick={() => setSource(s.id)} className={chip(source === s.id)}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Баеры</span>
+            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
+              {BUYER_SOURCES.map((s) => (
+                <button key={s.id} onClick={() => setSource(s.id)} className={chip(source === s.id)}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Loading */}
@@ -571,7 +833,7 @@ export default function GeneralReportPage() {
               <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4 mb-4">
                 <p className="text-xs text-zinc-600 uppercase tracking-wider mb-3">Какие карточки показывать</p>
                 <div className="flex flex-wrap gap-2">
-                  {CARD_DEFS.map((c) => (
+                  {activeCards.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => toggleCard(c.id)}
@@ -590,12 +852,12 @@ export default function GeneralReportPage() {
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-              {CARD_DEFS.filter((c) => visibleCards.includes(c.id)).map((c) => (
+              {activeCards.filter((c) => visibleCards.includes(c.id)).map((c) => (
                 <SummaryCard
                   key={c.id}
                   label={c.label}
-                  value={c.value(allTimeTotals)}
-                  tone={c.tone?.(allTimeTotals)}
+                  value={c.value(cardTotals)}
+                  tone={c.tone?.(cardTotals)}
                 />
               ))}
             </div>
@@ -629,7 +891,7 @@ export default function GeneralReportPage() {
             </div>
 
             <div className="flex items-center gap-2 mb-6 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Страна:</span>
+              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">{isWa ? "Воронка:" : "Страна:"}</span>
               <button onClick={() => setCountry("all")} className={smallChip(country === "all")}>
                 Все ({activeCountries.length})
               </button>
@@ -643,17 +905,17 @@ export default function GeneralReportPage() {
             {/* Charts */}
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Графики:</span>
-              {CHART_DEFS.map((c) => (
+              {chartDefs.map((c) => (
                 <button key={c.id} onClick={() => toggleChart(c.id)} className={smallChip(visibleCharts.includes(c.id))}>
                   {visibleCharts.includes(c.id) ? "✓ " : ""}{c.label}
                 </button>
               ))}
             </div>
 
-            {chartData.length >= 2 && CHART_DEFS.filter((c) => visibleCharts.includes(c.id)).map((c) => (
+            {periodRows.length >= 2 && chartPanels.map((c) => (
               <div key={c.id} className="bg-[#111118] border border-violet-900/20 rounded-2xl p-4 mb-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">{c.label}</p>
-                {c.render(chartData)}
+                {c.node}
               </div>
             ))}
 
@@ -663,7 +925,7 @@ export default function GeneralReportPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-[#0f0d18] border-b border-violet-900/20">
                     <tr>
-                      {COLUMNS.map((c) => (
+                      {activeColumns.map((c) => (
                         <th key={c.id} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                           {c.label}
                         </th>
@@ -671,29 +933,29 @@ export default function GeneralReportPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-violet-900/10">
-                    {periods.map((p) => (
+                    {periodRows.map((p) => (
                       <tr key={p.periodKey} className="hover:bg-violet-900/5 transition-colors">
-                        {COLUMNS.map((c) => (
+                        {activeColumns.map((c) => (
                           <td key={c.id} className="px-3 py-2.5 tabular-nums whitespace-nowrap">{c.cell(p)}</td>
                         ))}
                       </tr>
                     ))}
-                    {periods.length === 0 && (
+                    {periodRows.length === 0 && (
                       <tr>
-                        <td colSpan={COLUMNS.length} className="px-4 py-12 text-center text-zinc-600 text-sm">
+                        <td colSpan={activeColumns.length} className="px-4 py-12 text-center text-zinc-600 text-sm">
                           Нет данных за выбранный период.
                         </td>
                       </tr>
                     )}
                   </tbody>
-                  {periods.length > 0 && (
+                  {periodRows.length > 0 && (
                     <tfoot>
                       <tr className="bg-[#0f0d18] border-t-2 border-violet-800/30">
-                        {COLUMNS.map((c, i) => (
+                        {activeColumns.map((c, i) => (
                           <td key={c.id} className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
                             {i === 0
-                              ? <span className="text-xs text-violet-400 uppercase tracking-wider">Итог ({periods.length})</span>
-                              : c.cell({ ...rangeTotals, periodKey: "total", periodLabel: `Итог (${periods.length})` })}
+                              ? <span className="text-xs text-violet-400 uppercase tracking-wider">Итог ({periodRows.length})</span>
+                              : c.cell(footTotals)}
                           </td>
                         ))}
                       </tr>

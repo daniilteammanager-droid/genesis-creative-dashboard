@@ -1,4 +1,4 @@
-import type { GrDayRow, GrTotals, GrPeriodRow } from "./types";
+import type { GrDayRow, GrTotals, GrPeriodRow, WaDayRow, WaTotals, WaPeriodRow } from "./types";
 
 export type Granularity = "day" | "week" | "month";
 
@@ -107,8 +107,69 @@ export function groupByPeriod(rows: GrDayRow[], g: Granularity): GrPeriodRow[] {
     }));
 }
 
+// ─── WhatsApp funnel ──────────────────────────────────────────────────────────
+
+export function computeWaTotals(rows: WaDayRow[]): WaTotals {
+  let budget = 0, clicks = 0, impressions = 0, registrations = 0;
+  let wroteForBonus = 0, enteredBot = 0, opened1 = 0, opened2 = 0;
+  let filledForm = 0, enteredWeb = 0, applications = 0, payments = 0;
+
+  for (const r of rows) {
+    budget        += r.budget;
+    clicks        += r.clicks;
+    impressions   += r.impressions;
+    registrations += r.registrations;
+    wroteForBonus += r.wroteForBonus;
+    enteredBot    += r.enteredBot;
+    opened1       += r.opened1;
+    opened2       += r.opened2;
+    filledForm    += r.filledForm;
+    enteredWeb    += r.enteredWeb;
+    applications  += r.applications;
+    payments      += r.payments;
+  }
+
+  return {
+    budget, clicks, impressions, registrations,
+    wroteForBonus, enteredBot, opened1, opened2,
+    filledForm, enteredWeb, applications, payments,
+    cpm:               impressions > 0 ? (budget / impressions) * 1000 : null,
+    cpc:               ratio(budget, clicks),
+    ctr:               ratio(clicks, impressions),
+    siteCr:            ratio(registrations, clicks),
+    costPerReg:        ratio(budget, registrations),
+    crRegToWrote:      ratio(wroteForBonus, registrations),
+    crRegToBot:        ratio(enteredBot, registrations),
+    costPerActivation: ratio(budget, enteredBot),
+    crRegToOpen1:      ratio(opened1, registrations),
+    crRegToOpen2:      ratio(opened2, registrations),
+    crRegToWeb:        ratio(enteredWeb, registrations),
+    costPerWeb:        ratio(budget, enteredWeb),
+    crWebToApp:        ratio(applications, enteredWeb),
+    costPerApp:        ratio(budget, applications),
+    crAppToPay:        ratio(payments, applications),
+    cac:               ratio(budget, payments),
+  };
+}
+
+export function groupWaByPeriod(rows: WaDayRow[], g: Granularity): WaPeriodRow[] {
+  const buckets = new Map<string, { label: string; rows: WaDayRow[] }>();
+  for (const r of rows) {
+    const { key, label } = periodOf(r.date, g);
+    if (!buckets.has(key)) buckets.set(key, { label, rows: [] });
+    buckets.get(key)!.rows.push(r);
+  }
+  return [...buckets.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, { label, rows: bucketRows }]) => ({
+      periodKey: key,
+      periodLabel: label,
+      ...computeWaTotals(bucketRows),
+    }));
+}
+
 // Merge rows from several sources by (date, country), summing base metrics.
-// Used by the Summary view across the 3 buyer tables.
+// Used by the Summary view across the buyer tables.
 export function mergeDayRows(sources: GrDayRow[][]): GrDayRow[] {
   const merged = new Map<string, GrDayRow>();
   for (const rows of sources) {
