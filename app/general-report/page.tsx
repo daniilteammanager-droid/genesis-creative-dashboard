@@ -2,6 +2,11 @@
 
 import { useEffect, useState, useMemo, useCallback, type ReactNode } from "react";
 import Link from "next/link";
+import {
+  ResponsiveContainer, ComposedChart, Area, Bar, Line, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from "recharts";
+import type { TooltipContentProps } from "recharts";
 import type { GrDayRow, GrSource, GrPeriodRow, GrTotals } from "@/lib/general-report/types";
 import { computeTotals, groupByPeriod } from "@/lib/general-report/aggregate";
 import type { Granularity } from "@/lib/general-report/aggregate";
@@ -152,39 +157,134 @@ const CARD_DEFS: CardDef[] = [
 const DEFAULT_CARDS = ["spend", "revenue", "netProfit", "romi", "deposits", "cac"];
 const CARDS_STORAGE_KEY = "gr3.totalCards";
 
-// Simple SVG line chart: budget vs revenue per period, chronological
-function TrendChart({ periods }: { periods: GrPeriodRow[] }) {
-  const data = [...periods].reverse(); // oldest → newest
-  if (data.length < 2) return null;
+// ─── Charts ───────────────────────────────────────────────────────────────────
 
-  const W = 900, H = 180, PAD = 10;
-  const max = Math.max(...data.map((p) => Math.max(p.budget, p.revenue)), 1);
-  const x = (i: number) => PAD + (i / (data.length - 1)) * (W - PAD * 2);
-  const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2);
-  const line = (get: (p: GrPeriodRow) => number) =>
-    data.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(get(p)).toFixed(1)}`).join(" ");
+interface ChartPoint {
+  name: string;
+  spend: number;
+  revenue: number;
+  romiPct: number | null;
+  cac: number | null;
+  depCount: number;
+  depAmount: number;
+}
 
+const AXIS_TICK = { fontSize: 11, fill: "#71717a" };
+const AXIS_LINE = { stroke: "rgba(139,92,246,0.2)" };
+const GRID_STROKE = "rgba(139,92,246,0.1)";
+
+// Themed tooltip shared by every chart — pass which dataKeys are money/percent/plain counts.
+function ChartTooltip({
+  active, payload, label, money = [], percent = [], plain = [],
+}: TooltipContentProps & { money?: string[]; percent?: string[]; plain?: string[] }) {
+  if (!active || !payload || payload.length === 0) return null;
   return (
-    <div className="bg-[#111118] border border-violet-900/20 rounded-2xl p-4 mb-6">
-      <div className="flex items-center gap-4 mb-2 text-xs">
-        <span className="flex items-center gap-1.5 text-zinc-400">
-          <span className="w-3 h-0.5 bg-violet-500 inline-block rounded" /> Spend
-        </span>
-        <span className="flex items-center gap-1.5 text-zinc-400">
-          <span className="w-3 h-0.5 bg-green-400 inline-block rounded" /> Revenue
-        </span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Динамика Spend и Revenue">
-        <path d={line((p) => p.budget)} fill="none" stroke="#8b5cf6" strokeWidth="2" />
-        <path d={line((p) => p.revenue)} fill="none" stroke="#4ade80" strokeWidth="2" />
-      </svg>
-      <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
-        <span>{data[0].periodLabel}</span>
-        <span>{data[data.length - 1].periodLabel}</span>
-      </div>
+    <div className="bg-[#151320] border border-violet-900/40 rounded-lg px-3 py-2 text-xs shadow-xl">
+      <p className="text-zinc-500 mb-1">{label}</p>
+      {payload.map((entry) => {
+        const key = String(entry.dataKey);
+        const v = typeof entry.value === "number" ? entry.value : null;
+        const text = v === null ? "—"
+          : money.includes(key) ? fmtMoney(v, 0)
+          : percent.includes(key) ? v.toFixed(1) + "%"
+          : plain.includes(key) ? fmt(v)
+          : String(v);
+        return <p key={key} style={{ color: entry.color }} className="font-medium">{entry.name}: {text}</p>;
+      })}
     </div>
   );
 }
+
+interface ChartDef {
+  id: string;
+  label: string;
+  render: (data: ChartPoint[]) => ReactNode;
+}
+
+const CHART_DEFS: ChartDef[] = [
+  {
+    id: "spendRevenue",
+    label: "Spend vs Revenue",
+    render: (data) => (
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gr3-revenue" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#4ade80" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#4ade80" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gr3-spend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
+          <Tooltip content={(props) => <ChartTooltip {...props} money={["revenue", "spend"]} />} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
+          <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#4ade80" strokeWidth={2} fill="url(#gr3-revenue)" />
+          <Area type="monotone" dataKey="spend" name="Spend" stroke="#8b5cf6" strokeWidth={2} fill="url(#gr3-spend)" />
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: "romi",
+    label: "ROMI %",
+    render: (data) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => v + "%"} width={48} />
+          <Tooltip content={(props) => <ChartTooltip {...props} percent={["romiPct"]} />} />
+          <Bar dataKey="romiPct" name="ROMI" radius={[3, 3, 0, 0]}>
+            {data.map((d, i) => (
+              <Cell key={i} fill={d.romiPct === null ? "#3f3f46" : d.romiPct >= 0 ? "#4ade80" : "#f87171"} />
+            ))}
+          </Bar>
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: "cac",
+    label: "CAC",
+    render: (data) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
+          <Tooltip content={(props) => <ChartTooltip {...props} money={["cac"]} />} />
+          <Line type="monotone" dataKey="cac" name="CAC" stroke="#facc15" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: "deposits",
+    label: "Депозиты",
+    render: (data) => (
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
+          <YAxis yAxisId="count" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
+          <YAxis yAxisId="amount" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
+          <Tooltip content={(props) => <ChartTooltip {...props} money={["depAmount"]} plain={["depCount"]} />} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
+          <Bar yAxisId="count" dataKey="depCount" name="Кол-во" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+          <Line yAxisId="amount" type="monotone" dataKey="depAmount" name="Сумма" stroke="#4ade80" strokeWidth={2} dot={{ r: 2 }} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    ),
+  },
+];
+
+const DEFAULT_CHARTS = ["spendRevenue"];
+const CHARTS_STORAGE_KEY = "gr3.visibleCharts";
 
 // ─── Table columns ────────────────────────────────────────────────────────────
 // Order is the one Daniil specified directly (26.08.2026), matching the exact
@@ -293,6 +393,28 @@ export default function GeneralReportPage() {
     });
   }, []);
 
+  // Which chart panels to show — same persisted-checkbox pattern as visibleCards.
+  const [visibleCharts, setVisibleCharts] = useState<string[]>(DEFAULT_CHARTS);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CHARTS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        const valid = parsed.filter((id) => CHART_DEFS.some((c) => c.id === id));
+        setVisibleCharts(valid); // valid to be empty — "no charts" is a legitimate choice here
+      }
+    } catch { /* corrupted value — keep defaults */ }
+  }, []);
+
+  const toggleChart = useCallback((id: string) => {
+    setVisibleCharts((prev) => {
+      const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
+      localStorage.setItem(CHARTS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const fetchData = useCallback((src: GrSource) => {
     setLoading(true);
     setError(null);
@@ -335,6 +457,16 @@ export default function GeneralReportPage() {
 
   const periods = useMemo(() => groupByPeriod(rangeRows, granularity), [rangeRows, granularity]);
   const rangeTotals = useMemo(() => computeTotals(rangeRows), [rangeRows]);
+
+  const chartData: ChartPoint[] = useMemo(() => [...periods].reverse().map((p) => ({
+    name: p.periodLabel,
+    spend: p.budget,
+    revenue: p.revenue,
+    romiPct: p.romi === null ? null : p.romi * 100,
+    cac: p.cac,
+    depCount: p.depCountCpa + p.depCountIb,
+    depAmount: p.depAmountCpa + p.depAmountIb,
+  })), [periods]);
 
   const chip = (active: boolean) =>
     `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -508,8 +640,22 @@ export default function GeneralReportPage() {
               ))}
             </div>
 
-            {/* Chart */}
-            <TrendChart periods={periods} />
+            {/* Charts */}
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Графики:</span>
+              {CHART_DEFS.map((c) => (
+                <button key={c.id} onClick={() => toggleChart(c.id)} className={smallChip(visibleCharts.includes(c.id))}>
+                  {visibleCharts.includes(c.id) ? "✓ " : ""}{c.label}
+                </button>
+              ))}
+            </div>
+
+            {chartData.length >= 2 && CHART_DEFS.filter((c) => visibleCharts.includes(c.id)).map((c) => (
+              <div key={c.id} className="bg-[#111118] border border-violet-900/20 rounded-2xl p-4 mb-4">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">{c.label}</p>
+                {c.render(chartData)}
+              </div>
+            ))}
 
             {/* Table */}
             <div className="bg-[#111118] border border-violet-900/20 rounded-2xl overflow-hidden">
