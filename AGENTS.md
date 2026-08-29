@@ -26,11 +26,16 @@ Implemented:
 
 - Creative Library
 - Analytics Dashboard
-- Check Module
+- Check Module (Forex Check)
+- Reports — Live Auto Report (Meta Marketing API + CRM)
+- Reports — Manual (ручная загрузка MVP + FBTool XLSX)
+- General Report 3.0 (Google Sheets API)
+- Upload Module (bulk upload в R2 через presigned URL)
+- Медиатека (rename / delete / диагностика "не загружено")
 - Favorites
 - Notes
 - Transcriptions
-- Charts
+- Charts (recharts)
 - Virtualized Grid
 - Branded Loading Screen
 - Supabase Integration
@@ -39,9 +44,13 @@ Implemented:
 Currently in development:
 
 - Check Module v2
-- Upload Module
-- Automatic Thumbnail Generation
 - Creative Automation
+- Автозапись General Report 3.0 в основную таблицу
+
+Handled outside this repo:
+
+- Сжатие видео, генерация thumbnails и RU-транскрипции делает отдельный worker,
+  который сам опрашивает R2 по крону. Дашборд только загружает исходный файл.
 
 ---
 
@@ -121,6 +130,41 @@ This module must remain independent from the Creative Dashboard.
 
 ---
 
+## Reports
+
+Route: `/reports`
+
+Two modes:
+
+- **Auto (Live)** — Meta Marketing API + CRM-выгрузки из Google Sheets, без FBTool.
+  Подрежимы: Кампании (матч по campaign_id) и Объявления (матч по имени объявления).
+- **Manual** — ручная загрузка пары XLSX (MVP + FBTool) для разовой сверки.
+
+---
+
+## General Report 3.0
+
+Route: `/general-report`
+
+Агрегация байерских и страновых Google-таблиц через Sheets API v4.
+
+Два уровня переключателя источников:
+
+- общие таблицы: EU, LATAM, WA;
+- байерские: Сводная, Артём, Матвей, Андрей, Саян.
+
+Гранулярность: день / неделя / месяц. Все производные метрики считаются из сумм,
+а не берутся из формул таблицы.
+
+---
+
+## Upload & Media Library
+
+Загрузка крео напрямую в R2 по presigned PUT URL и Медиатека для управления
+уже загруженными файлами.
+
+---
+
 # Current Architecture
 
 Application structure:
@@ -143,6 +187,8 @@ Business Logic (/lib)
 
 Cloudflare R2
 Supabase
+Google Sheets API
+Meta Marketing API
 CSV Analytics
 
 Current performance features:
@@ -189,7 +235,14 @@ Reusable UI components.
 
 lib/
 
-Business logic.
+Business logic. Одна папка на модуль:
+
+- `lib/creatives/` — CSV библиотеки крео, матчинг медиа, форматирование
+- `lib/forex-check/` — Check Module
+- `lib/reports/` — парсеры MVP / FBTool XLSX, сборка строк отчёта
+- `lib/reports-live/` — Meta API, CRM-выгрузки, сборка Live-отчёта
+- `lib/general-report/` — Google Sheets API, парсеры листов, агрегация
+- `lib/supabase.ts` — единая точка входа в Supabase
 
 public/
 
@@ -214,8 +267,18 @@ Supabase stores only:
 - notes
 - favorites
 - transcriptions
+- `ignored` — флаг "не показывать в списке ненайденных крео"
+- `creative_match_suffixes` — список гео/вариант-суффиксов для матчинга по базовому имени
 
-CSV remains the source of truth for business metrics.
+Google Sheets — источник истины для Reports и General Report 3.0:
+
+- CRM-выгрузки по кампаниям и объявлениям (по неделям, лист = период)
+- байерские и страновые таблицы General Report 3.0
+
+Meta Marketing API — источник истины по расходу, кликам, показам и статусам.
+
+CSV (опубликованная Google-таблица) remains the source of truth for the Creative
+Library's all-time metrics.
 
 ---
 
@@ -332,6 +395,63 @@ Before modifying existing code:
 
 ---
 
+# Documentation
+
+Документация проекта живёт в Notion — **Genesis Wiki** (Genesis Hub → Traffic Team → Genesis Creative Dashboard):
+
+https://app.notion.com/p/393b916ff39280f18ad3ef8b6a099d3f
+
+Структура вики:
+
+| Страница | Что описывает |
+|---|---|
+| 1. Product Overview | Что за продукт, статус, цели |
+| 2. Architecture | Модули, слои, data flow |
+| 3. Folder Structure | Реальная раскладка `app/`, `lib/`, `components/` |
+| 4. Development Guide | Принципы и workflow разработки |
+| 5. Database & Storage | R2, Supabase, Google Sheets, матчинг медиа |
+| 6. API Reference | Все API routes проекта |
+| 7. Check Module | Forex Check (`/check`) |
+| 8. Performance Decisions | Почему приняты те или иные оптимизации |
+| 9. Roadmap | Что сделано, что в планах |
+| 10. Decision Log | Архитектурные решения и их причины |
+| 11. Reports Module | Live Auto Report (`/reports`): Meta API + CRM |
+| 12. General Report 3.0 | `/general-report`: Google Sheets API, сводные таблицы |
+| 13. Upload & Media Library | Загрузка крео в R2 и Медиатека |
+| 14. Environment Variables | Все env-переменные и что сломается без них |
+
+## Правило: документация обновляется вместе с кодом
+
+Каждый апдейт проекта должен доезжать до вики. Изменение считается завершённым только
+после того, как документация приведена в соответствие с кодом — так же, как оно не
+считается завершённым без прохождения типов и сборки.
+
+Что обновлять, в зависимости от изменения:
+
+| Что изменилось | Что обновить в вики |
+|---|---|
+| Новый модуль / страница | Новая страница вики + ссылка в 1, 2 и 3 |
+| Новый или изменённый API route | 6. API Reference |
+| Новая env-переменная | 14. Environment Variables |
+| Новая таблица/колонка Supabase, новая папка R2, новый Google Sheet | 5. Database & Storage |
+| Новый источник данных или изменение источника истины | 5. Database & Storage + 10. Decision Log |
+| Архитектурное решение, смена подхода, замена интеграции | 10. Decision Log (новая запись Decision NNN) |
+| Оптимизация производительности | 8. Performance Decisions |
+| Фича доехала до прода / появилась в планах | 9. Roadmap |
+| Изменение правил разработки | AGENTS.md + 4. Development Guide |
+
+Правила ведения:
+
+- Decision Log только дополняется, записи не переписываются. Решение отменено —
+  добавляется новая запись со ссылкой на старую, старая не удаляется.
+- Обычные багфиксы и мелкие визуальные правки в Decision Log не попадают.
+- Документация описывает то, что есть в коде сейчас, а не то, что планировалось.
+  Расхождение вики с кодом — это баг документации, его нужно чинить.
+- В конце реализации фичи явно сказать, какие страницы вики обновлены (или что
+  обновлять нечего и почему).
+
+---
+
 # Testing
 
 Before suggesting deployment:
@@ -341,6 +461,7 @@ Before suggesting deployment:
 - Check build errors.
 - Verify existing functionality still works.
 - Mention possible side effects if multiple modules are affected.
+- Update the Notion wiki for anything the change makes stale (see Documentation).
 
 ---
 
@@ -359,6 +480,7 @@ When making development decisions, prioritize in this order:
 # Do Not
 
 - Do not rewrite working modules without approval.
+- Do not ship a change that leaves the Notion wiki describing the old behaviour.
 - Do not change architecture without a clear reason.
 - Do not introduce unnecessary dependencies.
 - Do not reduce performance.
@@ -371,12 +493,10 @@ When making development decisions, prioritize in this order:
 
 Planned major features:
 
-- Upload Module
 - Telegram Upload Bot
-- Automatic Thumbnail Generation
 - Automatic Statistics Sync
-- Meta API Integration
-- CRM API Integration
+- Автозапись General Report 3.0 в основную таблицу
+- CRM API Integration (сейчас CRM приходит через Google Sheets)
 - AI Creative Analysis
 - AI Recommendations
 - Creative Scoring
@@ -389,7 +509,12 @@ Planned major features:
 - Creative Dashboard
 - Analytics
 - Check Module
+- Reports (Live + Manual)
+- General Report 3.0
+- Upload Module / Медиатека
 - Cloudflare R2 integration
+- Meta Marketing API integration
+- Google Sheets API integration
 - Media loading
 - Existing CSV parsing logic
 - Virtualization
