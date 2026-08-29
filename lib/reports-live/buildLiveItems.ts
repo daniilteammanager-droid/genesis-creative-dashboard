@@ -66,6 +66,31 @@ export function buildLiveCampaignItems(
     });
   }
 
+  // Spend is primary. A campaign that really spent money but has no CRM row for the period
+  // still belongs in the report with zeroed CRM metrics — the same rule the Check Module
+  // follows. Dropping it silently under-reported total spend, while its daily budget still
+  // counted toward the header total, so the header and the table disagreed by design.
+  const crmIds = new Set(crm.map((c) => c.campaignId));
+  for (const [campaignId, m] of metaById) {
+    if (crmIds.has(campaignId)) continue;
+    if (!hasActivity(m.spend, 0, 0, 0, 0, m.clicks)) continue;
+
+    const status: LiveStatus = statuses.get(campaignId) === "ACTIVE" ? "active" : statuses.has(campaignId) ? "paused" : "unknown";
+
+    items.push({
+      campaignId,
+      campaignName: m.campaignName,
+      accountName: m.accountName,
+      status,
+      dailyBudget: status === "active" ? (campaignBudgets.get(campaignId) ?? null) : null,
+      spend: m.spend, clicks: m.clicks, impressions: m.impressions,
+      pdp: 0, dia: 0, deposits: 0, revenue: 0,
+      romi: romi(0, m.spend),
+      costPdp: null,
+      costDia: null,
+    });
+  }
+
   if (doletyi) {
     doletyi.romi = romi(doletyi.revenue, doletyi.spend);
     doletyi.costPdp = costPer(doletyi.spend, doletyi.pdp);

@@ -127,12 +127,27 @@ export default function CreativeUploadModal({
 
   const CONGRATS_THRESHOLD = 5;
 
+  // Four at a time. Firing the whole queue at once minted every presigned URL up front while
+  // the browser still uploaded ~6 in parallel — on a big batch of heavy videos the later files
+  // outlived their 10-minute signature and failed. In a pool each URL is issued right before
+  // its own upload, so the clock starts when the transfer does.
+  const MAX_PARALLEL_UPLOADS = 4;
+
   async function uploadAll() {
     setUploadingAll(true);
     const queued = items.filter((it) => it.status === "queued");
-    const results = await Promise.all(queued.map((it) => processFile(it)));
+
+    let next = 0;
+    let successCount = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(MAX_PARALLEL_UPLOADS, queued.length) }, async () => {
+        while (next < queued.length) {
+          if (await processFile(queued[next++])) successCount++;
+        }
+      })
+    );
+
     setUploadingAll(false);
-    const successCount = results.filter(Boolean).length;
     if (successCount > 0) onUploaded();
     if (successCount >= CONGRATS_THRESHOLD) setShowCongrats(true);
   }

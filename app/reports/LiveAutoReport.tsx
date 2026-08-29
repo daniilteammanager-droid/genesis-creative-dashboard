@@ -101,7 +101,12 @@ export default function LiveAutoReport() {
   const [notFoundNotice, setNotFoundNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/media").then((r) => r.json()).then(setMedia).catch(() => {});
+    // /api/media answers {error} on failure — without this guard media stops being an
+    // array and the first findMedia() call throws while rendering.
+    fetch("/api/media")
+      .then((r) => r.json())
+      .then((d) => setMedia(Array.isArray(d) ? d : []))
+      .catch(() => {});
     loadCreativeRows().then(setCreativeRows).catch(() => {});
   }, []);
 

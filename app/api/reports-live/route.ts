@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchCampaignInsights, fetchAdInsights, fetchCampaignStatuses, fetchAdStatuses, fetchCampaignDailyBudgets } from "@/lib/reports-live/metaApi";
+import { fetchCampaignInsights, fetchAdInsights, fetchAdStatuses, fetchCampaignMeta } from "@/lib/reports-live/metaApi";
 import { buildLiveCampaignItems, buildLiveCreativeItems } from "@/lib/reports-live/buildLiveItems";
 import { loadCampaignPeriod, loadCreativePeriod } from "@/lib/reports-live/crmSource";
 import type { LiveMode } from "@/lib/reports-live/types";
@@ -34,17 +34,16 @@ export async function GET(req: Request) {
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return NextResponse.json({ ...(hit.data as object), periods, fetchedFrom: "cache" });
       }
-      const [meta, statuses, campaignBudgets] = await Promise.all([
+      const [meta, campaignMeta] = await Promise.all([
         fetchCampaignInsights(period.since, period.until),
-        fetchCampaignStatuses(),
-        fetchCampaignDailyBudgets(),
+        fetchCampaignMeta(),
       ]);
       failedAccounts = meta.failedAccounts;
-      items = buildLiveCampaignItems(loaded.rows, meta.items, statuses, campaignBudgets);
+      items = buildLiveCampaignItems(loaded.rows, meta.items, campaignMeta.statuses, campaignMeta.dailyBudgets);
       // Sum every distinct active campaign's budget once — not per-row — so this total
       // stays correct even though a campaign can appear once per creative in Ads mode.
       totalActiveDailyBudget = [...new Set(meta.items.map((c) => c.campaignId))].reduce(
-        (sum, id) => sum + (campaignBudgets.get(id) ?? 0), 0
+        (sum, id) => sum + (campaignMeta.dailyBudgets.get(id) ?? 0), 0
       );
     } else {
       const loaded = await loadCreativePeriod(requestedPeriod);
@@ -55,15 +54,15 @@ export async function GET(req: Request) {
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return NextResponse.json({ ...(hit.data as object), periods, fetchedFrom: "cache" });
       }
-      const [meta, statuses, campaignBudgets] = await Promise.all([
+      const [meta, statuses, campaignMeta] = await Promise.all([
         fetchAdInsights(period.since, period.until),
         fetchAdStatuses(),
-        fetchCampaignDailyBudgets(),
+        fetchCampaignMeta(),
       ]);
       failedAccounts = meta.failedAccounts;
-      items = buildLiveCreativeItems(meta.items, loaded.crmByName, loaded.crmById, statuses, campaignBudgets);
+      items = buildLiveCreativeItems(meta.items, loaded.crmByName, loaded.crmById, statuses, campaignMeta.dailyBudgets);
       totalActiveDailyBudget = [...new Set(meta.items.map((a) => a.campaignId))].reduce(
-        (sum, id) => sum + (campaignBudgets.get(id) ?? 0), 0
+        (sum, id) => sum + (campaignMeta.dailyBudgets.get(id) ?? 0), 0
       );
     }
 

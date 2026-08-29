@@ -49,17 +49,21 @@ interface AdAccount {
   account_status: number;
 }
 
-async function fetchEdgePaged<T>(parentId: string, edge: string, fields: string): Promise<T[]> {
+// Meta hands back an `after` cursor even on the final page — only `paging.next` says there
+// really is one. Stopping on the cursor alone cost one extra empty round-trip per edge per
+// account, which is pure waste against the app-wide call limit.
+async function fetchEdgePaged<T>(parentId: string, edge: string, fields: string, limit = 200): Promise<T[]> {
   const out: T[] = [];
   let after: string | undefined;
   for (;;) {
-    const json = await graphGet<{ data: T[]; paging?: { cursors?: { after?: string } } }>(
+    const json = await graphGet<{ data: T[]; paging?: { next?: string; cursors?: { after?: string } } }>(
       `/${parentId}/${edge}`,
-      { fields, limit: "200", ...(after ? { after } : {}) }
+      { fields, limit: String(limit), ...(after ? { after } : {}) }
     );
     out.push(...json.data);
-    after = json.paging?.cursors?.after;
-    if (!after || json.data.length === 0) break;
+    if (!json.paging?.next) break;
+    after = json.paging.cursors?.after;
+    if (!after) break;
   }
   return out;
 }
@@ -144,13 +148,14 @@ async function fetchInsights(account: AdAccount, level: "campaign" | "ad", since
   const out: InsightRow[] = [];
   let after: string | undefined;
   for (;;) {
-    const json = await graphGet<{ data: InsightRow[]; paging?: { cursors?: { after?: string } } }>(
+    const json = await graphGet<{ data: InsightRow[]; paging?: { next?: string; cursors?: { after?: string } } }>(
       `/${account.id}/insights`,
       { level, fields, time_range: timeRange, time_increment: "all_days", limit: "500", ...(after ? { after } : {}) }
     );
     out.push(...json.data);
-    after = json.paging?.cursors?.after;
-    if (!after || json.data.length === 0) break;
+    if (!json.paging?.next) break;
+    after = json.paging.cursors?.after;
+    if (!after) break;
   }
   return out;
 }
@@ -215,33 +220,16 @@ export async function fetchAdInsights(
 // Current object status (ACTIVE/PAUSED/...) — insights doesn't carry this, it's a
 // separate object-list lookup. id -> effective_status, across all active accounts.
 async function fetchObjectStatuses(account: AdAccount, edge: "campaigns" | "ads"): Promise<[string, string][]> {
-  const out: [string, string][] = [];
-  let after: string | undefined;
-  for (;;) {
-    const json = await graphGet<{ data: { id: string; effective_status: string }[]; paging?: { cursors?: { after?: string } } }>(
-      `/${account.id}/${edge}`,
-      { fields: "id,effective_status", limit: "500", ...(after ? { after } : {}) }
-    );
-    out.push(...json.data.map((d) => [d.id, d.effective_status] as [string, string]));
-    after = json.paging?.cursors?.after;
-    if (!after || json.data.length === 0) break;
-  }
-  return out;
-}
-
-async function fetchStatusesForAllAccounts(accounts: AdAccount[], edge: "campaigns" | "ads"): Promise<Map<string, string>> {
-  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchObjectStatuses(a, edge).catch(() => []));
-  return new Map(perAccount.flat());
-}
-
-export async function fetchCampaignStatuses(): Promise<Map<string, string>> {
-  const accounts = await fetchActiveAccounts();
-  return fetchStatusesForAllAccounts(accounts, "campaigns");
+  const rows = await fetchEdgePaged<{ id: string; effective_status: string }>(
+    account.id, edge, "id,effective_status", 500
+  );
+  return rows.map((d) => [d.id, d.effective_status] as [string, string]);
 }
 
 export async function fetchAdStatuses(): Promise<Map<string, string>> {
   const accounts = await fetchActiveAccounts();
-  return fetchStatusesForAllAccounts(accounts, "ads");
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchObjectStatuses(a, "ads").catch(() => []));
+  return new Map(perAccount.flat());
 }
 
 // Daily budget of every currently-ACTIVE campaign, in account-currency major units
@@ -250,17 +238,18 @@ export async function fetchAdStatuses(): Promise<Map<string, string>> {
 // in which case the campaign's own daily_budget is empty and we sum its active ad sets'
 // budgets instead. The ad sets edge is only queried for accounts that actually have an
 // ABO campaign, to avoid paying for it everywhere.
-async function fetchCampaignBudgetsForAccount(account: AdAccount): Promise<[string, number][]> {
+async function fetchCampaignMetaForAccount(account: AdAccount): Promise<{ statuses: [string, string][]; budgets: [string, number][] }> {
   const campaigns = await fetchEdgePaged<{ id: string; daily_budget?: string; effective_status: string }>(
-    account.id, "campaigns", "id,daily_budget,effective_status"
+    account.id, "campaigns", "id,daily_budget,effective_status", 500
   );
+  const statuses = campaigns.map((c) => [c.id, c.effective_status] as [string, string]);
   const active = campaigns.filter((c) => c.effective_status === "ACTIVE");
   const needsAdSets = active.some((c) => !c.daily_budget);
 
   const adSetBudgetByCampaign = new Map<string, number>();
   if (needsAdSets) {
     const adSets = await fetchEdgePaged<{ campaign_id: string; daily_budget?: string; effective_status: string }>(
-      account.id, "adsets", "campaign_id,daily_budget,effective_status"
+      account.id, "adsets", "campaign_id,daily_budget,effective_status", 500
     );
     for (const a of adSets) {
       if (a.effective_status !== "ACTIVE" || !a.daily_budget) continue;
@@ -269,16 +258,29 @@ async function fetchCampaignBudgetsForAccount(account: AdAccount): Promise<[stri
     }
   }
 
-  const out: [string, number][] = [];
+  const budgets: [string, number][] = [];
   for (const c of active) {
     const cents = c.daily_budget ? parseInt(c.daily_budget, 10) || 0 : adSetBudgetByCampaign.get(c.id);
-    if (cents !== undefined && cents > 0) out.push([c.id, cents / 100]);
+    if (cents !== undefined && cents > 0) budgets.push([c.id, cents / 100]);
   }
-  return out;
+  return { statuses, budgets };
 }
 
-export async function fetchCampaignDailyBudgets(): Promise<Map<string, number>> {
+export interface CampaignMeta {
+  statuses: Map<string, string>;
+  dailyBudgets: Map<string, number>;
+}
+
+// Status and daily budget both live on the campaigns edge, so they come back from one sweep.
+// They used to be two independent full passes over the same edge across every account —
+// double the calls against the very limit the concurrency cap exists to protect.
+export async function fetchCampaignMeta(): Promise<CampaignMeta> {
   const accounts = await fetchActiveAccounts();
-  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchCampaignBudgetsForAccount(a).catch(() => []));
-  return new Map(perAccount.flat());
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) =>
+    fetchCampaignMetaForAccount(a).catch(() => ({ statuses: [] as [string, string][], budgets: [] as [string, number][] }))
+  );
+  return {
+    statuses: new Map(perAccount.flatMap((r) => r.statuses)),
+    dailyBudgets: new Map(perAccount.flatMap((r) => r.budgets)),
+  };
 }

@@ -17,14 +17,6 @@ const COLUMN_CANDIDATES: Record<ColumnKey, string[]> = {
 
 export type MvpColumnMap = Record<ColumnKey, number>;
 
-export interface MvpParseDebug {
-  rawRowCount: number;
-  first5RawRows: unknown[][];
-  detectedColumns: Record<ColumnKey, string | null>;
-  parsedCampaignIds: string[]; // first 10
-  parsedCount: number;
-}
-
 function resolveColumn(header: string[], candidates: string[]): number {
   for (const c of candidates) {
     const i = header.indexOf(c);
@@ -37,7 +29,7 @@ function resolveColumn(header: string[], candidates: string[]): number {
   return -1;
 }
 
-export function resolveMvpColumns(rawHeader: unknown[]): MvpColumnMap {
+function resolveMvpColumns(rawHeader: unknown[]): MvpColumnMap {
   const header = rawHeader.map((h) => String(h ?? "").trim().toLowerCase());
   const map = {} as MvpColumnMap;
   for (const key of Object.keys(COLUMN_CANDIDATES) as ColumnKey[]) {
@@ -47,7 +39,7 @@ export function resolveMvpColumns(rawHeader: unknown[]): MvpColumnMap {
 }
 
 // "52639523402910.0" -> "52639523402910"; always a trimmed string
-export function normalizeCampaignId(v: unknown): string {
+function normalizeCampaignId(v: unknown): string {
   return String(v ?? "").trim().replace(/\.0+$/, "");
 }
 
@@ -93,8 +85,7 @@ export function parseMvpXlsx(rawRows: unknown[][]): MvpRow[] {
 // carry real deposits/revenue from clients with no linked ad-campaign data, and should
 // still count toward totals (they just won't match any real Meta campaign — same
 // "Долёты" bucket as a campaign_id with no current Meta counterpart). Used only by
-// Reports Live; parseMvpXlsx()/parseMvpXlsxWithDebug() keep the original strict
-// behavior for Manual Report and the legacy FBTool route.
+// Reports Live; parseMvpXlsx() keeps the original strict behavior for Manual Report.
 export function parseMvpXlsxWithPlaceholders(rawRows: unknown[][]): MvpRow[] {
   if (rawRows.length < 2) return [];
   const col = resolveMvpColumns(rawRows[0] as unknown[]);
@@ -116,36 +107,4 @@ export function parseMvpXlsxWithPlaceholders(rawRows: unknown[][]): MvpRow[] {
     });
   }
   return results;
-}
-
-// Same parse, plus a debug snapshot for diagnosing column-detection / matching issues.
-export function parseMvpXlsxWithDebug(rawRows: unknown[][]): { rows: MvpRow[]; debug: MvpParseDebug } {
-  const header = (rawRows[0] as unknown[]) ?? [];
-  const col = resolveMvpColumns(header);
-
-  const rows: MvpRow[] = [];
-  if (rawRows.length >= 2 && col.id !== -1) {
-    for (let i = 1; i < rawRows.length; i++) {
-      const row = toRow(rawRows[i] as unknown[], col);
-      if (row) rows.push(row);
-    }
-  }
-
-  const detectedColumns = Object.fromEntries(
-    (Object.keys(COLUMN_CANDIDATES) as ColumnKey[]).map((key) => [
-      key,
-      col[key] !== -1 ? String(header[col[key]] ?? "") : null,
-    ])
-  ) as Record<ColumnKey, string | null>;
-
-  return {
-    rows,
-    debug: {
-      rawRowCount: Math.max(rawRows.length - 1, 0),
-      first5RawRows: rawRows.slice(0, 5),
-      detectedColumns,
-      parsedCampaignIds: rows.slice(0, 10).map((r) => r.campaignId),
-      parsedCount: rows.length,
-    },
-  };
 }

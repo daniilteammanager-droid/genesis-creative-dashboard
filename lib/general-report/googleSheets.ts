@@ -85,7 +85,13 @@ export async function fetchSheetValues(
     valueRenderOption: "UNFORMATTED_VALUE",
     dateTimeRenderOption: "SERIAL_NUMBER",
   });
-  for (const title of sheetTitles) params.append("ranges", `'${title}'!A1:AE1000`);
+  // Unbounded rows on purpose: a country sheet already holds ~730 day rows plus weekly and
+  // month label rows, so the old A1:AE1000 was about to start truncating silently. Sheets
+  // trims the response to the populated range, so asking for whole columns costs nothing.
+  // Apostrophes in a sheet title must be doubled or the range fails to parse.
+  for (const title of sheetTitles) {
+    params.append("ranges", `'${title.replace(/'/g, "''")}'!A:AE`);
+  }
 
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`,

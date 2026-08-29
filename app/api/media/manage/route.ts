@@ -16,9 +16,23 @@ const s3 = new S3Client({
 const ALLOWED_EXT = /\.(mov|mp4|jpg|jpeg|png|webp)$/i;
 const Bucket = process.env.R2_BUCKET_NAME;
 
-function thumbnailKey(key: string): string {
-  const filename = key.split("/").pop() ?? "";
-  return `thumbnails/${filename}`;
+// The worker writes previews as thumbnails/<basename>.<img ext> — the video's own .mp4/.mov
+// never appears there, which is exactly why /api/media pairs them up by basename alone.
+// Building `thumbnails/foo.mp4` here matched nothing, so renames orphaned the preview and
+// deletes left it behind forever. Extension isn't guaranteed, so probe the ones in use.
+const THUMB_EXTS = ["jpg", "webp"];
+
+function baseName(key: string): string {
+  return (key.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
+}
+
+async function findThumbnail(key: string): Promise<string | undefined> {
+  const base = baseName(key);
+  for (const ext of THUMB_EXTS) {
+    const candidate = `thumbnails/${base}.${ext}`;
+    if (await objectExists(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 async function objectExists(key: string): Promise<boolean> {
@@ -43,9 +57,8 @@ export async function POST(req: Request) {
 
     if (op === "delete") {
       await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
-      if (await objectExists(thumbnailKey(key))) {
-        await s3.send(new DeleteObjectCommand({ Bucket, Key: thumbnailKey(key) }));
-      }
+      const thumb = await findThumbnail(key);
+      if (thumb) await s3.send(new DeleteObjectCommand({ Bucket, Key: thumb }));
       return NextResponse.json({ ok: true });
     }
 
@@ -62,9 +75,9 @@ export async function POST(req: Request) {
       }
 
       await copyAndDelete(key, newKey);
-      if (await objectExists(thumbnailKey(key))) {
-        await copyAndDelete(thumbnailKey(key), thumbnailKey(newName));
-      }
+      const thumb = await findThumbnail(key);
+      // Keep the preview's own extension — only the basename follows the rename.
+      if (thumb) await copyAndDelete(thumb, `thumbnails/${baseName(newName)}.${thumb.split(".").pop()}`);
       return NextResponse.json({ ok: true, key: newKey });
     }
 
