@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
@@ -24,36 +25,54 @@ const WORK_AREAS = [
 export default function Shell({ profile, children }: { profile: Profile | null; children: React.ReactNode }) {
   const pathname = usePathname();
 
+  // null — «панель не трогали», работает раскладка по умолчанию: на компе открыта,
+  // на телефоне убрана. Держать это в CSS, а не в состоянии, важно: ширину экрана
+  // на сервере не узнать, а значение из useState приехало бы в разметку и первым
+  // кадром показало не то.
+  const [open, setOpen] = useState<boolean | null>(null);
+
   // На входе оболочка не нужна. А вот отсутствие профиля на рабочей странице — это
   // не «не залогинен» (таких сюда не пускает middleware), а «Supabase не ответил».
   // Панель в этом случае обязана остаться: дашборд не теряет навигацию из-за
   // недоступности Supabase (Decision 005).
   if (pathname === "/login") return <>{children}</>;
 
-  const item = "block px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition";
-  const inSettings = pathname.startsWith("/settings");
+  // window трогаем только в обработчике: там рендер уже позади и SSR не мешает.
+  const isNarrow = () => window.innerWidth < 768;
+  const toggle = () => setOpen((v) => (v === null ? isNarrow() : !v));
+  // Перешёл по ссылке на телефоне — панель уезжает. Она занимает весь экран, и
+  // оставлять её открытой поверх страницы, куда человек только что шёл, незачем.
+  const closeIfNarrow = () => { if (isNarrow()) setOpen(false); };
+
+  const asideShown = open === null ? "hidden md:flex" : open ? "flex" : "hidden";
+  const barShown   = open === null ? "md:hidden"     : open ? "hidden" : "block";
+
+  const item = "block px-3 py-2 rounded-xl text-sm font-medium transition";
+  const iconBtn =
+    "flex items-center justify-center h-8 w-8 rounded-lg text-zinc-500 " +
+    "hover:text-violet-300 hover:bg-violet-900/20 transition text-base leading-none";
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-[#0a080f]">
-      {/* На узком экране панель ложится сверху полосой: колонка в 212px съела бы
-          половину телефона, а таблицы отчётов и так требуют широкого экрана. */}
       <aside
-        className="md:w-[212px] flex-shrink-0 bg-[#0d0b14] border-b md:border-b-0 md:border-r
-                   border-violet-900/25 flex flex-col md:sticky md:top-0 md:h-screen"
+        className={`${asideShown} md:w-[212px] flex-shrink-0 bg-[#0d0b14] flex-col
+                    border-b md:border-b-0 md:border-r border-violet-900/25
+                    md:sticky md:top-0 md:h-screen`}
       >
-        <div className="hidden md:block px-4 py-5">
+        <div className="flex items-center justify-between px-4 py-3 md:py-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-dark.png" alt="Genesis" className="h-9 w-auto object-contain" />
+          <img src="/logo-dark.png" alt="Genesis" className="h-8 md:h-9 w-auto object-contain" />
+          <button onClick={toggle} className={iconBtn} aria-label="Свернуть панель">✕</button>
         </div>
 
-        <nav className="flex md:block gap-1 md:space-y-0.5 px-2.5 py-2 md:py-0 flex-1
-                        overflow-x-auto md:overflow-x-visible md:overflow-y-auto">
+        <nav className="px-2.5 pb-2 md:pb-0 space-y-0.5 flex-1 md:overflow-y-auto">
           {WORK_AREAS.map((a) => {
             const active = a.href === "/" ? pathname === "/" : pathname.startsWith(a.href);
             return (
               <Link
                 key={a.href}
                 href={a.href}
+                onClick={closeIfNarrow}
                 className={`${item} ${
                   active
                     ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
@@ -68,12 +87,13 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
 
         {/* Аккаунт — вход в настройки. Команда, приглашения, интеграции и пароль
             живут там, а не в этой панели: сюда они добавлялись бы бесконечно. */}
-        <div className="px-2.5 pb-2 md:pb-3 md:pt-2 md:border-t border-violet-900/25">
+        <div className="px-2.5 pb-3 pt-2 border-t border-violet-900/25">
           {profile ? (
             <Link
               href="/settings"
+              onClick={closeIfNarrow}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition ${
-                inSettings ? "bg-violet-900/25" : "hover:bg-violet-900/15"
+                pathname.startsWith("/settings") ? "bg-violet-900/25" : "hover:bg-violet-900/15"
               }`}
             >
               <div className="min-w-0 flex-1">
@@ -90,7 +110,15 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="flex-1 min-w-0">
+        {/* Полоска с кнопкой — единственный способ вернуть убранную панель.
+            Не sticky нарочно: на страницах свои липкие шапки, и две липкие
+            полосы на одной высоте перекрывают друг друга. */}
+        <div className={`${barShown} border-b border-violet-900/25 bg-[#0d0b14] px-3 py-2`}>
+          <button onClick={toggle} className={iconBtn} aria-label="Показать панель">☰</button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
