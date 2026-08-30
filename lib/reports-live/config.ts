@@ -64,7 +64,13 @@ export async function reportConfigFor(me: Profile, mode?: LiveMode): Promise<Rep
   }
 
   const metaToken = process.env.META_ACCESS_TOKEN;
-  const campaignsSheetId = process.env.MVP_CAMPAIGN_DAILY_SHEET_ID;
+  // Читаем и новое имя, и старое. Переменная в Vercel называется по-старому
+  // (_XLSX_URL), хотя держит ключ таблицы, а переименовать её там нельзя — только
+  // завести заново. Ломать владельцу отчёты ради имени переменной незачем: обе
+  // командные выгрузки временные и уйдут вместе с переходом склада на баерские
+  // подключения.
+  const campaignsSheetId =
+    process.env.MVP_CAMPAIGN_DAILY_SHEET_ID ?? process.env.MVP_CAMPAIGN_DAILY_XLSX_URL;
   const adsSheetId = process.env.GR_SPREADSHEET_ADS_BY_NAME;
 
   const missing = whatIsMissing(
