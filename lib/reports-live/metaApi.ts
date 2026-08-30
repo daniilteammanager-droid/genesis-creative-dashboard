@@ -72,6 +72,13 @@ interface Business {
 // Кэш по токену, а не один на всех. Общий кэш означал бы, что кабинеты одного
 // баера отдаются другому — молча и правдоподобно.
 const accountsCaches = new Map<string, { accounts: AdAccount[]; at: number }>();
+
+// Кэша результата мало. В режиме «Объявления» три ветки — инсайты, статусы и мета
+// кампаний — стартуют одновременно через Promise.all, и все три видят пустой кэш.
+// Обнаружение кабинетов выполнялось трижды за один отчёт: при трёх бизнесах это
+// два десятка лишних вызовов на каждый холодный отчёт, впустую против лимита.
+// Держим сам промис: второй и третий дожидаются первого.
+const accountsInFlight = new Map<string, Promise<AdAccount[]>>();
 // Matches the route's report-level cache. The hour-long TTL was a workaround for sharing
 // the app's rate limit with other buyers' tools on the old app — this app is dedicated to
 // the dashboard now, so there's no need to hold discovery this stale.
@@ -87,6 +94,17 @@ export async function fetchActiveAccounts(token: string): Promise<AdAccount[]> {
   if (accountsCache && Date.now() - accountsCache.at < ACCOUNTS_CACHE_TTL_MS) {
     return accountsCache.accounts;
   }
+
+  const running = accountsInFlight.get(token);
+  if (running) return running;
+
+  const started = discoverAccounts(token).finally(() => accountsInFlight.delete(token));
+  accountsInFlight.set(token, started);
+  return started;
+}
+
+async function discoverAccounts(token: string): Promise<AdAccount[]> {
+  const accountsCache = accountsCaches.get(token);
 
   // Track discovery errors (bad/expired token, revoked permissions) instead of swallowing
   // them into an empty list — an empty list looks identical to "no ad accounts" and used to
