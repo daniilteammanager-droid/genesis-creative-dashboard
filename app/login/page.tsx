@@ -8,7 +8,12 @@ type Mode = "signin" | "signup";
 
 function LoginForm() {
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  // Только внутренний путь. Без этой проверки ссылка вида
+  // /login?next=https://чужой-сайт уводила бы человека наружу сразу после
+  // ввода пароля — классический открытый редирект, и выглядит он убедительно,
+  // потому что домен до входа настоящий.
+  const rawNext = params.get("next") || "/";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   const invited = params.get("invite");
 
   // Пришёл по ссылке-приглашению — сразу открываем регистрацию с заполненным полем.
