@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { getConnectionView, saveConnection, sourceTakenBy } from "@/lib/connections/store";
-import { verifyMetaToken, verifySheet, verifyXlsxUrl } from "@/lib/connections/verify";
+import { verifyMetaToken, verifySheet } from "@/lib/connections/verify";
 
 // Свои подключения человек правит только сам: user_id берётся из сессии, а не из
 // тела запроса. Иначе один баер подменил бы ключ другому.
@@ -27,17 +27,21 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       metaToken?: string | null;
-      crmCampaignsUrl?: string | null;
+      crmCampaignsSheetId?: string | null;
       crmAdsSheetId?: string | null;
+      crmAdsByIdSheetId?: string | null;
     };
 
     // Проверяем до записи: сохранённое нерабочее подключение хуже несохранённого,
     // потому что выглядит рабочим.
+    // Все три выгрузки — Google-таблицы, проверяются одинаково: читает ли их
+    // сервисный аккаунт. Ссылок на XLSX среди подключений больше нет.
     const problems = (
       await Promise.all([
         body.metaToken ? verifyMetaToken(body.metaToken) : null,
-        body.crmCampaignsUrl ? verifyXlsxUrl(body.crmCampaignsUrl) : null,
+        body.crmCampaignsSheetId ? verifySheet(body.crmCampaignsSheetId) : null,
         body.crmAdsSheetId ? verifySheet(body.crmAdsSheetId) : null,
+        body.crmAdsByIdSheetId ? verifySheet(body.crmAdsByIdSheetId) : null,
       ])
     ).filter((p): p is string => p !== null);
 

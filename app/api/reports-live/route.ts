@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     let totalActiveDailyBudget = 0;
 
     if (mode === "campaigns") {
-      const loaded = await loadCampaignPeriod(config.campaignsUrl, requestedPeriod);
+      const loaded = await loadCampaignPeriod(config.campaignsSheetId, requestedPeriod);
       periods = loaded.periods;
       period = loaded.period;
       const cacheKey = `${config.cacheKey}:campaigns:${period.key}`;

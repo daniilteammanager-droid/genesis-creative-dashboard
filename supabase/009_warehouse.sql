@@ -112,6 +112,31 @@ create table if not exists public.wh_crm_ad_periods (
   primary key (user_id, period_start, ad_name)
 );
 
+-- ─── Torro: объявления по id за период ───────────────────────────────────────
+-- Отдельная таблица, а не колонка рядом с by-name: у выгрузок разная гранулярность.
+-- Строка by-name предагрегирована по имени и между объявлениями не делится, поэтому
+-- депозиты на конкретном объявлении и на адсете можно получить ТОЛЬКО отсюда.
+--
+-- Две таблицы дают ещё и сверку: сумма by-id, сгруппированная по имени, должна
+-- сойтись со строкой by-name. Расхождение — это либо переименование объявления в
+-- кабинете (by-name ломается молча, by-id переживает), либо пропущенный прогон.
+create table if not exists public.wh_crm_ad_id_periods (
+  user_id       uuid not null references public.profiles(id) on delete cascade,
+  period_start  date not null,
+  period_end    date not null,
+  ad_id         text not null,
+  clicks        integer,
+  subscribers   integer,
+  dialogs       integer,
+  registrations integer,
+  dep_count     integer,
+  dep_sum       numeric(14,2),
+  redep_count   integer,
+  redep_sum     numeric(14,2),
+  updated_at    timestamptz not null default now(),
+  primary key (user_id, period_start, ad_id)
+);
+
 -- ─── Torro: кампании за период ───────────────────────────────────────────────
 create table if not exists public.wh_crm_campaign_periods (
   user_id       uuid not null references public.profiles(id) on delete cascade,
@@ -161,11 +186,13 @@ create index if not exists wh_ingest_runs_recent on public.wh_ingest_runs (user_
 alter table public.wh_ad_days              enable row level security;
 alter table public.wh_campaign_days        enable row level security;
 alter table public.wh_crm_ad_periods       enable row level security;
+alter table public.wh_crm_ad_id_periods    enable row level security;
 alter table public.wh_crm_campaign_periods enable row level security;
 alter table public.wh_ingest_runs          enable row level security;
 
 revoke all on public.wh_ad_days              from anon, authenticated;
 revoke all on public.wh_campaign_days        from anon, authenticated;
 revoke all on public.wh_crm_ad_periods       from anon, authenticated;
+revoke all on public.wh_crm_ad_id_periods    from anon, authenticated;
 revoke all on public.wh_crm_campaign_periods from anon, authenticated;
 revoke all on public.wh_ingest_runs          from anon, authenticated;

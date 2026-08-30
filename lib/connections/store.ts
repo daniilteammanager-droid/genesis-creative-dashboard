@@ -6,8 +6,9 @@ import { encryptSecret, decryptSecret, secretHint } from "./crypto";
 
 export interface ConnectionInput {
   metaToken?: string | null;      // null — отключить, undefined — не трогать
-  crmCampaignsUrl?: string | null;
+  crmCampaignsSheetId?: string | null;
   crmAdsSheetId?: string | null;
+  crmAdsByIdSheetId?: string | null;
 }
 
 // То, что можно показать в интерфейсе. Самого токена здесь нет и быть не может:
@@ -16,8 +17,9 @@ export interface ConnectionView {
   metaConnected: boolean;
   metaHint: string | null;
   metaSetAt: string | null;
-  crmCampaignsUrl: string | null;
+  crmCampaignsSheetId: string | null;
   crmAdsSheetId: string | null;
+  crmAdsByIdSheetId: string | null;
 }
 
 function admin() {
@@ -30,7 +32,7 @@ function admin() {
 export async function getConnectionView(userId: string): Promise<ConnectionView> {
   const { data, error } = await admin()
     .from("buyer_connections")
-    .select("meta_token_enc, meta_token_hint, meta_token_set_at, crm_campaigns_url, crm_ads_sheet_id")
+    .select("meta_token_enc, meta_token_hint, meta_token_set_at, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -39,8 +41,9 @@ export async function getConnectionView(userId: string): Promise<ConnectionView>
     metaConnected: Boolean(data?.meta_token_enc),
     metaHint: data?.meta_token_hint ?? null,
     metaSetAt: data?.meta_token_set_at ?? null,
-    crmCampaignsUrl: data?.crm_campaigns_url ?? null,
+    crmCampaignsSheetId: data?.crm_campaigns_sheet_id ?? null,
     crmAdsSheetId: data?.crm_ads_sheet_id ?? null,
+    crmAdsByIdSheetId: data?.crm_ads_by_id_sheet_id ?? null,
   };
 }
 
@@ -48,12 +51,13 @@ export async function getConnectionView(userId: string): Promise<ConnectionView>
 // который идёт во внешние сервисы. В браузер это уезжать не должно.
 export async function getConnection(userId: string): Promise<{
   metaToken: string | null;
-  crmCampaignsUrl: string | null;
+  crmCampaignsSheetId: string | null;
   crmAdsSheetId: string | null;
+  crmAdsByIdSheetId: string | null;
 } | null> {
   const { data, error } = await admin()
     .from("buyer_connections")
-    .select("meta_token_enc, crm_campaigns_url, crm_ads_sheet_id")
+    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -61,8 +65,9 @@ export async function getConnection(userId: string): Promise<{
 
   return {
     metaToken: data.meta_token_enc ? decryptSecret(data.meta_token_enc) : null,
-    crmCampaignsUrl: data.crm_campaigns_url ?? null,
+    crmCampaignsSheetId: data.crm_campaigns_sheet_id ?? null,
     crmAdsSheetId: data.crm_ads_sheet_id ?? null,
+    crmAdsByIdSheetId: data.crm_ads_by_id_sheet_id ?? null,
   };
 }
 
@@ -85,33 +90,63 @@ export async function getMetaToken(userId: string): Promise<string | null> {
 // бы выгрузку всей команды под видом своей.
 export async function sourceTakenBy(
   userId: string,
-  input: { crmCampaignsUrl?: string | null; crmAdsSheetId?: string | null }
+  input: ConnectionInput
 ): Promise<string | null> {
-  const url = input.crmCampaignsUrl?.trim();
-  const sheet = input.crmAdsSheetId?.trim();
+  const LABELS: Record<string, string> = {
+    crmCampaignsSheetId: "выгрузка по кампаниям",
+    crmAdsSheetId: "выгрузка по объявлениям (по названию)",
+    crmAdsByIdSheetId: "выгрузка по объявлениям (по id)",
+  };
 
-  if (url && url === process.env.MVP_CAMPAIGN_WEEKLY_XLSX_URL) return "выгрузка по кампаниям";
-  if (sheet && (sheet === process.env.GR_SPREADSHEET_ADS_BY_NAME || sheet === process.env.GR_SPREADSHEET_ADS)) {
-    return "выгрузка по объявлениям";
+  // Командные таблицы из env — их баеру подключать нельзя ни одну.
+  const teamSheets = new Set(
+    [
+      process.env.MVP_CAMPAIGN_DAILY_SHEET_ID,
+      process.env.MVP_CREATIVE_DAILY_SHEET_ID,
+      process.env.GR_SPREADSHEET_ADS,
+      process.env.GR_SPREADSHEET_ADS_BY_NAME,
+    ].filter((v): v is string => Boolean(v))
+  );
+
+  const given: [keyof typeof LABELS, string][] = [];
+  for (const key of Object.keys(LABELS)) {
+    const v = (input as Record<string, unknown>)[key];
+    if (typeof v === "string" && v.trim()) given.push([key, v.trim()]);
+  }
+  if (given.length === 0) return null;
+
+  for (const [key, value] of given) {
+    if (teamSheets.has(value)) return LABELS[key];
+  }
+
+  // Две одинаковые таблицы в трёх полях одного человека — тоже ошибка: они
+  // разной гранулярности, и одна и та же не может быть обеими.
+  const seen = new Set<string>();
+  for (const [key, value] of given) {
+    if (seen.has(value)) return LABELS[key];
+    seen.add(value);
   }
 
   const db = admin();
 
-  if (sheet) {
-    // Байерские таблицы General 3.0 сюда тоже нельзя: у них другой набор листов,
-    // но проверка дешёвая, а ошибка дорогая.
-    const { data } = await db.from("profiles").select("id").eq("gr_spreadsheet_id", sheet).neq("id", userId);
-    if (data && data.length > 0) return "выгрузка по объявлениям";
-  }
+  // Байерские таблицы General 3.0 сюда тоже нельзя.
+  const { data: profiles } = await db
+    .from("profiles").select("id").in("gr_spreadsheet_id", given.map(([, v]) => v)).neq("id", userId);
+  if (profiles && profiles.length > 0) return given[0][0] ? LABELS[given[0][0]] : "выгрузка";
 
   const { data: others } = await db
     .from("buyer_connections")
-    .select("crm_campaigns_url, crm_ads_sheet_id")
+    .select("crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id")
     .neq("user_id", userId);
 
+  const taken = new Set<string>();
   for (const o of others ?? []) {
-    if (url && o.crm_campaigns_url === url) return "выгрузка по кампаниям";
-    if (sheet && o.crm_ads_sheet_id === sheet) return "выгрузка по объявлениям";
+    for (const v of [o.crm_campaigns_sheet_id, o.crm_ads_sheet_id, o.crm_ads_by_id_sheet_id]) {
+      if (v) taken.add(v as string);
+    }
+  }
+  for (const [key, value] of given) {
+    if (taken.has(value)) return LABELS[key];
   }
 
   return null;
@@ -126,8 +161,9 @@ export async function saveConnection(userId: string, input: ConnectionInput): Pr
     patch.meta_token_hint = t ? secretHint(t) : null;
     patch.meta_token_set_at = t ? new Date().toISOString() : null;
   }
-  if (input.crmCampaignsUrl !== undefined) patch.crm_campaigns_url = input.crmCampaignsUrl?.trim() || null;
+  if (input.crmCampaignsSheetId !== undefined) patch.crm_campaigns_sheet_id = input.crmCampaignsSheetId?.trim() || null;
   if (input.crmAdsSheetId !== undefined) patch.crm_ads_sheet_id = input.crmAdsSheetId?.trim() || null;
+  if (input.crmAdsByIdSheetId !== undefined) patch.crm_ads_by_id_sheet_id = input.crmAdsByIdSheetId?.trim() || null;
 
   const { error } = await admin().from("buyer_connections").upsert(patch, { onConflict: "user_id" });
   if (error) throw new Error(error.message);

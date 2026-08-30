@@ -16,7 +16,7 @@ export interface ReportConfig {
   // закэшированные цифры другого — молча и правдоподобно.
   cacheKey: string;
   metaToken: string;
-  campaignsUrl: string;
+  campaignsSheetId: string;
   adsSheetId: string;
   adsByIdSheetId?: string;
 }
@@ -48,33 +48,36 @@ export async function reportConfigFor(me: Profile, mode?: LiveMode): Promise<Rep
     const missing = whatIsMissing(
       mode,
       { token: "ключ Meta", campaigns: "выгрузку Torro по кампаниям", ads: "выгрузку Torro по объявлениям" },
-      { token: Boolean(c?.metaToken), campaigns: Boolean(c?.crmCampaignsUrl), ads: Boolean(c?.crmAdsSheetId) }
+      { token: Boolean(c?.metaToken), campaigns: Boolean(c?.crmCampaignsSheetId), ads: Boolean(c?.crmAdsSheetId) }
     );
     if (missing.length > 0) return { missing };
 
     return {
       cacheKey: me.id,
       metaToken: c!.metaToken as string,
-      campaignsUrl: c!.crmCampaignsUrl ?? "",
+      campaignsSheetId: c!.crmCampaignsSheetId ?? "",
       adsSheetId: c!.crmAdsSheetId ?? "",
+      // Третья выгрузка: депозиты на конкретном объявлении и на адсете берутся
+      // только отсюда — строка по имени предагрегирована и не делится.
+      adsByIdSheetId: c!.crmAdsByIdSheetId ?? undefined,
     };
   }
 
   const metaToken = process.env.META_ACCESS_TOKEN;
-  const campaignsUrl = process.env.MVP_CAMPAIGN_WEEKLY_XLSX_URL;
+  const campaignsSheetId = process.env.MVP_CAMPAIGN_DAILY_SHEET_ID;
   const adsSheetId = process.env.GR_SPREADSHEET_ADS_BY_NAME;
 
   const missing = whatIsMissing(
     mode,
-    { token: "META_ACCESS_TOKEN", campaigns: "MVP_CAMPAIGN_WEEKLY_XLSX_URL", ads: "GR_SPREADSHEET_ADS_BY_NAME" },
-    { token: Boolean(metaToken), campaigns: Boolean(campaignsUrl), ads: Boolean(adsSheetId) }
+    { token: "META_ACCESS_TOKEN", campaigns: "MVP_CAMPAIGN_DAILY_SHEET_ID", ads: "GR_SPREADSHEET_ADS_BY_NAME" },
+    { token: Boolean(metaToken), campaigns: Boolean(campaignsSheetId), ads: Boolean(adsSheetId) }
   );
   if (missing.length > 0) return { missing };
 
   return {
     cacheKey: "team",
     metaToken: metaToken as string,
-    campaignsUrl: campaignsUrl ?? "",
+    campaignsSheetId: campaignsSheetId ?? "",
     adsSheetId: adsSheetId ?? "",
     // Резервный путь матча по Ad ID. Необязателен, у баеров его нет вовсе.
     adsByIdSheetId: process.env.GR_SPREADSHEET_ADS,

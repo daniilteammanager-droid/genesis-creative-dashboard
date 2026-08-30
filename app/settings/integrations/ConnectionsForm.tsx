@@ -27,8 +27,9 @@ export default function ConnectionsForm({
 }) {
   const [view, setView] = useState(initial);
   const [metaToken, setMetaToken] = useState("");
-  const [campaigns, setCampaigns] = useState(initial?.crmCampaignsUrl ?? "");
+  const [campaigns, setCampaigns] = useState(initial?.crmCampaignsSheetId ?? "");
   const [ads, setAds] = useState(initial?.crmAdsSheetId ?? "");
+  const [adsById, setAdsById] = useState(initial?.crmAdsByIdSheetId ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Удаление в два клика: ключ обратно не читается, восстановить его из дашборда
@@ -49,10 +50,12 @@ export default function ConnectionsForm({
         // Пустое поле ключа — «не трогать», а не «удалить»: прочитать его назад
         // нельзя, поэтому оно всегда пустое при открытии страницы.
         ...(metaToken.trim() ? { metaToken: metaToken.trim() } : {}),
-        ...(campaigns.trim() !== (initial?.crmCampaignsUrl ?? "")
-          ? { crmCampaignsUrl: campaigns.trim() || null } : {}),
+        ...(campaigns.trim() !== (initial?.crmCampaignsSheetId ?? "")
+          ? { crmCampaignsSheetId: campaigns.trim() || null } : {}),
         ...(ads.trim() !== (initial?.crmAdsSheetId ?? "")
           ? { crmAdsSheetId: ads.trim() || null } : {}),
+        ...(adsById.trim() !== (initial?.crmAdsByIdSheetId ?? "")
+          ? { crmAdsByIdSheetId: adsById.trim() || null } : {}),
       }),
     });
     // Ответ не всегда JSON: упавшая или обрубленная по времени функция отдаёт
@@ -156,15 +159,22 @@ export default function ConnectionsForm({
           )}
         </p>
 
-        <label className="block text-[11px] text-zinc-600 mb-1">Кампании — ссылка на XLSX</label>
-        <input type="text" placeholder="https://..." value={campaigns}
+        <label className="block text-[11px] text-zinc-600 mb-1">Кампании, по id кампании</label>
+        <input type="text" placeholder="1AbC…" value={campaigns}
                onChange={(e) => setCampaigns(e.target.value)} className={`${field} mb-3`} />
 
-        <label className="block text-[11px] text-zinc-600 mb-1">Объявления — ключ таблицы</label>
+        <label className="block text-[11px] text-zinc-600 mb-1">Объявления, по названию объявления</label>
         <input type="text" placeholder="1AbC…" value={ads}
-               onChange={(e) => setAds(e.target.value)} className={field} />
+               onChange={(e) => setAds(e.target.value)} className={`${field} mb-3`} />
+
+        <label className="block text-[11px] text-zinc-600 mb-1">Объявления, по id объявления</label>
+        <input type="text" placeholder="1AbC…" value={adsById}
+               onChange={(e) => setAdsById(e.target.value)} className={field} />
+
         <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
-          Ключ таблицы — кусок её адреса между <code>/d/</code> и <code>/edit</code>.
+          Все три — дневные, ключ таблицы это кусок её адреса между <code>/d/</code> и <code>/edit</code>.
+          Выгрузка по названию нужна для раздела Креативы, по id объявления — чтобы видеть
+          депозиты на отдельном объявлении и на адсете.
         </p>
       </div>
 
