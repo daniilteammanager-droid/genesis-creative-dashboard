@@ -145,6 +145,11 @@ async function discoverAccounts(token: string): Promise<AdAccount[]> {
 }
 
 interface InsightRow {
+  // Приходит только при time_increment: "1" — иначе строка агрегирована за весь
+  // период и дня в ней нет.
+  date_start?: string;
+  adset_id?: string;
+  adset_name?: string;
   campaign_id?: string;
   campaign_name?: string;
   ad_id?: string;
@@ -156,11 +161,25 @@ interface InsightRow {
   impressions?: string;
 }
 
-async function fetchInsights(token: string, account: AdAccount, level: "campaign" | "ad", since: string, until: string): Promise<InsightRow[]> {
-  const fields =
-    level === "campaign"
-      ? "campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions"
-      : "ad_id,ad_name,campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions";
+// daily=true просит дневную разбивку: одна строка на сущность И день, но по-прежнему
+// ОДИН запрос на кабинет за весь диапазон. Три недели дневных строк стоят столько
+// же вызовов, сколько один агрегат, — растёт только число строк, то есть страниц.
+//
+// Склад хранит по дням, отчёт «за период» — агрегатом. Отсюда два режима.
+async function fetchInsights(
+  token: string,
+  account: AdAccount,
+  level: "campaign" | "ad",
+  since: string,
+  until: string,
+  daily = false
+): Promise<InsightRow[]> {
+  const base = level === "campaign"
+    ? "campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions"
+    : "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions";
+  // Охватов здесь нет намеренно: reach не складывается по дням, а склад суммирует
+  // дневные строки за период (Decision 039).
+  const fields = base;
   const timeRange = JSON.stringify({ since, until });
 
   const out: InsightRow[] = [];
@@ -169,7 +188,7 @@ async function fetchInsights(token: string, account: AdAccount, level: "campaign
     const json = await graphGet<{ data: InsightRow[]; paging?: { next?: string; cursors?: { after?: string } } }>(
       token,
       `/${account.id}/insights`,
-      { level, fields, time_range: timeRange, time_increment: "all_days", limit: "500", ...(after ? { after } : {}) }
+      { level, fields, time_range: timeRange, time_increment: daily ? "1" : "all_days", limit: "500", ...(after ? { after } : {}) }
     );
     out.push(...json.data);
     if (!json.paging?.next) break;
@@ -187,11 +206,12 @@ async function fetchInsightsForAllAccounts(
   accounts: AdAccount[],
   level: "campaign" | "ad",
   since: string,
-  until: string
+  until: string,
+  daily = false
 ): Promise<{ rows: InsightRow[]; failedAccounts: number }> {
   let failedAccounts = 0;
   const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) =>
-    fetchInsights(token, a, level, since, until).catch(() => {
+    fetchInsights(token, a, level, since, until, daily).catch(() => {
       failedAccounts++;
       return [];
     })
@@ -308,4 +328,80 @@ export async function fetchCampaignMeta(token: string): Promise<CampaignMeta> {
     statuses: new Map(perAccount.flatMap((r) => r.statuses)),
     dailyBudgets: new Map(perAccount.flatMap((r) => r.budgets)),
   };
+}
+
+// ─── Дневные строки для склада ───────────────────────────────────────────────
+// Отдельные функции, а не флаг у существующих: склад и отчёт хотят разного.
+// Отчёту нужен агрегат за период и статусы, складу — сырые дни без статусов,
+// потому что статус это состояние «сейчас», а не история (Decision 041).
+
+export interface MetaAdDay {
+  date: string;
+  adId: string;
+  adName: string;
+  adsetId: string;
+  adsetName: string;
+  campaignId: string;
+  campaignName: string;
+  accountId: string;
+  accountName: string;
+  spend: number;
+  clicks: number;
+  impressions: number;
+}
+
+export interface MetaCampaignDay {
+  date: string;
+  campaignId: string;
+  campaignName: string;
+  accountId: string;
+  spend: number;
+  clicks: number;
+  impressions: number;
+}
+
+export async function fetchAdDays(
+  token: string, since: string, until: string
+): Promise<{ items: MetaAdDay[]; failedAccounts: number }> {
+  const accounts = await fetchActiveAccounts(token);
+  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "ad", since, until, true);
+  const items = rows
+    // Строка без даты означает, что Meta проигнорировала дневную разбивку.
+    // Класть её в склад нельзя: непонятно, за какой день эти деньги.
+    .filter((r) => r.date_start)
+    .map((r) => ({
+      date: r.date_start as string,
+      adId: r.ad_id ?? "",
+      adName: r.ad_name ?? "",
+      adsetId: r.adset_id ?? "",
+      adsetName: r.adset_name ?? "",
+      campaignId: r.campaign_id ?? "",
+      campaignName: r.campaign_name ?? "",
+      accountId: r.account_id,
+      accountName: r.account_name,
+      spend: parseFloat(r.spend ?? "0") || 0,
+      clicks: parseInt(r.clicks ?? "0", 10) || 0,
+      impressions: parseInt(r.impressions ?? "0", 10) || 0,
+    }))
+    .filter((r) => r.adId);
+  return { items, failedAccounts };
+}
+
+export async function fetchCampaignDays(
+  token: string, since: string, until: string
+): Promise<{ items: MetaCampaignDay[]; failedAccounts: number }> {
+  const accounts = await fetchActiveAccounts(token);
+  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "campaign", since, until, true);
+  const items = rows
+    .filter((r) => r.date_start && r.campaign_id)
+    .map((r) => ({
+      date: r.date_start as string,
+      campaignId: r.campaign_id as string,
+      campaignName: r.campaign_name ?? "",
+      accountId: r.account_id,
+      spend: parseFloat(r.spend ?? "0") || 0,
+      clicks: parseInt(r.clicks ?? "0", 10) || 0,
+      impressions: parseInt(r.impressions ?? "0", 10) || 0,
+    }));
+  return { items, failedAccounts };
 }
