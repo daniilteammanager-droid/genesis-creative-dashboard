@@ -44,8 +44,14 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
   // оставлять её открытой поверх страницы, куда человек только что шёл, незачем.
   const closeIfNarrow = () => { if (isNarrow()) setOpen(false); };
 
+  // Убранная панель не исчезает совсем, иначе кнопку возврата некуда деть: липкая
+  // полоса сверху накрыла бы фильтры Креативов и шапки таблиц Reports — они тоже
+  // липкие и тоже на top-0.
+  //   на компе — узкий столбец: он часть раскладки, ничего не перекрывает;
+  //   на телефоне — кнопка в углу: столбец съел бы восьмую часть ширины.
   const asideShown = open === null ? "hidden md:flex" : open ? "flex" : "hidden";
-  const barShown   = open === null ? "md:hidden"     : open ? "hidden" : "block";
+  const railShown  = open === false ? "hidden md:flex" : "hidden";
+  const fabShown   = open === true  ? "hidden"         : "md:hidden";
 
   const item = "block px-3 py-2 rounded-xl text-sm font-medium transition";
   const iconBtn =
@@ -110,15 +116,28 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0">
-        {/* Полоска с кнопкой — единственный способ вернуть убранную панель.
-            Не sticky нарочно: на страницах свои липкие шапки, и две липкие
-            полосы на одной высоте перекрывают друг друга. */}
-        <div className={`${barShown} border-b border-violet-900/25 bg-[#0d0b14] px-3 py-2`}>
-          <button onClick={toggle} className={iconBtn} aria-label="Показать панель">☰</button>
-        </div>
-        {children}
+      {/* Столбец-огрызок вместо убранной панели — только на компе. */}
+      <div
+        className={`${railShown} w-[52px] flex-shrink-0 flex-col items-center pt-4
+                    bg-[#0d0b14] border-r border-violet-900/25 sticky top-0 h-screen`}
+      >
+        <button onClick={toggle} className={iconBtn} aria-label="Показать панель">☰</button>
       </div>
+
+      <div className="flex-1 min-w-0">{children}</div>
+
+      {/* Кнопка в углу — только на телефоне. Внизу, а не вверху: сверху она попала
+          бы под липкие шапки страниц, а до низа ещё и большой палец дотягивается.
+          z-40 — под модалом креатива (z-50), над содержимым. */}
+      <button
+        onClick={toggle}
+        aria-label="Показать панель"
+        className={`${fabShown} fixed bottom-4 left-4 z-40 h-11 w-11 rounded-full
+                    bg-gradient-to-r from-violet-600 to-violet-500 text-white text-lg
+                    shadow-lg shadow-violet-900/40 active:scale-95 transition`}
+      >
+        ☰
+      </button>
     </div>
   );
 }
