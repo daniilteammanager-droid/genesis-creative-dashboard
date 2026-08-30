@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured, selectAllRows, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
 import { type MediaFile, buildMediaIndex, lookupMedia, isVideo, isImage, getApproach } from "@/lib/creatives/media";
@@ -91,7 +91,8 @@ export default function Home() {
 
   // ─── Stable callbacks ────────────────────────────────────────────────────
 
-  // Shared by favorite/ignored — both are boolean flags on creative_notes toggled optimistically.
+  // Два флажка, но живут они в разных таблицах: избранное личное, «скрыт» общий
+  // для всей библиотеки (supabase/007_user_notes.sql).
   const toggleFlag = useCallback(async (field: "favorite" | "ignored", creativeCode: string) => {
     if (!isSupabaseConfigured) {
       console.warn(`Supabase не настроен — toggle ${field} недоступен`);
@@ -115,20 +116,26 @@ export default function Home() {
     setNotes((prev) => ({ ...prev, [creativeCode]: updated }));
 
     try {
-      const { error } = await supabase
-        .from("creative_notes")
-        .upsert(
-          {
-            creative_code:    creativeCode,
-            favorite:         updated.favorite,
-            note:             updated.note,
-            transcription_ru: updated.transcription_ru,
-            ignored:          updated.ignored ?? false,
-            updated_at:       updated.updated_at,
-          },
-          { onConflict: "creative_code" }
-        );
-      if (error) throw error;
+      // Пишем только то поле, которое меняли. Раньше уходила строка целиком, и
+      // клик по избранному возвращал назад расшифровку, прочитанную при открытии
+      // страницы, — воркер мог дописать её в промежутке, и она стиралась.
+      if (field === "favorite") {
+        const { error } = await supabase
+          .from("creative_user_notes")
+          .upsert(
+            { user_id: await currentUserId(), creative_code: creativeCode, favorite: newValue, note: updated.note, updated_at: updated.updated_at },
+            { onConflict: "user_id,creative_code" }
+          );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("creative_notes")
+          .upsert(
+            { creative_code: creativeCode, ignored: newValue, updated_at: updated.updated_at },
+            { onConflict: "creative_code" }
+          );
+        if (error) throw error;
+      }
     } catch (e) {
       console.error(`Ошибка сохранения ${field}:`, e);
       setNotes((prev) => {
@@ -192,10 +199,41 @@ export default function Home() {
     async function loadNotes() {
       if (!isSupabaseConfigured) { setNotesLoading(false); return; }
       try {
-        const { data, error } = await supabase.from("creative_notes").select("*");
-        if (error) throw error;
+        // Две таблицы: общая про файлы и своя личная. Обе читаются постранично —
+        // без этого приезжала бы только первая тысяча строк, молча.
+        const [shared, mine] = await Promise.all([
+          selectAllRows<{ creative_code: string; transcription_ru: string | null; ignored: boolean | null; updated_at: string }>(
+            "creative_notes", "creative_code, transcription_ru, ignored, updated_at"
+          ),
+          selectAllRows<{ creative_code: string; favorite: boolean; note: string | null; updated_at: string }>(
+            "creative_user_notes", "creative_code, favorite, note, updated_at"
+          ),
+        ]);
+
         const map: Record<string, CreativeNote> = {};
-        for (const row of (data ?? []) as CreativeNote[]) map[row.creative_code] = row;
+        for (const row of shared) {
+          map[row.creative_code] = {
+            creative_code: row.creative_code,
+            favorite: false,
+            note: null,
+            transcription_ru: row.transcription_ru,
+            ignored: row.ignored ?? false,
+            updated_at: row.updated_at,
+          };
+        }
+        for (const row of mine) {
+          const base = map[row.creative_code];
+          map[row.creative_code] = base
+            ? { ...base, favorite: row.favorite, note: row.note }
+            : {
+                creative_code: row.creative_code,
+                favorite: row.favorite,
+                note: row.note,
+                transcription_ru: null,
+                ignored: false,
+                updated_at: row.updated_at,
+              };
+        }
         setNotes(map);
       } catch (e) {
         setNotesError(e instanceof Error ? e.message : "Не удалось загрузить заметки");

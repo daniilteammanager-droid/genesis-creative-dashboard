@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase, type CreativeNote } from "@/lib/supabase";
+import { supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import type { MediaFile } from "@/lib/creatives/media";
 import { isVideo, getApproach } from "@/lib/creatives/media";
@@ -54,16 +54,31 @@ export default function CreativeModal({
   ) {
     if (!supabaseAvailable) { console.warn("Supabase недоступен — сохранение временно недоступно"); return; }
     setStatus("saving");
+    const now = new Date().toISOString();
     const payload: CreativeNote = {
       creative_code:    item.creative,
       favorite:         note?.favorite ?? false,
       note:             field === "note" ? (value.trim() || null) : (note?.note ?? null),
       transcription_ru: field === "transcription_ru" ? (value.trim() || null) : (note?.transcription_ru ?? null),
-      updated_at:       new Date().toISOString(),
+      updated_at:       now,
     };
     try {
-      const { error } = await supabase.from("creative_notes").upsert(payload, { onConflict: "creative_code" });
-      if (error) throw error;
+      // Заметка личная, расшифровка общая — разные таблицы. И пишется только то
+      // поле, которое правили: строка целиком затирала бы чужую работу, в том
+      // числе расшифровку, дописанную воркером минуту назад.
+      if (field === "note") {
+        const { error } = await supabase.from("creative_user_notes").upsert(
+          { user_id: await currentUserId(), creative_code: item.creative, note: payload.note, favorite: payload.favorite, updated_at: now },
+          { onConflict: "user_id,creative_code" }
+        );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("creative_notes").upsert(
+          { creative_code: item.creative, transcription_ru: payload.transcription_ru, updated_at: now },
+          { onConflict: "creative_code" }
+        );
+        if (error) throw error;
+      }
       onNotesUpdated(payload);
       onSuccess?.();
       setStatus("saved");

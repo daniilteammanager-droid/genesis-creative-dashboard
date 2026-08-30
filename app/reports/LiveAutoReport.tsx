@@ -8,7 +8,7 @@ import { extractGeoName, UNKNOWN_GEO } from "@/lib/reports-live/geo";
 import type { CreativeRow } from "@/lib/creatives/types";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
 import { type MediaFile, findMedia, normalize } from "@/lib/creatives/media";
-import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured, currentUserId, type CreativeNote } from "@/lib/supabase";
 import SharedCreativeModal from "@/components/CreativeModal";
 
 // ─── Format helpers ────────────────────────────────────────────────────────────
@@ -160,8 +160,27 @@ export default function LiveAutoReport() {
     setSelectedRow(row);
     setSelectedNote(undefined);
     if (isSupabaseConfigured) {
-      const { data } = await supabase.from("creative_notes").select("*").eq("creative_code", row.creative).maybeSingle();
-      if (data) setSelectedNote(data as CreativeNote);
+      // Общее про файл и своё личное лежат в разных таблицах — читаем обе.
+      const [{ data: shared }, { data: { user } }] = await Promise.all([
+        supabase.from("creative_notes").select("creative_code, transcription_ru, ignored, updated_at")
+          .eq("creative_code", row.creative).maybeSingle(),
+        supabase.auth.getUser(),
+      ]);
+      const { data: mine } = user
+        ? await supabase.from("creative_user_notes").select("favorite, note, updated_at")
+            .eq("creative_code", row.creative).eq("user_id", user.id).maybeSingle()
+        : { data: null };
+
+      if (shared || mine) {
+        setSelectedNote({
+          creative_code: row.creative,
+          favorite: mine?.favorite ?? false,
+          note: mine?.note ?? null,
+          transcription_ru: shared?.transcription_ru ?? null,
+          ignored: shared?.ignored ?? false,
+          updated_at: shared?.updated_at ?? mine?.updated_at ?? new Date().toISOString(),
+        });
+      }
     }
   }
 
@@ -173,7 +192,13 @@ export default function LiveAutoReport() {
       : { creative_code: creativeCode, favorite: newFavorite, note: null, transcription_ru: null, updated_at: new Date().toISOString() };
     setSelectedNote(updated);
     try {
-      const { error: err } = await supabase.from("creative_notes").upsert(updated, { onConflict: "creative_code" });
+      // Избранное личное и живёт отдельно от расшифровки. Раньше сюда уходила
+      // строка целиком, и клик возвращал назад расшифровку, прочитанную при
+      // открытии карточки, — воркер мог дописать её в промежутке.
+      const { error: err } = await supabase.from("creative_user_notes").upsert(
+        { user_id: await currentUserId(), creative_code: creativeCode, favorite: newFavorite, note: updated.note, updated_at: updated.updated_at },
+        { onConflict: "user_id,creative_code" }
+      );
       if (err) throw err;
     } catch (e) {
       console.error("Ошибка сохранения favorite:", e);
