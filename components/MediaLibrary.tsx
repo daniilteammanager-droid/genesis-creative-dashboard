@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
-import { type MediaFile, findMediaMatch, getFileBaseName, isVideo, getApproach } from "@/lib/creatives/media";
+import { type MediaFile, buildMediaIndex, lookupMedia, getFileBaseName, isVideo, getApproach } from "@/lib/creatives/media";
 
 // "Медиатека" — modal opened from the Creatives toolbar (next to "Загрузить").
 // Shows what's already in R2 vs. what's still missing per CSV creative code
 // (with an ignore toggle for known-broken CSV names and a "possible match" bucket
-// for base-name matches — see findMediaMatch), plus rename/delete on uploaded files,
+// for base-name matches — see lookupMedia), plus rename/delete on uploaded files,
 // their processing status (thumbnail / RU transcription / ready), and the editable
 // list of geo/variant naming suffixes that drives the base-name fallback.
 
@@ -45,6 +45,9 @@ export default function MediaLibrary({
   const [search, setSearch] = useState("");
   const [showIgnored, setShowIgnored] = useState(false);
   const suffixSet = useMemo(() => new Set(matchSuffixes), [matchSuffixes]);
+  // Индекс строится один раз на открытие, а не заново на каждый креатив: списков здесь два
+  // и оба проходят по всем строкам сразу.
+  const index = useMemo(() => buildMediaIndex(media, suffixSet), [media, suffixSet]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -55,15 +58,15 @@ export default function MediaLibrary({
   // Truly missing (no file at all, even by base name) vs. found under a different
   // geo/variant suffix — the latter isn't "missing", just not an exact filename match.
   const missingAll = useMemo(
-    () => rows.filter((r) => !findMediaMatch(r.creative, media, suffixSet)),
-    [rows, media, suffixSet]
+    () => rows.filter((r) => !lookupMedia(index, r.creative)),
+    [rows, index]
   );
   const possibleMatches = useMemo(
     () =>
       rows
-        .map((r) => ({ row: r, match: findMediaMatch(r.creative, media, suffixSet) }))
+        .map((r) => ({ row: r, match: lookupMedia(index, r.creative) }))
         .filter((x): x is { row: CreativeRow; match: { file: MediaFile; exact: false } } => !!x.match && !x.match.exact),
-    [rows, media, suffixSet]
+    [rows, index]
   );
   const ignoredCount = missingAll.filter((r) => notes[r.creative]?.ignored).length;
   const missing = useMemo(
@@ -273,7 +276,7 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
           <p className="text-sm text-zinc-200 truncate">{filename}</p>
         )}
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
-          <span className="text-[11px] text-zinc-600">{getApproach(file.key)}</span>
+          <span className="text-[11px] text-zinc-600">{getApproach(getFileBaseName(file.key), file.key)}</span>
           <ProcessingBadges file={file} note={note} />
         </div>
         {error && <p className="text-[11px] text-red-400 mt-0.5">{error}</p>}
@@ -331,7 +334,7 @@ function ProcessingBadges({ file, note }: { file: MediaFile; note: CreativeNote 
   );
 }
 
-// Geo/variant suffixes ("es", "ar", "v2"...) that findMediaMatch strips from the end
+// Geo/variant suffixes ("es", "ar", "v2"...) that the matcher strips from the end
 // of a name to find a base-name fallback match. Naming isn't a fixed convention, so
 // this list lives in Supabase (creative_match_suffixes) and is editable here.
 function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged: () => void }) {

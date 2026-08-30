@@ -6,7 +6,7 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
-import { type MediaFile, findMediaMatch, isVideo, isImage, getApproach } from "@/lib/creatives/media";
+import { type MediaFile, buildMediaIndex, lookupMedia, isVideo, isImage, getApproach } from "@/lib/creatives/media";
 import { parseNumber, formatSummaryNumber, formatRomiPct } from "@/lib/creatives/format";
 import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
@@ -173,10 +173,11 @@ export default function Home() {
   }, []);
 
   const matchSuffixSet = useMemo(() => new Set(matchSuffixes), [matchSuffixes]);
-  const findMedia = useCallback(
-    (creative: string) => findMediaMatch(creative, media, matchSuffixSet),
-    [media, matchSuffixSet]
-  );
+  // Индекс перестраивается только при смене медиа или суффиксов. Раньше каждый поиск
+  // линейно проходил весь список файлов, а вызывался он для каждого крео на каждое нажатие
+  // клавиши при активном фильтре подходов.
+  const mediaIndex = useMemo(() => buildMediaIndex(media, matchSuffixSet), [media, matchSuffixSet]);
+  const findMedia = useCallback((creative: string) => lookupMedia(mediaIndex, creative), [mediaIndex]);
 
   useEffect(() => {
     async function loadCSV() {
@@ -227,17 +228,16 @@ export default function Home() {
   const supabaseDown = isSupabaseConfigured && !!notesError;
 
   const approaches = useMemo(() => {
-    const set = new Set(media.map((f) => getApproach(f.key)));
+    const set = new Set(rows.map((item) => getApproach(item.creative, findMedia(item.creative)?.file.key)));
     return Array.from(set).sort();
-  }, [media]);
+  }, [rows, findMedia]);
 
   const tabCounts = useMemo(() => {
     const base = rows
       .filter((item) => item.creative.toLowerCase().includes(search.toLowerCase()))
       .filter((item) => {
         if (activeApproach === "all") return true;
-        const match = findMedia(item.creative);
-        return (match ? getApproach(match.file.key) : "unknown") === activeApproach;
+        return getApproach(item.creative, findMedia(item.creative)?.file.key) === activeApproach;
       });
     return {
       all:       base.length,
@@ -277,8 +277,7 @@ export default function Home() {
       })
       .filter((item) => {
         if (activeApproach === "all") return true;
-        const match = findMedia(item.creative);
-        return (match ? getApproach(match.file.key) : "unknown") === activeApproach;
+        return getApproach(item.creative, findMedia(item.creative)?.file.key) === activeApproach;
       })
       .sort(sortFn);
   }, [rows, search, activeTab, activeApproach, activeSort, notes, findMedia]);
@@ -513,7 +512,7 @@ export default function Home() {
                             item={item}
                             itemMedia={match?.file}
                             itemMediaExact={match?.exact ?? true}
-                            itemApproach={match ? getApproach(match.file.key) : "unknown"}
+                            itemApproach={getApproach(item.creative, match?.file.key)}
                             itemNote={notes[item.creative]}
                             supabaseAvailable={!supabaseDown}
                             onSelect={handleSetSelected}
@@ -803,6 +802,7 @@ function LoadingScreen() {
 
 function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; media: MediaFile[]; matchSuffixes: string[] }) {
   const suffixSet = useMemo(() => new Set(matchSuffixes), [matchSuffixes]);
+  const index = useMemo(() => buildMediaIndex(media, suffixSet), [media, suffixSet]);
   const analytics = useMemo(() => {
     if (rows.length === 0) return null;
 
@@ -829,8 +829,8 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
     for (const item of rows) {
       const spend = parseNumber(item.spend);
       if (isNaN(spend) || spend <= 0) continue;
-      const match    = findMediaMatch(item.creative, media, suffixSet);
-      const approach = match ? getApproach(match.file.key) : "unknown";
+      const match    = lookupMedia(index, item.creative);
+      const approach = getApproach(item.creative, match?.file.key);
       spendMap.set(approach, (spendMap.get(approach) ?? 0) + spend);
     }
     const spendByApproach = [...spendMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -838,8 +838,8 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
     const winnersMap = new Map<string, number>();
     for (const item of rows) {
       if (parseNumber(item.romi) < 150) continue;
-      const match    = findMediaMatch(item.creative, media, suffixSet);
-      const approach = match ? getApproach(match.file.key) : "unknown";
+      const match    = lookupMedia(index, item.creative);
+      const approach = getApproach(item.creative, match?.file.key);
       winnersMap.set(approach, (winnersMap.get(approach) ?? 0) + 1);
     }
     const winnersByApproach = [...winnersMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -855,7 +855,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
       .slice(0, 10);
 
     return { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits };
-  }, [rows, media, suffixSet]);
+  }, [rows, index]);
 
   if (!analytics) return <p className="text-zinc-500 text-sm mt-8">Нет данных для аналитики.</p>;
 

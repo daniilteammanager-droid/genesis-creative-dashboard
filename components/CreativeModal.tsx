@@ -75,7 +75,7 @@ export default function CreativeModal({
     }
   }
 
-  const approach = mediaFile ? getApproach(mediaFile.key) : "unknown";
+  const approach = getApproach(item.creative, mediaFile?.key);
   const romiNum  = parseNumber(item.romi);
 
   return (
