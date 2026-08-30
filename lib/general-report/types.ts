@@ -1,9 +1,10 @@
 // General Report 3.0 — types
 
 // Two levels of sources: company-wide tables (eu/latam/wa) and per-buyer tables.
-export type GrSource =
-  | "main" | "latam" | "wa"
-  | "summary" | "artem" | "matvey" | "andrey" | "sayan";
+// Раньше это был закрытый список из восьми строк, зашитый и в роут, и в страницу.
+// Теперь источники живут в базе и в профилях баеров, а id — строка вида
+// "sheet:<uuid>", "buyer:<uuid>" или "summary" (см. lib/general-report/sources.ts).
+export type GrSource = string;
 
 // wa is the only source whose sheets have a different column layout, so it
 // carries its own row/totals types below; every other source is a country sheet.
@@ -72,6 +73,9 @@ export interface GrPeriodRow extends GrTotals {
 
 export interface GrData {
   source: GrSource;
+  // Что доступно этому человеку. Считается на сервере по роли, поэтому страница
+  // не решает сама, какие кнопки рисовать, и не может показать лишнее.
+  sources?: { id: GrSource; label: string; group: "common" | "buyers"; kind: GrKind }[];
   rows: GrDayRow[];      // day-level, only rows with at least one non-zero metric
   countries: string[];   // sheet titles present in the source
   generatedAt: string;

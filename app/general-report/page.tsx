@@ -17,6 +17,8 @@ import type { Granularity } from "@/lib/general-report/aggregate";
 
 interface GrApiResponse {
   source: GrSource;
+  // Что доступно этому человеку — решает сервер по роли, страница только рисует.
+  sources?: { id: GrSource; label: string; group: "common" | "buyers"; kind: GrKind }[];
   kind: GrKind;
   rows: GrDayRow[] | WaDayRow[];
   countries: string[];
@@ -27,21 +29,9 @@ interface GrApiResponse {
 
 type DatePreset = "all" | "this_week" | "last_week" | "this_month" | "last_month" | "custom";
 
-// Two levels: company-wide tables, then the per-buyer tables. One source is
-// active at a time — a buyer table already contains every geo as its own sheet.
-const MAIN_SOURCES: { id: GrSource; label: string }[] = [
-  { id: "main",  label: "🇪🇺 EU" },
-  { id: "latam", label: "🌎 LATAM" },
-  { id: "wa",    label: "💬 WA" },
-];
-
-const BUYER_SOURCES: { id: GrSource; label: string }[] = [
-  { id: "summary", label: "Сводная" },
-  { id: "artem",   label: "Артём" },
-  { id: "matvey",  label: "Матвей" },
-  { id: "andrey",  label: "Андрей" },
-  { id: "sayan",   label: "Саян" },
-];
+// Список источников приезжает от сервера вместе с данными: он зависит от роли
+// и от того, какие таблицы подключены, а не от зашитого здесь перечня. Раньше
+// восемь кнопок были прибиты в коде, и новая таблица означала деплой.
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 
@@ -552,7 +542,9 @@ type AnyPeriodRow = GrPeriodRow | WaPeriodRow;
 const groupLabelOf = (r: GrDayRow | WaDayRow): string => ("country" in r ? r.country : r.funnel);
 
 export default function GeneralReportPage() {
-  const [source, setSource] = useState<GrSource>("summary");
+  // "" — «пусть сервер выберет сам». Какой источник оказался активным, видно из
+  // ответа: держать это ещё и в состоянии значит получить второй запрос на старте.
+  const [source, setSource] = useState<GrSource>("");
   const [data, setData] = useState<GrApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -565,7 +557,9 @@ export default function GeneralReportPage() {
 
   // WA has its own metrics, so its cards/charts/columns and their saved
   // selections are kept separate from the country-sheet ones.
-  const isWa = source === "wa";
+  const isWa = data?.kind === "wa";
+  // Подсвечиваем то, что реально отдал сервер: на старте мы просим «сам выбери».
+  const activeSource = data?.source ?? source;
   const chartDefs = isWa ? WA_CHART_DEFS : CHART_DEFS;
   const cardsKey = isWa ? WA_CARDS_STORAGE_KEY : CARDS_STORAGE_KEY;
   const chartsKey = isWa ? WA_CHARTS_STORAGE_KEY : CHARTS_STORAGE_KEY;
@@ -619,7 +613,7 @@ export default function GeneralReportPage() {
   const fetchData = useCallback((src: GrSource) => {
     setLoading(true);
     setError(null);
-    fetch(`/api/general-report?source=${src}`)
+    fetch(`/api/general-report${src ? `?source=${encodeURIComponent(src)}` : ""}`)
       .then((r) => r.json() as Promise<GrApiResponse>)
       .then((d) => {
         if (d.error) throw new Error(d.error);
@@ -734,28 +728,27 @@ export default function GeneralReportPage() {
 
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 3.0</h1>
 
-        {/* Source switcher — two levels: company tables, then buyer tables */}
+        {/* Переключатель источников. Что в нём есть — решает сервер по роли. */}
         <div className="flex flex-col gap-3 mb-6">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Таблицы</span>
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
-              {MAIN_SOURCES.map((s) => (
-                <button key={s.id} onClick={() => setSource(s.id)} className={chip(source === s.id)}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Баеры</span>
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
-              {BUYER_SOURCES.map((s) => (
-                <button key={s.id} onClick={() => setSource(s.id)} className={chip(source === s.id)}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {([
+            ["common", "Таблицы"],
+            ["buyers", "Баеры"],
+          ] as const).map(([group, label]) => {
+            const groupSources = (data?.sources ?? []).filter((s) => s.group === group);
+            if (groupSources.length === 0) return null;
+            return (
+              <div key={group} className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">{label}</span>
+                <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
+                  {groupSources.map((s) => (
+                    <button key={s.id} onClick={() => setSource(s.id)} className={chip(activeSource === s.id)}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Loading */}

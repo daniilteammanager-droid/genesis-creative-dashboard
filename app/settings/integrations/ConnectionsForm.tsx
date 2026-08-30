@@ -17,11 +17,13 @@ export default function ConnectionsForm({
   loadError,
   serviceAccount,
   grSheetId,
+  isMain,
 }: {
   initial: ConnectionView | null;
   loadError: string | null;
   serviceAccount: string | null;
   grSheetId: string | null;
+  isMain: boolean;
 }) {
   const [view, setView] = useState(initial);
   const [metaToken, setMetaToken] = useState("");
@@ -166,6 +168,7 @@ export default function ConnectionsForm({
         </p>
       </div>
 
+      {!isMain && (
       <div className={card}>
         <div className="flex items-center gap-3 mb-2 flex-wrap">
           <h2 className="text-lg font-semibold text-white">Таблица General Report 3.0</h2>
@@ -182,6 +185,7 @@ export default function ConnectionsForm({
           Здесь показано только состояние.
         </p>
       </div>
+      )}
 
       {msg && (
         <div className={`rounded-xl px-4 py-3 text-sm border ${

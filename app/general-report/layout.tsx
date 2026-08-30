@@ -5,7 +5,9 @@ import NoConnections from "@/components/NoConnections";
 // До появления подключений он просто не пускается сюда (Decision 035).
 export default async function GeneralReportLayout({ children }: { children: React.ReactNode }) {
   const me = await getProfile();
-  if (me?.role === "buyer") {
+  // Баер с подключённой таблицей заходит и видит только её. Без таблицы — экран
+  // с объяснением: показывать ему общие источники команды нельзя (Decision 035).
+  if (me?.role === "buyer" && !me.gr_spreadsheet_id) {
     return (
       <NoConnections
         title="General Report 3.0"
