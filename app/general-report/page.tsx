@@ -546,6 +546,9 @@ export default function GeneralReportPage() {
   // ответа: держать это ещё и в состоянии значит получить второй запрос на старте.
   const [source, setSource] = useState<GrSource>("");
   const [data, setData] = useState<GrApiResponse | null>(null);
+  // Отдельно от data: список источников обязан пережить ошибку загрузки, иначе
+  // из упавшего отчёта нечем переключиться на рабочую таблицу.
+  const [sources, setSources] = useState<NonNullable<GrApiResponse["sources"]>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -558,8 +561,10 @@ export default function GeneralReportPage() {
   // WA has its own metrics, so its cards/charts/columns and their saved
   // selections are kept separate from the country-sheet ones.
   const isWa = data?.kind === "wa";
-  // Подсвечиваем то, что реально отдал сервер: на старте мы просим «сам выбери».
-  const activeSource = data?.source ?? source;
+  // Подсвечено то, по чему кликнули, а не то, что успело загрузиться: иначе
+  // кнопка отзывается только после ответа, а при ошибке не отзывается вовсе.
+  // Пустая строка на старте — значит выбор ещё за сервером.
+  const activeSource = source || data?.source || "";
   const chartDefs = isWa ? WA_CHART_DEFS : CHART_DEFS;
   const cardsKey = isWa ? WA_CARDS_STORAGE_KEY : CARDS_STORAGE_KEY;
   const chartsKey = isWa ? WA_CHARTS_STORAGE_KEY : CHARTS_STORAGE_KEY;
@@ -616,6 +621,8 @@ export default function GeneralReportPage() {
     fetch(`/api/general-report${src ? `?source=${encodeURIComponent(src)}` : ""}`)
       .then((r) => r.json() as Promise<GrApiResponse>)
       .then((d) => {
+        // Сначала список, потом ошибка: роут кладёт источники и в неудачный ответ.
+        if (d.sources?.length) setSources(d.sources);
         if (d.error) throw new Error(d.error);
         setData(d);
       })
@@ -734,7 +741,7 @@ export default function GeneralReportPage() {
             ["common", "Таблицы"],
             ["buyers", "Баеры"],
           ] as const).map(([group, label]) => {
-            const groupSources = (data?.sources ?? []).filter((s) => s.group === group);
+            const groupSources = sources.filter((s) => s.group === group);
             if (groupSources.length === 0) return null;
             return (
               <div key={group} className="flex items-center gap-3 flex-wrap">
