@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 // Флаг: переменные среды заданы → Supabase активен.
 // Если не заданы — fetch пропускается, дашборд работает без заметок.
@@ -7,7 +7,10 @@ export const isSupabaseConfigured = !!(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export const supabase = createClient(
+// Браузерный клиент из @supabase/ssr, а не обычный createClient: сессия хранится
+// в cookies и потому видна серверу. С localStorage её видел бы только браузер, и
+// защитить route handler было бы нечем.
+export const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://placeholder.supabase.co",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder"
 );
