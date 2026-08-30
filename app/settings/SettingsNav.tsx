@@ -21,6 +21,9 @@ export default function SettingsNav({ isMain }: { isMain: boolean }) {
           <Link
             key={t.href}
             href={t.href}
+            // Страницы динамические, и без явного prefetch Next тянет только
+            // границу loading. С ним разметка приезжает заранее, по наведению.
+            prefetch
             className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
               active
                 ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"

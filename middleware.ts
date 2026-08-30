@@ -9,6 +9,15 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/register"];
 
+// Статус читается на каждой навигации, и это второй поход в Supabase поверх
+// getUser(). Пара сотен миллисекунд на каждый клик — заметно руками.
+//
+// Держим ответ полминуты в памяти инстанса. Цена: отключённый доживает до
+// полуминуты в приложении. Это приемлемо — на уровне базы его уже не пускает
+// app_role() (Decision 033), то есть второй рубеж работает без задержки.
+const STATUS_TTL_MS = 30_000;
+const statusCache = new Map<string, { blocked: boolean; at: number }>();
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -43,15 +52,23 @@ export async function middleware(request: NextRequest) {
   // проверки кнопка «отключён» не делала ровно ничего.
   let blocked = false;
   if (user) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("status")
-      .eq("id", user.id)
-      .maybeSingle();
-    // Ошибка — это недоступный Supabase, а не запрет: дашборд не должен падать
-    // вместе с ним (Decision 005). Запираем только когда ответ получен и он не
-    // «active» — включая случай, когда профиля нет вовсе.
-    blocked = !error && data?.status !== "active";
+    const hit = statusCache.get(user.id);
+    if (hit && Date.now() - hit.at < STATUS_TTL_MS) {
+      blocked = hit.blocked;
+    } else {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("status")
+        .eq("id", user.id)
+        .maybeSingle();
+      // Ошибка — это недоступный Supabase, а не запрет: дашборд не должен падать
+      // вместе с ним (Decision 005). Запираем только когда ответ получен и он не
+      // «active» — включая случай, когда профиля нет вовсе.
+      blocked = !error && data?.status !== "active";
+      // Ошибку не кэшируем: иначе одна моргнувшая секунда Supabase раздаёт
+      // пропуск на полминуты вперёд.
+      if (!error) statusCache.set(user.id, { blocked, at: Date.now() });
+    }
   }
 
   if ((!user || blocked) && !isPublic) {

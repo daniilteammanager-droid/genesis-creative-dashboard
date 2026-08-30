@@ -93,6 +93,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
               <Link
                 key={a.href}
                 href={a.href}
+                prefetch
                 onClick={closeIfNarrow}
                 className={`${item} ${
                   active
