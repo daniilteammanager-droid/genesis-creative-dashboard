@@ -44,12 +44,18 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
   // оставлять её открытой поверх страницы, куда человек только что шёл, незачем.
   const closeIfNarrow = () => { if (isNarrow()) setOpen(false); };
 
-  // Убранная панель не исчезает совсем, иначе кнопку возврата некуда деть: липкая
-  // полоса сверху накрыла бы фильтры Креативов и шапки таблиц Reports — они тоже
-  // липкие и тоже на top-0.
-  //   на компе — узкий столбец: он часть раскладки, ничего не перекрывает;
-  //   на телефоне — кнопка в углу: столбец съел бы восьмую часть ширины.
+  // Чем убранная панель возвращается:
+  //   на компе — узким столбцом в раскладке, он виден всегда и ничего не перекрывает;
+  //   на телефоне — кнопкой в углу, столбец съел бы восьмую часть ширины.
+  // Липкой полосы сверху здесь быть не может: у страниц свои липкие шапки на top-0 —
+  // фильтры Креативов и заголовки таблиц Reports, — и полоса накрыла бы их.
   const asideShown = open === null ? "hidden md:flex" : open ? "flex" : "hidden";
+  // На телефоне панель выезжает слева поверх страницы, а не встаёт блоком в начале
+  // документа. В потоке она открывалась там, куда человек уже не смотрит: прокрутил
+  // список, нажал кнопку — панель осталась выше экрана, и казалось, что её нет.
+  const asidePlace =
+    "fixed inset-y-0 left-0 z-50 w-[264px] overflow-y-auto " +
+    "md:sticky md:top-0 md:bottom-auto md:z-auto md:w-[212px] md:h-screen md:overflow-visible";
   const railShown  = open === false ? "hidden md:flex" : "hidden";
   const fabShown   = open === true  ? "hidden"         : "md:hidden";
 
@@ -59,11 +65,20 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
     "hover:text-violet-300 hover:bg-violet-900/20 transition text-base leading-none";
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#0a080f]">
+    <div className="flex min-h-screen bg-[#0a080f]">
+      {/* Подложка под выехавшей панелью — только на телефоне. Закрывает по тапу
+          мимо: искать крестик ради этого не должно быть нужно. */}
+      {open === true && (
+        <div
+          onClick={() => setOpen(false)}
+          className="md:hidden fixed inset-0 z-40 bg-black/60"
+          aria-hidden
+        />
+      )}
+
       <aside
-        className={`${asideShown} md:w-[212px] flex-shrink-0 bg-[#0d0b14] flex-col
-                    border-b md:border-b-0 md:border-r border-violet-900/25
-                    md:sticky md:top-0 md:h-screen`}
+        className={`${asideShown} ${asidePlace} flex-shrink-0 bg-[#0d0b14] flex-col
+                    border-r border-violet-900/25`}
       >
         <div className="flex items-center justify-between px-4 py-3 md:py-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}

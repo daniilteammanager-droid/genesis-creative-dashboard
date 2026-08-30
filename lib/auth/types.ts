@@ -1,3 +1,10 @@
+// Поле называется «Номер», поэтому «1» — это ровно то, что человек и напечатает.
+// База ждёт «b1». Дописываем букву сами, вместо того чтобы отчитывать за формат.
+export function normalizeBuyerCode(raw: string): string {
+  const v = raw.trim().toLowerCase();
+  return /^[0-9]+$/.test(v) ? `b${v}` : v;
+}
+
 // Роли дашборда. Совпадают с enum public.user_role в supabase/001_auth.sql.
 export type UserRole = "main" | "teamlead" | "buyer";
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
-import { ROLE_LABELS, type Profile, type UserRole } from "@/lib/auth/types";
+import { ROLE_LABELS, normalizeBuyerCode, type Profile, type UserRole } from "@/lib/auth/types";
 
 export default function TeamManager({ people, meId }: { people: Profile[]; meId: string }) {
   const router = useRouter();
@@ -33,7 +33,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
   }
 
   function commitCode(p: Profile) {
-    const draft = (codeDraft[p.id] ?? "").trim();
+    const draft = normalizeBuyerCode(codeDraft[p.id] ?? "");
     if (draft === (p.buyer_code ?? "")) return;
     update(p.id, draft === "" ? { p_clear_code: true } : { p_buyer_code: draft });
   }

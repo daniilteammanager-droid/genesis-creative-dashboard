@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
-import type { UserRole } from "@/lib/auth/types";
+import { normalizeBuyerCode, type UserRole } from "@/lib/auth/types";
 
 export interface Invite {
   token: string;
@@ -45,10 +45,10 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
     // Тот же вид, что проверяет база (003_admin.sql). Без проверки здесь кривой код
     // молча ложится в приглашение, а спотыкается об него уже приглашённый — при
     // регистрации, и без внятного объяснения.
-    const code = buyerCode.trim();
+    const code = normalizeBuyerCode(buyerCode);
     if (role === "buyer" && code && !/^b[0-9]+$/.test(code)) {
       setBusy(false);
-      setError("Код баера должен быть вида b5");
+      setError("Номер — это цифра: 1 или b1");
       return;
     }
 
@@ -114,7 +114,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               <label className="block text-xs text-zinc-500 mb-1.5">Номер</label>
               <input
                 type="text"
-                placeholder="сам"
+                placeholder="1"
                 value={buyerCode}
                 onChange={(e) => setBuyerCode(e.target.value)}
                 className={`${field} w-20`}
