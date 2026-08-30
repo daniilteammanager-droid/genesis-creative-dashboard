@@ -419,6 +419,7 @@ https://app.notion.com/p/393b916ff39280f18ad3ef8b6a099d3f
 | 12. General Report 3.0 | `/general-report`: Google Sheets API, сводные таблицы |
 | 13. Upload & Media Library | Загрузка крео в R2 и Медиатека |
 | 14. Environment Variables | Все env-переменные и что сломается без них |
+| 15. Рабочее место баера | Что видит баер, путь от регистрации до залива, что ещё руками |
 
 ## Правило: документация обновляется вместе с кодом
 
