@@ -129,7 +129,10 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
         {nameMsg && <p className="text-xs text-zinc-500 mt-2">{nameMsg}</p>}
 
         <p className="text-[11px] text-zinc-600 leading-relaxed mt-4">
-          Почту, роль и код баера меняет только владелец — на вкладке «Команда».
+          {/* Баеру незачем читать про вкладку, которой он не видит. */}
+          {profile.role === "main"
+            ? "Почту, роль и код баера меняет только владелец — на вкладке «Команда»."
+            : "Имя правишь сам. Почта, роль и код баера — только через владельца."}
         </p>
       </div>
 
