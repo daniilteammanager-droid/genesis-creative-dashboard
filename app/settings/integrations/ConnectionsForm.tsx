@@ -29,6 +29,9 @@ export default function ConnectionsForm({
   const [ads, setAds] = useState(initial?.crmAdsSheetId ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Удаление в два клика: ключ обратно не читается, восстановить его из дашборда
+  // невозможно — только идти в Meta за новым.
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -38,18 +41,29 @@ export default function ConnectionsForm({
     const res = await fetch("/api/connections", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Шлём только изменённое. Иначе давняя ссылка Торро, ставшая нерабочей,
+      // не даёт сохранить даже новый ключ Meta — проверяется-то всё присланное.
       body: JSON.stringify({
         // Пустое поле ключа — «не трогать», а не «удалить»: прочитать его назад
         // нельзя, поэтому оно всегда пустое при открытии страницы.
         ...(metaToken.trim() ? { metaToken: metaToken.trim() } : {}),
-        crmCampaignsUrl: campaigns.trim() || null,
-        crmAdsSheetId: ads.trim() || null,
+        ...(campaigns.trim() !== (initial?.crmCampaignsUrl ?? "")
+          ? { crmCampaignsUrl: campaigns.trim() || null } : {}),
+        ...(ads.trim() !== (initial?.crmAdsSheetId ?? "")
+          ? { crmAdsSheetId: ads.trim() || null } : {}),
       }),
     });
-    const data = (await res.json()) as ConnectionView & { error?: string };
+    // Ответ не всегда JSON: упавшая или обрубленная по времени функция отдаёт
+    // HTML. Без этого разбор кидает, setBusy(false) не выполняется, и форма
+    // навсегда застревает на «Проверяю…».
+    let data: (ConnectionView & { error?: string }) | null = null;
+    try { data = (await res.json()) as ConnectionView & { error?: string }; } catch { /* не JSON */ }
     setBusy(false);
 
-    if (!res.ok) { setMsg({ ok: false, text: data.error ?? "Не удалось сохранить" }); return; }
+    if (!res.ok || !data) {
+      setMsg({ ok: false, text: data?.error ?? "Не удалось сохранить — попробуй ещё раз" });
+      return;
+    }
     setView(data);
     setMetaToken("");
     setMsg({ ok: true, text: "Проверено и сохранено" });
@@ -63,10 +77,15 @@ export default function ConnectionsForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ metaToken: null }),
     });
-    const data = (await res.json()) as ConnectionView & { error?: string };
+    let data: (ConnectionView & { error?: string }) | null = null;
+    try { data = (await res.json()) as ConnectionView & { error?: string }; } catch { /* не JSON */ }
     setBusy(false);
-    if (!res.ok) { setMsg({ ok: false, text: data.error ?? "Не удалось отключить" }); return; }
+    if (!res.ok || !data) {
+      setMsg({ ok: false, text: data?.error ?? "Не удалось отключить" });
+      return;
+    }
     setView(data);
+    setConfirmDelete(false);
     setMsg({ ok: true, text: "Ключ удалён" });
   }
 
@@ -104,9 +123,10 @@ export default function ConnectionsForm({
 
         <div className="flex items-center gap-3 mt-3 flex-wrap">
           {view?.metaConnected && (
-            <button type="button" onClick={disconnectMeta} disabled={busy}
+            <button type="button" disabled={busy}
+                    onClick={() => (confirmDelete ? disconnectMeta() : setConfirmDelete(true))}
                     className="text-[11px] px-2.5 py-1 rounded-full border border-red-800/40 text-red-300 hover:bg-red-900/20 transition disabled:opacity-50">
-              удалить ключ
+              {confirmDelete ? "точно удалить? вернуть будет нельзя" : "удалить ключ"}
             </button>
           )}
           <p className="text-[11px] text-zinc-600 leading-relaxed">

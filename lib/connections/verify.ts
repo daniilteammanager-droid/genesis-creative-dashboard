@@ -7,6 +7,10 @@ import { listSheetTitles } from "@/lib/general-report/googleSheets";
 
 const META = "https://graph.facebook.com/v26.0";
 
+// 25 МБ: недельная выгрузка на два порядка меньше, а без потолка ссылка на
+// что-нибудь огромное кладёт функцию по памяти.
+const MAX_XLSX_BYTES = 25 * 1024 * 1024;
+
 export async function verifyMetaToken(token: string): Promise<string | null> {
   try {
     const res = await fetch(`${META}/me/adaccounts?limit=1&fields=id&access_token=${encodeURIComponent(token)}`);
@@ -42,14 +46,58 @@ export async function verifySheet(spreadsheetId: string): Promise<string | null>
 }
 
 export async function verifyXlsxUrl(url: string): Promise<string | null> {
-  if (!/^https?:\/\//i.test(url)) return "Нужна ссылка целиком, вместе с https://";
+  // Выгрузка Torro всегда живёт в Google Sheets, поэтому хост прибит гвоздями.
+  // Без этого поле превращается в «сходи по любому адресу от имени сервера»:
+  // залогиненный человек перебирал бы чужие адреса и порты нашим же IP, а по
+  // тексту ответа понимал, что там кто-то есть.
+  let parsed: URL;
   try {
-    const res = await fetch(url);
-    if (!res.ok) return `Ссылка не открывается: ${res.status}`;
-    const wb = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: "buffer" });
-    if (wb.SheetNames.length === 0) return "Файл открылся, но листов в нём нет";
-    return null;
+    parsed = new URL(url);
   } catch {
-    return "По ссылке пришёл не XLSX — проверь, что выгрузка настроена и ссылка прямая";
+    return "Это не похоже на ссылку — нужна целиком, вместе с https://";
   }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "docs.google.com") {
+    return "Ссылка должна вести на docs.google.com — это ссылка на экспорт таблицы";
+  }
+
+  let res: Response;
+  try {
+    // Таймаут обязателен: без него молчащий сервер держит функцию до предела Vercel.
+    res = await fetch(parsed.toString(), { signal: AbortSignal.timeout(15_000) });
+  } catch {
+    // Сеть отдельно от разбора файла: иначе рабочей ссылке говорят «это не XLSX»,
+    // и человек идёт чинить то, что не сломано.
+    return "Не удалось открыть ссылку — проверь, что доступ к таблице открыт по ссылке";
+  }
+  if (!res.ok) {
+    // Код ответа наружу не отдаём: он же и есть тот самый ответ «там кто-то есть».
+    return "Ссылка не открывается — проверь доступ к таблице";
+  }
+
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > MAX_XLSX_BYTES) return "Файл слишком большой для проверки";
+
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await res.arrayBuffer());
+  } catch {
+    return "Не удалось дочитать файл по ссылке";
+  }
+  // Content-Length может отсутствовать или врать — проверяем и по факту.
+  if (buf.byteLength > MAX_XLSX_BYTES) return "Файл слишком большой для проверки";
+
+  try {
+    const wb = XLSX.read(buf, { type: "buffer" });
+    if (wb.SheetNames.length === 0) return "Файл открылся, но листов в нём нет";
+  } catch {
+    return "По ссылке пришёл не XLSX — нужна ссылка на экспорт, а не на саму таблицу";
+  }
+
+  // XLSX.read покладист: HTML-страницу таблицы он тоже разберёт и вернёт лист.
+  // Поэтому проверяем и адрес: у экспорта в пути есть export, у страницы — edit.
+  if (!/\/export\b/.test(parsed.pathname) && !parsed.searchParams.has("format")) {
+    return "Похоже, это ссылка на саму таблицу, а не на экспорт XLSX — нужна ссылка вида /export?format=xlsx";
+  }
+
+  return null;
 }

@@ -24,9 +24,10 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
     setBusy(null);
     if (error) {
       setError(error.message);
-      // Черновик кода откатываем: иначе поле продолжает показывать то, что база
-      // не приняла, и выглядит это как сохранённое значение.
+      // Черновики откатываем: иначе поле продолжает показывать то, что база не
+      // приняла, и выглядит это как сохранённое значение.
       setCodeDraft((d) => { const rest = { ...d }; delete rest[id]; return rest; });
+      setSheetDraft((d) => { const rest = { ...d }; delete rest[id]; return rest; });
       return;
     }
     setSaved(id);
@@ -44,15 +45,31 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
     setBusy(p.id);
     setError(null);
     setSaved(null);
-    const res = await fetch("/api/sheets/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spreadsheetId: draft }),
-    });
-    if (!res.ok) {
-      const d = (await res.json()) as { error?: string };
+
+    let ok = false;
+    let problem = "Таблица не читается";
+    try {
+      const res = await fetch("/api/sheets/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spreadsheetId: draft }),
+      });
+      ok = res.ok;
+      if (!ok) {
+        // Ответ не всегда JSON: упавшая функция отдаёт HTML. Без try строка
+        // осталась бы заблокированной навсегда — busy никто бы не снял.
+        try {
+          const d = (await res.json()) as { error?: string };
+          if (d.error) problem = d.error;
+        } catch { /* не JSON — оставляем общий текст */ }
+      }
+    } catch {
+      problem = "Не удалось проверить таблицу — попробуй ещё раз";
+    }
+
+    if (!ok) {
       setBusy(null);
-      setError(d.error ?? "Таблица не читается");
+      setError(problem);
       setSheetDraft((s) => { const rest = { ...s }; delete rest[p.id]; return rest; });
       return;
     }
