@@ -66,7 +66,10 @@ grant select (creative_code, transcription_ru, ignored, updated_at)
   on public.creative_notes to anon, authenticated;
 grant insert (creative_code, transcription_ru, ignored, updated_at)
   on public.creative_notes to authenticated;
-grant update (transcription_ru, ignored, updated_at)
+-- creative_code в списке update намеренно: upsert через PostgREST кладёт в SET
+-- все переданные колонки, включая ключевую. Без права на неё запись отклонялась
+-- бы — а присвоение ключу его же значения ничего не меняет.
+grant update (creative_code, transcription_ru, ignored, updated_at)
   on public.creative_notes to authenticated;
 
 -- Воркер ходит сервисным ключом, его гранты не касаются — расшифровки пишутся
