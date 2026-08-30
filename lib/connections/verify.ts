@@ -1,0 +1,55 @@
+import * as XLSX from "xlsx";
+import { listSheetTitles } from "@/lib/general-report/googleSheets";
+
+// Подключение проверяется в момент сохранения, а не при первом открытии отчёта.
+// Иначе человек узнаёт о нерабочем ключе через неделю пустых цифр и решает, что
+// сломался дашборд.
+
+const META = "https://graph.facebook.com/v26.0";
+
+export async function verifyMetaToken(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${META}/me/adaccounts?limit=1&fields=id&access_token=${encodeURIComponent(token)}`);
+    const body = (await res.json()) as { error?: { message?: string }; data?: unknown[] };
+    if (body.error) {
+      // Текст Meta бывает полезен («Session has expired»), но токен в него попасть не должен.
+      return `Meta не приняла ключ: ${body.error.message ?? "причина не указана"}`;
+    }
+    if (!Array.isArray(body.data)) return "Meta ответила не тем, чем должна";
+    if (body.data.length === 0) {
+      return "Ключ рабочий, но не видит ни одного рекламного кабинета — проверь права";
+    }
+    return null;
+  } catch {
+    return "Не удалось достучаться до Meta — попробуй ещё раз";
+  }
+}
+
+export async function verifySheet(spreadsheetId: string): Promise<string | null> {
+  try {
+    const titles = await listSheetTitles(spreadsheetId);
+    if (titles.length === 0) return "Таблица открылась, но в ней нет ни одного листа";
+    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+    if (/403|permission|PERMISSION_DENIED/i.test(msg)) {
+      return `Нет доступа к таблице. Открой к ней доступ на чтение для ${email ?? "сервисного аккаунта"}`;
+    }
+    if (/404|not found/i.test(msg)) return "Таблица не найдена — проверь ключ таблицы";
+    return `Не удалось прочитать таблицу: ${msg}`;
+  }
+}
+
+export async function verifyXlsxUrl(url: string): Promise<string | null> {
+  if (!/^https?:\/\//i.test(url)) return "Нужна ссылка целиком, вместе с https://";
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return `Ссылка не открывается: ${res.status}`;
+    const wb = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: "buffer" });
+    if (wb.SheetNames.length === 0) return "Файл открылся, но листов в нём нет";
+    return null;
+  } catch {
+    return "По ссылке пришёл не XLSX — проверь, что выгрузка настроена и ссылка прямая";
+  }
+}

@@ -12,6 +12,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
   const [saved, setSaved] = useState<string | null>(null);
   // Код правится в поле и уходит по Enter или потере фокуса, а не на каждый символ.
   const [codeDraft, setCodeDraft] = useState<Record<string, string>>({});
+  const [sheetDraft, setSheetDraft] = useState<Record<string, string>>({});
 
   async function update(id: string, patch: Record<string, unknown>) {
     setBusy(id);
@@ -30,6 +31,32 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
     }
     setSaved(id);
     router.refresh();
+  }
+
+  // Таблицу проверяем до записи: непошаренная на сервисный аккаунт таблица
+  // сохранится молча и обернётся пустым отчётом через неделю.
+  async function commitSheet(p: Profile) {
+    const draft = (sheetDraft[p.id] ?? "").trim();
+    if (draft === (p.gr_spreadsheet_id ?? "")) return;
+
+    if (draft === "") { update(p.id, { p_clear_gr: true }); return; }
+
+    setBusy(p.id);
+    setError(null);
+    setSaved(null);
+    const res = await fetch("/api/sheets/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ spreadsheetId: draft }),
+    });
+    if (!res.ok) {
+      const d = (await res.json()) as { error?: string };
+      setBusy(null);
+      setError(d.error ?? "Таблица не читается");
+      setSheetDraft((s) => { const rest = { ...s }; delete rest[p.id]; return rest; });
+      return;
+    }
+    update(p.id, { p_gr_sheet: draft });
   }
 
   function commitCode(p: Profile) {
@@ -103,14 +130,34 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                  : saved === p.id ? <span className="text-green-400">сохранено</span>
                  : null}
               </span>
+
+              {/* Таблицу General 3.0 подключает владелец: таблицы его и доступ к ним
+                  выдаёт он, баеру там нечего вводить. */}
+              {p.role === "buyer" && (
+                <div className="w-full flex items-center gap-2">
+                  <span className="text-[11px] text-zinc-600 whitespace-nowrap">General 3.0</span>
+                  <input
+                    type="text"
+                    placeholder="ключ таблицы"
+                    value={sheetDraft[p.id] ?? p.gr_spreadsheet_id ?? ""}
+                    disabled={busy === p.id}
+                    onChange={(e) => setSheetDraft((s) => ({ ...s, [p.id]: e.target.value }))}
+                    onBlur={() => commitSheet(p)}
+                    onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                    className={`${field} flex-1 min-w-0 disabled:opacity-50`}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
       <p className="text-[11px] text-zinc-600 leading-relaxed">
-        Код баера — вида <code className="text-zinc-500">b5</code>, пустое поле убирает код.
-        Последнего владельца разжаловать нельзя, иначе администрировать станет некому.
+        Код баера — вида <code className="text-zinc-500">b5</code> или просто <code className="text-zinc-500">5</code>,
+        пустое поле убирает код. Последнего владельца разжаловать нельзя, иначе администрировать станет некому.
+        Таблица General 3.0 проверяется при сохранении: если она не открыта на чтение сервисному аккаунту,
+        сохранить её не получится.
       </p>
     </div>
   );

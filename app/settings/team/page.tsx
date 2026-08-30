@@ -12,7 +12,7 @@ export default async function TeamPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("profiles")
-    .select("id, email, name, role, buyer_code, crm_buyer_id, notion_url, status")
+    .select("id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, status")
     .order("created_at", { ascending: true });
 
   return (

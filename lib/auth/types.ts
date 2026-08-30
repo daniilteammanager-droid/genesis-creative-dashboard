@@ -17,6 +17,9 @@ export interface Profile {
   buyer_code: string | null;
   crm_buyer_id: string | null;
   notion_url: string | null;
+  // Таблица General 3.0. Живёт в профиле, а не в подключениях: её заводит и шарит
+  // на сервисный аккаунт владелец, баеру там нечего вводить.
+  gr_spreadsheet_id: string | null;
   status: "active" | "disabled";
 }
 
