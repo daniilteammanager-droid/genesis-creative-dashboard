@@ -1,7 +1,7 @@
 // Самопроверка парсера кода и индекса медиа. Без фреймворков:
 //   npx tsx lib/creatives/code.test.ts
 import assert from "node:assert/strict";
-import { parseCreativeCode, geoOf, approachOf, buyerOf, shootKey, parseCampaignName, parseAdSetName } from "./code";
+import { parseCreativeCode, geoOf, approachOf, buyerOf, shootKey, stripDuplicateTail, parseCampaignName, parseAdSetName } from "./code";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "./media";
 
 // ─── Новая схема ──────────────────────────────────────────────────────────────
@@ -108,5 +108,27 @@ assert.equal(lookupMedia(index, "qa-6")?.file.key, "qa/qa-6-es.mp4");
 const noSuffix = buildMediaIndex(media, new Set());
 assert.equal(lookupMedia(noSuffix, "qa-6-ar"), undefined, "без суффиксов старый запасной путь выключен");
 assert.equal(lookupMedia(noSuffix, "vid-storytell-t31-v1-b2-es-ar")?.exact, false, "новый путь работает всегда");
+
+
+// ─── Хвост от дублирования в кабинете ────────────────────────────────────────
+// Meta дописывает его сама. Без отрезания новый код проваливается в legacy и
+// отдаёт гео из позиции подхода — молча и неверно (замер 31.08.2026).
+{
+  const clean = "vid-storytell-t31-v1-b2-es-ar";
+  for (const tail of [
+    "_Ad name2026-09-01 10:00:00",
+    "_Nome inserzione2026-08-26 07:53:52",
+    "_Anzeigenname2026-09-01 10:00:00",
+  ]) {
+    const p = parseCreativeCode(clean + tail);
+    assert.equal(p.scheme, "v2", `хвост ${tail} не должен ронять схему`);
+    assert.equal(geoOf(clean + tail), "ar", "гео берётся из кода, а не из позиции подхода");
+    assert.equal(buyerOf(clean + tail), "b2");
+  }
+  // Старые имена хвост не трогает
+  assert.equal(stripDuplicateTail("balance5-off-es-tg"), "balance5-off-es-tg");
+  // Похожее, но не хвост — не режем
+  assert.equal(stripDuplicateTail("ad name is here"), "ad name is here");
+}
 
 console.log("✅ parseCreativeCode + buildMediaIndex self-check passed");

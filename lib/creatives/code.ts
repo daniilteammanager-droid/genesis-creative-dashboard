@@ -44,8 +44,23 @@ export type ParsedCreativeCode = CreativeCodeV2 | CreativeCodeLegacy;
 // команды и пополняются, а хардкод здесь означал бы деплой ради каждого нового гео.
 const V2_RE = /^([a-z]+)-([a-z0-9]+)-t(\d+)-v(\d+)-b(\d+)-([a-z]{2,3})-([a-z]{2,3})$/;
 
+// Meta дописывает к имени объявления хвост при дублировании в кабинете:
+// "…_Ad name2026-09-01 10:00:00", в локализованных кабинетах "_Nome inserzione",
+// "_Anzeigenname", "_Nombre del anuncio". Это не часть имени, которое печатал
+// человек, а артефакт кабинета.
+//
+// Без отрезания дублированный новый код опознаётся как legacy и отдаёт неверные
+// значения: гео берётся вторым сегментом через дефис, а там подход. То есть крео
+// на Аргентину отчитается с гео "storytell" — ровно та подмена, ради запрета
+// которой писался Decision 026. Замерено на живых данных 31.08.2026.
+const DUPLICATE_TAIL = /_(?:ad name|nome inserzione|anzeigenname|nombre del anuncio|nom de la publicité)\s?\d{4}-\d\d-\d\d.*$/i;
+
+export function stripDuplicateTail(name: string): string {
+  return name.replace(DUPLICATE_TAIL, "");
+}
+
 export function parseCreativeCode(code: string): ParsedCreativeCode {
-  const normalized = normalize(code);
+  const normalized = stripDuplicateTail(normalize(code));
   const m = V2_RE.exec(normalized);
   if (m) {
     return {
