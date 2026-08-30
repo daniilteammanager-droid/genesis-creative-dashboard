@@ -23,7 +23,15 @@ export async function GET(req: Request) {
     const me = await getProfile();
     if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
-    const config = await reportConfigFor(me);
+    const { searchParams } = new URL(req.url);
+    // Режим разбирается до конфига: от него зависит, какие источники нужны.
+    // «Кампании» работают без выгрузки по объявлениям и наоборот.
+    const mode = (searchParams.get("mode") ?? "campaigns") as LiveMode;
+    if (mode !== "campaigns" && mode !== "ads") {
+      return NextResponse.json({ error: `Неизвестный режим: ${mode}` }, { status: 400 });
+    }
+
+    const config = await reportConfigFor(me, mode);
     if ("missing" in config) {
       return NextResponse.json(
         {
@@ -37,11 +45,6 @@ export async function GET(req: Request) {
     }
 
 
-    const { searchParams } = new URL(req.url);
-    const mode = (searchParams.get("mode") ?? "campaigns") as LiveMode;
-    if (mode !== "campaigns" && mode !== "ads") {
-      return NextResponse.json({ error: `Unknown mode: ${mode}` }, { status: 400 });
-    }
     const requestedPeriod = searchParams.get("period") ?? undefined;
 
     let periods: Period[];

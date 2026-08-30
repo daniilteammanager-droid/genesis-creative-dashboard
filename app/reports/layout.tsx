@@ -9,8 +9,17 @@ export default async function ReportsLayout({ children }: { children: React.Reac
   const me = await getProfile();
 
   if (me?.role === "buyer") {
-    const config = await reportConfigFor(me);
-    if ("missing" in config) {
+    // Расшифровка токена умеет бросать — например, если сменили CONNECTIONS_SECRET.
+    // Непойманное исключение в серверном layout кладёт весь раздел, включая
+    // ручной режим, которому подключения не нужны вовсе. Пусть лучше дальше
+    // ответит роут: он умеет объяснить причину текстом.
+    let config: Awaited<ReturnType<typeof reportConfigFor>> | null = null;
+    try {
+      config = await reportConfigFor(me);
+    } catch {
+      config = null;
+    }
+    if (config && "missing" in config) {
       return (
         <NoConnections
           title="Reports"

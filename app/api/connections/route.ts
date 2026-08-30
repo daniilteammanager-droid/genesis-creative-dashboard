@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
-import { getConnectionView, saveConnection } from "@/lib/connections/store";
+import { getConnectionView, saveConnection, sourceTakenBy } from "@/lib/connections/store";
 import { verifyMetaToken, verifySheet, verifyXlsxUrl } from "@/lib/connections/verify";
 
 // Свои подключения человек правит только сам: user_id берётся из сессии, а не из
@@ -43,6 +43,17 @@ export async function POST(req: Request) {
 
     if (problems.length > 0) {
       return NextResponse.json({ error: problems.join(". ") }, { status: 400 });
+    }
+
+    // Проверка доступа выше говорит только «сервисный аккаунт это читает» — а он
+    // читает и командные таблицы, и чужие. Без этой проверки достаточно знать
+    // адрес командной выгрузки, чтобы увидеть цифры всей команды под видом своих.
+    const taken = await sourceTakenBy(me.id, body);
+    if (taken) {
+      return NextResponse.json(
+        { error: `Эта ${taken} уже подключена другому. Нужна своя — та, что настроена на твой аккаунт Torro` },
+        { status: 400 }
+      );
     }
 
     await saveConnection(me.id, body);

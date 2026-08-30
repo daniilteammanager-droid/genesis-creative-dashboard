@@ -1,5 +1,6 @@
 import { getConnection } from "@/lib/connections/store";
 import type { Profile } from "@/lib/auth/types";
+import type { LiveMode } from "./types";
 
 // Откуда Reports берут данные для конкретного человека.
 //
@@ -24,20 +25,38 @@ export interface MissingConfig {
   missing: string[];
 }
 
-export async function reportConfigFor(me: Profile): Promise<ReportConfig | MissingConfig> {
+// Чего не хватает для конкретного режима. Спрашивать все три источника разом
+// неправильно: «Кампании» работают без выгрузки по объявлениям и наоборот, а
+// человек с половиной подключений не должен упираться в стену на обоих режимах.
+function whatIsMissing(
+  mode: LiveMode | undefined,
+  names: { token: string; campaigns: string; ads: string },
+  has: { token: boolean; campaigns: boolean; ads: boolean }
+): string[] {
+  const missing: string[] = [];
+  if (!has.token) missing.push(names.token);
+  if (mode === "campaigns" && !has.campaigns) missing.push(names.campaigns);
+  if (mode === "ads" && !has.ads) missing.push(names.ads);
+  // Без режима (проверка на входе в раздел) достаточно одного из двух источников.
+  if (!mode && !has.campaigns && !has.ads) missing.push(names.campaigns);
+  return missing;
+}
+
+export async function reportConfigFor(me: Profile, mode?: LiveMode): Promise<ReportConfig | MissingConfig> {
   if (me.role === "buyer") {
     const c = await getConnection(me.id);
-    const missing: string[] = [];
-    if (!c?.metaToken) missing.push("ключ Meta");
-    if (!c?.crmCampaignsUrl) missing.push("выгрузку Torro по кампаниям");
-    if (!c?.crmAdsSheetId) missing.push("выгрузку Torro по объявлениям");
-    if (missing.length > 0 || !c) return { missing };
+    const missing = whatIsMissing(
+      mode,
+      { token: "ключ Meta", campaigns: "выгрузку Torro по кампаниям", ads: "выгрузку Torro по объявлениям" },
+      { token: Boolean(c?.metaToken), campaigns: Boolean(c?.crmCampaignsUrl), ads: Boolean(c?.crmAdsSheetId) }
+    );
+    if (missing.length > 0) return { missing };
 
     return {
       cacheKey: me.id,
-      metaToken: c.metaToken as string,
-      campaignsUrl: c.crmCampaignsUrl as string,
-      adsSheetId: c.crmAdsSheetId as string,
+      metaToken: c!.metaToken as string,
+      campaignsUrl: c!.crmCampaignsUrl ?? "",
+      adsSheetId: c!.crmAdsSheetId ?? "",
     };
   }
 
@@ -45,18 +64,19 @@ export async function reportConfigFor(me: Profile): Promise<ReportConfig | Missi
   const campaignsUrl = process.env.MVP_CAMPAIGN_WEEKLY_XLSX_URL;
   const adsSheetId = process.env.GR_SPREADSHEET_ADS_BY_NAME;
 
-  const missing: string[] = [];
-  if (!metaToken) missing.push("META_ACCESS_TOKEN");
-  if (!campaignsUrl) missing.push("MVP_CAMPAIGN_WEEKLY_XLSX_URL");
-  if (!adsSheetId) missing.push("GR_SPREADSHEET_ADS_BY_NAME");
+  const missing = whatIsMissing(
+    mode,
+    { token: "META_ACCESS_TOKEN", campaigns: "MVP_CAMPAIGN_WEEKLY_XLSX_URL", ads: "GR_SPREADSHEET_ADS_BY_NAME" },
+    { token: Boolean(metaToken), campaigns: Boolean(campaignsUrl), ads: Boolean(adsSheetId) }
+  );
   if (missing.length > 0) return { missing };
 
   return {
     cacheKey: "team",
     metaToken: metaToken as string,
-    campaignsUrl: campaignsUrl as string,
-    adsSheetId: adsSheetId as string,
-    // Резервный путь матча по Ad ID. Необязателен, у баеров его обычно нет.
+    campaignsUrl: campaignsUrl ?? "",
+    adsSheetId: adsSheetId ?? "",
+    // Резервный путь матча по Ad ID. Необязателен, у баеров его нет вовсе.
     adsByIdSheetId: process.env.GR_SPREADSHEET_ADS,
   };
 }
