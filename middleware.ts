@@ -36,15 +36,47 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
-  if (!user && !isPublic) {
+  // Отключённый в «Команде» обязан терять доступ, а не только админские вкладки.
+  // Проверка стоит здесь, потому что это единственное место, через которое проходят
+  // и страницы, и app/api/*: роуты профиль не читают вообще, а страницы отчётов —
+  // клиентские. Отключение через Supabase Auth сессию не отзывает, так что без этой
+  // проверки кнопка «отключён» не делала ровно ничего.
+  let blocked = false;
+  if (user) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", user.id)
+      .maybeSingle();
+    // Ошибка — это недоступный Supabase, а не запрет: дашборд не должен падать
+    // вместе с ним (Decision 005). Запираем только когда ответ получен и он не
+    // «active» — включая случай, когда профиля нет вовсе.
+    blocked = !error && data?.status !== "active";
+  }
+
+  if ((!user || blocked) && !isPublic) {
+    // Клиентский fetch ждёт JSON. Редирект на HTML логина он разбирает как
+    // «Unexpected token <» и показывает пользователю не ту причину.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: blocked ? "Доступ отключён" : "Нужно войти" },
+        { status: 401 }
+      );
+    }
     const login = request.nextUrl.clone();
     login.pathname = "/login";
+    login.search = "";
+    // Отключённому — сказать, почему его развернуло. Иначе он видит форму входа,
+    // успешно вводит верный пароль и снова оказывается на ней же.
+    if (blocked) login.searchParams.set("disabled", "1");
     // Куда человек шёл — вернём его туда после входа, а не на главную.
-    login.searchParams.set("next", pathname);
+    else login.searchParams.set("next", pathname);
     return NextResponse.redirect(login);
   }
 
-  if (user && pathname === "/login") {
+  // Отключённого с /login не уводим: увести его некуда — на любой странице его
+  // развернёт обратно, и получится бесконечный редирект.
+  if (user && !blocked && pathname === "/login") {
     const home = request.nextUrl.clone();
     home.pathname = "/";
     home.search = "";

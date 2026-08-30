@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, type ReactNode } from "react";
-import Link from "next/link";
 import {
   ResponsiveContainer, ComposedChart, Area, Bar, Line, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -733,29 +732,7 @@ export default function GeneralReportPage() {
     <main className="min-h-screen bg-[#0a080f] text-white p-8">
       <div className="max-w-[1600px] mx-auto">
 
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-dark.png" alt="Genesis" className="h-24 md:h-32 w-auto object-contain flex-shrink-0" />
-          <div className="w-px h-10 bg-violet-800/40 flex-shrink-0" />
-          <span className="text-white text-4xl md:text-5xl font-semibold tracking-wide">General Report 3.0</span>
-        </div>
-
-        {/* Navigation */}
-        <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
-          <Link href="/" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
-            Creatives
-          </Link>
-          <Link href="/check" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
-            Checks
-          </Link>
-          <Link href="/reports" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
-            Reports
-          </Link>
-          <span className="px-5 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm">
-            General 3.0
-          </span>
-        </div>
+        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 3.0</h1>
 
         {/* Source switcher — two levels: company tables, then buyer tables */}
         <div className="flex flex-col gap-3 mb-6">

@@ -94,5 +94,5 @@ create policy invites_main_all on public.invites for all
 --  2. Убери REGISTRATION_INVITE_CODE из .env.local и из Vercel — общий код
 --     больше не используется.
 --
---  3. Дальше приглашения выписываются на странице /admin/invites.
+--  3. Дальше приглашения выписываются на странице /settings/invites.
 -- ============================================================================

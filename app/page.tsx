@@ -1,7 +1,6 @@
 "use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
@@ -328,21 +327,7 @@ export default function Home() {
     >
       <div className="max-w-7xl mx-auto">
 
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo-dark.png"
-            alt="Genesis Trade Academy"
-            className="h-24 md:h-32 w-auto object-contain flex-shrink-0"
-          />
-          <div className="w-px h-10 bg-violet-800/40 flex-shrink-0" />
-          <span className="text-white text-4xl md:text-5xl font-semibold tracking-wide">
-            Creative Dashboard
-          </span>
-        </div>
-
-        {/* Top-level navigation */}
+        {/* Вкладки этой страницы */}
         <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
           {(["creatives", "analytics"] as const).map((t) => (
             <button
@@ -357,24 +342,6 @@ export default function Home() {
               {t === "creatives" ? "Creatives" : "Analytics"}
             </button>
           ))}
-          <Link
-            href="/check"
-            className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
-          >
-            Checks
-          </Link>
-          <Link
-            href="/reports"
-            className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
-          >
-            Reports
-          </Link>
-          <Link
-            href="/general-report"
-            className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
-          >
-            General 3.0
-          </Link>
         </div>
 
         {topTab === "creatives" && (

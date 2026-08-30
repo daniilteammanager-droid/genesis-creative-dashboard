@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { UserRole, Profile } from "./types";
@@ -33,7 +34,10 @@ export async function createClient() {
 // Профиль текущего пользователя или null. Namesake auth.getUser() ходит на
 // сервер Supabase и проверяет подпись токена — в отличие от getSession(),
 // которому можно подсунуть что угодно из cookie.
-export async function getProfile(): Promise<Profile | null> {
+// cache() на один проход рендера: профиль спрашивают и корневой layout ради левой
+// панели, и layout настроек, и сама страница через requireRole. Без него это три
+// похода в Supabase на каждый запрос вместо одного.
+export const getProfile = cache(async function getProfile(): Promise<Profile | null> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -45,7 +49,7 @@ export async function getProfile(): Promise<Profile | null> {
     .maybeSingle();
 
   return (data as Profile | null) ?? null;
-}
+});
 
 // Профиль с нужными правами или null. Проверка идёт на сервере: скрыть кнопку
 // в интерфейсе — не защита, роут обязан проверять сам.

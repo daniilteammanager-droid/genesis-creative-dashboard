@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import UserBadge from "@/components/UserBadge";
+import Shell from "@/components/Shell";
+import { getProfile } from "@/lib/auth/server";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,19 +19,23 @@ export const metadata: Metadata = {
   description: "Internal Creative Intelligence System for Genesis Academy",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Профиль читается здесь один раз на запрос: оболочке нужна роль, чтобы решить,
+  // показывать ли служебные пункты. На странице входа профиля нет, и оболочка
+  // тогда просто отдаёт содержимое как есть.
+  const profile = await getProfile();
+
   return (
     <html
-      lang="en"
+      lang="ru"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <UserBadge />
-        {children}
+        <Shell profile={profile}>{children}</Shell>
       </body>
     </html>
   );

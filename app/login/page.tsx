@@ -15,6 +15,9 @@ function LoginForm() {
   const rawNext = params.get("next") || "/";
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   const invited = params.get("invite");
+  // Пришёл с флагом от middleware — аккаунт отключён. Без этой строки человек
+  // вводит верный пароль и молча оказывается на той же форме.
+  const disabled = params.get("disabled") === "1";
 
   // Пришёл по ссылке-приглашению — сразу открываем регистрацию с заполненным полем.
   const [mode, setMode] = useState<Mode>(invited ? "signup" : "signin");
@@ -166,6 +169,12 @@ function LoginForm() {
                   Приглашение одноразовое, его выдаёт тимлид. Номер баера присвоится сам.
                 </p>
               </>
+            )}
+
+            {disabled && (
+              <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm">
+                Аккаунт отключён. Обратись к владельцу — вход не поможет.
+              </div>
             )}
 
             {error && (

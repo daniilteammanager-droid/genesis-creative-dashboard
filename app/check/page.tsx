@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useMemo, useRef } from "react";
-import Link from "next/link";
 import {
   parseFB, parseFBDetailed, parseMVP, aggregateFBItems, aggregateMVPItems,
   formatMoney, formatPlainNumber, formatBudget,
@@ -688,34 +687,7 @@ export default function CheckPage() {
     <div className="min-h-screen bg-[#0a080f] text-white">
       <div className="max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
 
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <img src="/logo-dark.png" alt="Genesis Trade Academy" className="h-24 md:h-32 w-auto object-contain flex-shrink-0" />
-          <div className="w-px h-10 bg-violet-800/40 flex-shrink-0" />
-          <span className="text-white text-4xl md:text-5xl font-semibold tracking-wide">Creative Dashboard</span>
-        </div>
-
-        {/* Top-level nav */}
-        <div className="flex gap-1 mb-8 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
-          {(["creatives", "analytics"] as const).map((t) => (
-            <Link
-              key={t}
-              href={t === "analytics" ? "/?tab=analytics" : "/"}
-              className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition"
-            >
-              {t === "creatives" ? "Creatives" : "Analytics"}
-            </Link>
-          ))}
-          <span className="px-5 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm">
-            Checks
-          </span>
-          <Link href="/reports" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
-            Reports
-          </Link>
-          <Link href="/general-report" className="px-5 py-2 rounded-xl text-sm font-semibold text-zinc-400 hover:text-violet-300 transition">
-            General 3.0
-          </Link>
-        </div>
+        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Checks</h1>
 
         {/* Upload card */}
         <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6 mb-6">

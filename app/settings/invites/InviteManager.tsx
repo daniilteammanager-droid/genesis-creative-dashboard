@@ -8,6 +8,7 @@ import type { UserRole } from "@/lib/auth/types";
 export interface Invite {
   token: string;
   role: UserRole;
+  buyer_code: string | null;
   note: string | null;
   created_at: string;
   expires_at: string;
@@ -29,6 +30,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
   const [note, setNote] = useState("");
   const [role, setRole] = useState<UserRole>("buyer");
   const [days, setDays] = useState(14);
+  const [buyerCode, setBuyerCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -40,16 +42,30 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Тот же вид, что проверяет база (003_admin.sql). Без проверки здесь кривой код
+    // молча ложится в приглашение, а спотыкается об него уже приглашённый — при
+    // регистрации, и без внятного объяснения.
+    const code = buyerCode.trim();
+    if (role === "buyer" && code && !/^b[0-9]+$/.test(code)) {
+      setBusy(false);
+      setError("Код баера должен быть вида b5");
+      return;
+    }
+
     const token = newToken();
     const expires = new Date(Date.now() + days * 86_400_000).toISOString();
 
     const { error } = await supabase.from("invites").insert({
       token, role, note: note.trim() || null, created_by: user?.id ?? null, expires_at: expires,
+      // Номер задаётся здесь, а не правится после регистрации: действующим баерам
+      // нужны их настоящие b1–b4, а последовательность выдала бы следующий свободный.
+      buyer_code: role === "buyer" && code ? code : null,
     });
     setBusy(false);
 
     if (error) { setError(error.message); return; }
     setNote("");
+    setBuyerCode("");
     // Список живёт на сервере — просим Next перечитать страницу.
     router.refresh();
     // Сразу в буфер: приглашение бесполезно, пока его не отправили человеку.
@@ -93,6 +109,18 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               <option value="teamlead">Тимлид</option>
             </select>
           </div>
+          {role === "buyer" && (
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">Номер</label>
+              <input
+                type="text"
+                placeholder="сам"
+                value={buyerCode}
+                onChange={(e) => setBuyerCode(e.target.value)}
+                className={`${field} w-20`}
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs text-zinc-500 mb-1.5">Живёт, дней</label>
             <input
@@ -114,6 +142,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
         </div>
         <p className="text-[11px] text-zinc-600 mt-3">
           Ссылка копируется в буфер сразу после создания. Роль «владелец» через приглашения не выдаётся.
+          Номер оставь пустым — присвоится следующий свободный.
         </p>
       </form>
 
@@ -131,7 +160,8 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-zinc-200 truncate">{i.note || "без пометки"}</p>
                 <p className="text-[11px] text-zinc-600 mt-0.5">
-                  {i.role === "teamlead" ? "тимлид" : "баер"} · до{" "}
+                  {i.role === "teamlead" ? "тимлид" : "баер"}
+                  {i.buyer_code ? ` ${i.buyer_code}` : ""} · до{" "}
                   {new Date(i.expires_at).toLocaleDateString("ru-RU")}
                 </p>
               </div>
