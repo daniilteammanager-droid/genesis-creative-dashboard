@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getProfile } from "@/lib/auth/server";
 import { fetchCampaignInsights, fetchAdInsights, fetchAdStatuses, fetchCampaignMeta } from "@/lib/reports-live/metaApi";
 import { buildLiveCampaignItems, buildLiveCreativeItems } from "@/lib/reports-live/buildLiveItems";
 import { loadCampaignPeriod, loadCreativePeriod } from "@/lib/reports-live/crmSource";
@@ -10,8 +11,18 @@ import type { Period } from "@/lib/reports-live/periods";
 const CACHE_TTL_MS = 5 * 60_000;
 const cache = new Map<string, { data: unknown; at: number }>();
 
+const DENIED = "Раздел работает по твоим подключениям, а их пока нет";
+
 export async function GET(req: Request) {
   try {
+    // Проверка стоит и здесь, а не только в layout страницы: роут вызывается
+    // напрямую, и спрятанная страница ничего не закрывает.
+    const me = await getProfile();
+    if (!me || me.role === "buyer") {
+      return NextResponse.json({ error: DENIED }, { status: 403 });
+    }
+
+
     const { searchParams } = new URL(req.url);
     const mode = (searchParams.get("mode") ?? "campaigns") as LiveMode;
     if (mode !== "campaigns" && mode !== "ads") {

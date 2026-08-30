@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getProfile } from "@/lib/auth/server";
 import { listCountrySheets, fetchSheetValues } from "@/lib/general-report/googleSheets";
 import { parseCountrySheet } from "@/lib/general-report/parseCountrySheet";
 import { parseWaSheet } from "@/lib/general-report/parseWaSheet";
@@ -63,8 +64,17 @@ async function loadWa() {
   return { ...entry, fromCache: false };
 }
 
+const DENIED = "Раздел работает по твоим подключениям, а их пока нет";
+
 export async function GET(req: Request) {
   try {
+    // Проверка стоит и здесь, а не только в layout страницы: роут вызывается
+    // напрямую, и спрятанная страница ничего не закрывает.
+    const me = await getProfile();
+    if (!me || me.role === "buyer") {
+      return NextResponse.json({ error: DENIED }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const source = (searchParams.get("source") ?? "summary") as GrSource;
 
