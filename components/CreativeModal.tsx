@@ -37,11 +37,15 @@ export default function CreativeModal({
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  const [noteText,            setNoteText]            = useState(note?.note ?? "");
+  // Тексты читаются из пропа, а не хранятся в состоянии. Раньше они брались один
+  // раз при монтировании — а модал в Reports открывается ДО того, как приедет
+  // заметка, и приехавшую он уже не показывал. Хуже: в поле расшифровки в этот
+  // момент стоял текст из CSV, и «Сохранить» затирало им расшифровку воркера.
+  const noteText = note?.note ?? "";
   const [noteStatus,          setNoteStatus]          = useState<SaveStatus>("idle");
   const [noteEditing,         setNoteEditing]         = useState(false);
   const [noteDraft,           setNoteDraft]           = useState("");
-  const [transcriptionText,   setTranscriptionText]   = useState(note?.transcription_ru || item.text);
+  const transcriptionText = note?.transcription_ru || item.text;
   const [transcriptionStatus, setTranscriptionStatus] = useState<SaveStatus>("idle");
   const [transcriptionEditing,setTranscriptionEditing]= useState(false);
   const [transcriptionDraft,  setTranscriptionDraft]  = useState("");
@@ -55,9 +59,12 @@ export default function CreativeModal({
     if (!supabaseAvailable) { console.warn("Supabase недоступен — сохранение временно недоступно"); return; }
     setStatus("saving");
     const now = new Date().toISOString();
+    // Разворачиваем прежнюю заметку целиком: раньше payload собирался с нуля и
+    // терял ignored, а родитель заменяет объект целиком — флаг «скрыт» пропадал
+    // из интерфейса до перезагрузки.
     const payload: CreativeNote = {
+      ...(note ?? { creative_code: item.creative, favorite: false, note: null, transcription_ru: null, updated_at: now }),
       creative_code:    item.creative,
-      favorite:         note?.favorite ?? false,
       note:             field === "note" ? (value.trim() || null) : (note?.note ?? null),
       transcription_ru: field === "transcription_ru" ? (value.trim() || null) : (note?.transcription_ru ?? null),
       updated_at:       now,
@@ -68,7 +75,7 @@ export default function CreativeModal({
       // числе расшифровку, дописанную воркером минуту назад.
       if (field === "note") {
         const { error } = await supabase.from("creative_user_notes").upsert(
-          { user_id: await currentUserId(), creative_code: item.creative, note: payload.note, favorite: payload.favorite, updated_at: now },
+          { user_id: await currentUserId(), creative_code: item.creative, note: payload.note, updated_at: now },
           { onConflict: "user_id,creative_code" }
         );
         if (error) throw error;
@@ -203,7 +210,7 @@ export default function CreativeModal({
                   />
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => saveField("transcription_ru", transcriptionDraft, setTranscriptionStatus, () => { setTranscriptionText(transcriptionDraft); setTranscriptionEditing(false); })}
+                      onClick={() => saveField("transcription_ru", transcriptionDraft, setTranscriptionStatus, () => setTranscriptionEditing(false))}
                       disabled={!supabaseAvailable || transcriptionStatus === "saving"}
                       className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -250,7 +257,7 @@ export default function CreativeModal({
                   />
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => saveField("note", noteDraft, setNoteStatus, () => { setNoteText(noteDraft); setNoteEditing(false); })}
+                      onClick={() => saveField("note", noteDraft, setNoteStatus, () => setNoteEditing(false))}
                       disabled={!supabaseAvailable || noteStatus === "saving"}
                       className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >

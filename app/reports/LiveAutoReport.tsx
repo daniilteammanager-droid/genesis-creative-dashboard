@@ -196,11 +196,16 @@ export default function LiveAutoReport() {
       // строка целиком, и клик возвращал назад расшифровку, прочитанную при
       // открытии карточки, — воркер мог дописать её в промежутке.
       const { error: err } = await supabase.from("creative_user_notes").upsert(
-        { user_id: await currentUserId(), creative_code: creativeCode, favorite: newFavorite, note: updated.note, updated_at: updated.updated_at },
+        // Только избранное: заметку сюда не кладём, иначе клик затирал бы её
+        // тем, что было прочитано при открытии карточки.
+        { user_id: await currentUserId(), creative_code: creativeCode, favorite: newFavorite, updated_at: updated.updated_at },
         { onConflict: "user_id,creative_code" }
       );
       if (err) throw err;
     } catch (e) {
+      // Откатываем звёздочку: без этого отказ записи оставлял её закрашенной,
+      // и человек считал, что сохранилось.
+      setSelectedNote(selectedNote);
       console.error("Ошибка сохранения favorite:", e);
     }
   }

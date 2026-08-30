@@ -50,6 +50,28 @@ where (coalesce(n.favorite, false) or n.note is not null)
   and exists (select 1 from public.profiles where role = 'main')
 on conflict (user_id, creative_code) do nothing;
 
+-- ─── Старые колонки закрываются от чтения ───────────────────────────────────
+-- Перенос вводит правило «заметка личная», но сам по себе его не выполняет:
+-- оригиналы остались бы лежать в creative_notes, которую браузер читает
+-- анонимным ключом. Любой баер одной строкой в консоли достал бы всю историю
+-- заметок владельца.
+--
+-- RLS тут не поможет — она режет строки, а резать надо колонки. Тот же приём,
+-- что и с profiles в 001_auth.sql (Decision 030): снять табличное право и выдать
+-- поколоночно. Колоночный grant поверх табличного не работает, поэтому сначала
+-- revoke.
+revoke select, insert, update on public.creative_notes from anon, authenticated;
+
+grant select (creative_code, transcription_ru, ignored, updated_at)
+  on public.creative_notes to anon, authenticated;
+grant insert (creative_code, transcription_ru, ignored, updated_at)
+  on public.creative_notes to authenticated;
+grant update (transcription_ru, ignored, updated_at)
+  on public.creative_notes to authenticated;
+
+-- Воркер ходит сервисным ключом, его гранты не касаются — расшифровки пишутся
+-- как писались.
+
 -- ============================================================================
 --  Колонки creative_notes.favorite и creative_notes.note намеренно НЕ удалены.
 --  Код их больше не читает, данные перенесены — но пусть полежат, пока не станет

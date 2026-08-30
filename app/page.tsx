@@ -120,10 +120,13 @@ export default function Home() {
       // клик по избранному возвращал назад расшифровку, прочитанную при открытии
       // страницы, — воркер мог дописать её в промежутке, и она стиралась.
       if (field === "favorite") {
+        // Только своё поле: note сюда не кладём. Иначе клик по звёздочке
+        // отправлял бы заметку, прочитанную при загрузке страницы, и затирал
+        // то, что человек написал в другой вкладке минуту назад.
         const { error } = await supabase
           .from("creative_user_notes")
           .upsert(
-            { user_id: await currentUserId(), creative_code: creativeCode, favorite: newValue, note: updated.note, updated_at: updated.updated_at },
+            { user_id: await currentUserId(), creative_code: creativeCode, favorite: newValue, updated_at: updated.updated_at },
             { onConflict: "user_id,creative_code" }
           );
         if (error) throw error;

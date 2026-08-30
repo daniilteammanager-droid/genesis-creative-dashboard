@@ -54,7 +54,14 @@ export async function selectAllRows<T>(table: string, columns: string): Promise<
   const PAGE = 1000;
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE - 1);
+    // Порядок обязателен: без него Postgres волен отдавать страницы в любом
+    // порядке, и между запросами строки съезжают — часть приезжает дважды,
+    // часть не приезжает вовсе.
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .order("creative_code", { ascending: true })
+      .range(from, from + PAGE - 1);
     if (error) throw error;
     const rows = (data ?? []) as T[];
     out.push(...rows);
