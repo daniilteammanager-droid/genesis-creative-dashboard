@@ -77,6 +77,10 @@ create table if not exists public.wh_campaign_days (
 -- данные. Когда выгрузки станут дневными, period_start = period_end, и ни схема,
 -- ни запросы не меняются.
 --
+-- В выгрузках есть служебные листы «download» и «All Data» — они не периоды и
+-- при загрузке пропускаются. Имя листа дневной выгрузки — дата (2026-08-31),
+-- недельной — диапазон (2026-08-24_2026-08-30).
+--
 -- Следствие для интерфейса: если запрошенный диапазон разрезает период CRM
 -- пополам, депозиты за него показать НЕЛЬЗЯ. Расход показывается точно, а на
 -- месте депозитов — прочерк с объяснением. Разложить недельное число по дням
@@ -87,15 +91,23 @@ create table if not exists public.wh_crm_ad_periods (
   period_start  date not null,
   period_end    date not null,
   ad_name       text not null,
-  clicks        integer not null default 0,   -- клик на лендинге, НЕ клик по объявлению
-  subscribers   integer not null default 0,
-  dialogs       integer not null default 0,
-  registrations integer not null default 0,
-  dep_count     integer not null default 0,
-  dep_sum       numeric(14,2) not null default 0,
-  redep_count   integer not null default 0,
-  redep_sum     numeric(14,2) not null default 0,
-  unsubscribes  integer not null default 0,
+  -- Колонки НЕ not null, и это принципиально. Набор колонок у выгрузок разный:
+  -- в дневной по крео есть клики и регистрации, но нет отписок; в дневной по
+  -- кампаниям нет ни кликов, ни регистраций; в недельных наоборот. Замерено
+  -- 31.08.2026.
+  --
+  -- Значит null и 0 — разные вещи: null это «колонки не было в выгрузке»,
+  -- 0 это «выгрузили и там ноль». Записать ноль вместо отсутствия значило бы
+  -- утверждать, что регистраций не было, хотя про них просто не спрашивали.
+  clicks        integer,        -- клик на лендинге, НЕ клик по объявлению
+  subscribers   integer,
+  dialogs       integer,
+  registrations integer,
+  dep_count     integer,
+  dep_sum       numeric(14,2),
+  redep_count   integer,
+  redep_sum     numeric(14,2),
+  unsubscribes  integer,
   updated_at    timestamptz not null default now(),
   primary key (user_id, period_start, ad_name)
 );
@@ -107,14 +119,15 @@ create table if not exists public.wh_crm_campaign_periods (
   period_end    date not null,
   campaign_id   text not null,
   campaign_name text,
-  clicks        integer not null default 0,
-  subscribers   integer not null default 0,
-  dialogs       integer not null default 0,
-  registrations integer not null default 0,
-  dep_count     integer not null default 0,
-  dep_sum       numeric(14,2) not null default 0,
-  redep_count   integer not null default 0,
-  redep_sum     numeric(14,2) not null default 0,
+  -- Те же правила про null, что и в таблице выше.
+  clicks        integer,
+  subscribers   integer,
+  dialogs       integer,
+  registrations integer,
+  dep_count     integer,
+  dep_sum       numeric(14,2),
+  redep_count   integer,
+  redep_sum     numeric(14,2),
   updated_at    timestamptz not null default now(),
   primary key (user_id, period_start, campaign_id)
 );
