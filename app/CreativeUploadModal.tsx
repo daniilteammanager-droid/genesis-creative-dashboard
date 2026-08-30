@@ -27,6 +27,9 @@ type UploadItem = {
   status: FileStatus;
   progress: number; // 0-100
   error?: string;
+  // Расхождение bN в имени с тем, кто грузит. Предупреждение, не запрет:
+  // загрузка идёт, а имя человек поправит сам.
+  warning?: string;
 };
 
 const POLL_INTERVAL_MS = 5000;
@@ -94,8 +97,10 @@ export default function CreativeUploadModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: item.name, contentType: item.file.type }),
       });
-      const data = (await res.json()) as { uploadUrl?: string; key?: string; exists?: boolean; error?: string };
+      const data = (await res.json()) as { uploadUrl?: string; key?: string; exists?: boolean; warning?: string; error?: string };
       if (!res.ok || !data.uploadUrl) throw new Error(data.error ?? "Не удалось получить ссылку на загрузку");
+
+      if (data.warning) patch(item.id, { warning: data.warning });
 
       if (data.exists && !overwrite) {
         patch(item.id, { status: "exists" });
@@ -264,7 +269,7 @@ function UploadRow({
   onRemove: () => void;
   onRename: (name: string) => void;
 }) {
-  const { status, progress, error, name } = item;
+  const { status, progress, error, warning, name } = item;
   const editable = status === "queued" || status === "error";
 
   return (
@@ -292,6 +297,10 @@ function UploadRow({
         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
           <div className="h-full bg-violet-500 transition-all" style={{ width: `${progress}%` }} />
         </div>
+      )}
+
+      {warning && status !== "error" && (
+        <p className="text-xs text-amber-400/80 mt-1">{warning}</p>
       )}
 
       {status === "exists" && (
