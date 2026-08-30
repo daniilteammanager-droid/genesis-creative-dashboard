@@ -44,6 +44,28 @@ export async function getConnectionView(userId: string): Promise<ConnectionView>
   };
 }
 
+// Подключение целиком, с расшифрованным токеном. Только для серверного кода,
+// который идёт во внешние сервисы. В браузер это уезжать не должно.
+export async function getConnection(userId: string): Promise<{
+  metaToken: string | null;
+  crmCampaignsUrl: string | null;
+  crmAdsSheetId: string | null;
+} | null> {
+  const { data, error } = await admin()
+    .from("buyer_connections")
+    .select("meta_token_enc, crm_campaigns_url, crm_ads_sheet_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  return {
+    metaToken: data.meta_token_enc ? decryptSecret(data.meta_token_enc) : null,
+    crmCampaignsUrl: data.crm_campaigns_url ?? null,
+    crmAdsSheetId: data.crm_ads_sheet_id ?? null,
+  };
+}
+
 // Расшифрованный токен — только для серверного кода, который идёт в Meta.
 export async function getMetaToken(userId: string): Promise<string | null> {
   const { data, error } = await admin()

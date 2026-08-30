@@ -26,14 +26,10 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 
-function token(): string {
-  const t = process.env.META_ACCESS_TOKEN;
-  if (!t) throw new Error("Missing META_ACCESS_TOKEN env var");
-  return t;
-}
-
-async function graphGet<T>(path: string, params: Record<string, string>): Promise<T> {
-  const qs = new URLSearchParams({ ...params, access_token: token() });
+// Токен приходит параметром, а не из env: у каждого баера свой ключ, и общий
+// ключ команды ему не достаётся ни в каком виде (Decision 035).
+async function graphGet<T>(token: string, path: string, params: Record<string, string>): Promise<T> {
+  const qs = new URLSearchParams({ ...params, access_token: token });
   const res = await fetch(`${BASE}${path}?${qs}`);
   const json = (await res.json()) as T & { error?: { message: string; code: number } };
   if (!res.ok || (json as { error?: unknown }).error) {
@@ -52,11 +48,12 @@ interface AdAccount {
 // Meta hands back an `after` cursor even on the final page — only `paging.next` says there
 // really is one. Stopping on the cursor alone cost one extra empty round-trip per edge per
 // account, which is pure waste against the app-wide call limit.
-async function fetchEdgePaged<T>(parentId: string, edge: string, fields: string, limit = 200): Promise<T[]> {
+async function fetchEdgePaged<T>(token: string, parentId: string, edge: string, fields: string, limit = 200): Promise<T[]> {
   const out: T[] = [];
   let after: string | undefined;
   for (;;) {
     const json = await graphGet<{ data: T[]; paging?: { next?: string; cursors?: { after?: string } } }>(
+      token,
       `/${parentId}/${edge}`,
       { fields, limit: String(limit), ...(after ? { after } : {}) }
     );
@@ -72,7 +69,9 @@ interface Business {
   id: string;
 }
 
-let accountsCache: { accounts: AdAccount[]; at: number } | null = null;
+// Кэш по токену, а не один на всех. Общий кэш означал бы, что кабинеты одного
+// баера отдаются другому — молча и правдоподобно.
+const accountsCaches = new Map<string, { accounts: AdAccount[]; at: number }>();
 // Matches the route's report-level cache. The hour-long TTL was a workaround for sharing
 // the app's rate limit with other buyers' tools on the old app — this app is dedicated to
 // the dashboard now, so there's no need to hold discovery this stale.
@@ -83,7 +82,8 @@ const ACCOUNTS_CACHE_TTL_MS = 5 * 60_000;
 // show up there, even though the token can query them directly by ID. Business Manager
 // discovery closes that gap: every account owned by, or shared as a client to, any
 // Business this token belongs to. Merged + deduped with the direct list, active only.
-export async function fetchActiveAccounts(): Promise<AdAccount[]> {
+export async function fetchActiveAccounts(token: string): Promise<AdAccount[]> {
+  const accountsCache = accountsCaches.get(token);
   if (accountsCache && Date.now() - accountsCache.at < ACCOUNTS_CACHE_TTL_MS) {
     return accountsCache.accounts;
   }
@@ -93,11 +93,11 @@ export async function fetchActiveAccounts(): Promise<AdAccount[]> {
   // render a report with zero spend and no indication anything was wrong.
   let discoveryError: Error | undefined;
   const [direct, businesses] = await Promise.all([
-    fetchEdgePaged<AdAccount>("me", "adaccounts", "id,name,account_status").catch((e) => {
+    fetchEdgePaged<AdAccount>(token, "me", "adaccounts", "id,name,account_status").catch((e) => {
       discoveryError = e;
       return [];
     }),
-    fetchEdgePaged<Business>("me", "businesses", "id").catch((e) => {
+    fetchEdgePaged<Business>(token, "me", "businesses", "id").catch((e) => {
       discoveryError = e;
       return [];
     }),
@@ -105,8 +105,8 @@ export async function fetchActiveAccounts(): Promise<AdAccount[]> {
 
   const viaBusinesses = await mapWithConcurrency(businesses, CONCURRENCY, async (b) => {
     const [owned, client] = await Promise.all([
-      fetchEdgePaged<AdAccount>(b.id, "owned_ad_accounts", "id,name,account_status").catch(() => []),
-      fetchEdgePaged<AdAccount>(b.id, "client_ad_accounts", "id,name,account_status").catch(() => []),
+      fetchEdgePaged<AdAccount>(token, b.id, "owned_ad_accounts", "id,name,account_status").catch(() => []),
+      fetchEdgePaged<AdAccount>(token, b.id, "client_ad_accounts", "id,name,account_status").catch(() => []),
     ]);
     return [...owned, ...client];
   });
@@ -122,7 +122,7 @@ export async function fetchActiveAccounts(): Promise<AdAccount[]> {
 
   // Stale cache beats an empty report if this pass itself got rate-limited.
   const accounts = byId.size > 0 ? [...byId.values()] : (accountsCache?.accounts ?? []);
-  accountsCache = { accounts, at: Date.now() };
+  accountsCaches.set(token, { accounts, at: Date.now() });
   return accounts;
 }
 
@@ -138,7 +138,7 @@ interface InsightRow {
   impressions?: string;
 }
 
-async function fetchInsights(account: AdAccount, level: "campaign" | "ad", since: string, until: string): Promise<InsightRow[]> {
+async function fetchInsights(token: string, account: AdAccount, level: "campaign" | "ad", since: string, until: string): Promise<InsightRow[]> {
   const fields =
     level === "campaign"
       ? "campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions"
@@ -149,6 +149,7 @@ async function fetchInsights(account: AdAccount, level: "campaign" | "ad", since
   let after: string | undefined;
   for (;;) {
     const json = await graphGet<{ data: InsightRow[]; paging?: { next?: string; cursors?: { after?: string } } }>(
+      token,
       `/${account.id}/insights`,
       { level, fields, time_range: timeRange, time_increment: "all_days", limit: "500", ...(after ? { after } : {}) }
     );
@@ -164,6 +165,7 @@ async function fetchInsights(account: AdAccount, level: "campaign" | "ad", since
 // failed (rate-limited or otherwise) so the caller can surface a "partial data" warning
 // instead of quietly under-reporting spend.
 async function fetchInsightsForAllAccounts(
+  token: string,
   accounts: AdAccount[],
   level: "campaign" | "ad",
   since: string,
@@ -171,7 +173,7 @@ async function fetchInsightsForAllAccounts(
 ): Promise<{ rows: InsightRow[]; failedAccounts: number }> {
   let failedAccounts = 0;
   const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) =>
-    fetchInsights(a, level, since, until).catch(() => {
+    fetchInsights(token, a, level, since, until).catch(() => {
       failedAccounts++;
       return [];
     })
@@ -180,11 +182,12 @@ async function fetchInsightsForAllAccounts(
 }
 
 export async function fetchCampaignInsights(
+  token: string,
   since: string,
   until: string
 ): Promise<{ items: MetaCampaignRow[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts();
-  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(accounts, "campaign", since, until);
+  const accounts = await fetchActiveAccounts(token);
+  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "campaign", since, until);
   const items = rows.map((r) => ({
     campaignId: r.campaign_id ?? "",
     campaignName: r.campaign_name ?? "",
@@ -198,11 +201,12 @@ export async function fetchCampaignInsights(
 }
 
 export async function fetchAdInsights(
+  token: string,
   since: string,
   until: string
 ): Promise<{ items: MetaAdRow[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts();
-  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(accounts, "ad", since, until);
+  const accounts = await fetchActiveAccounts(token);
+  const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "ad", since, until);
   const items = rows.map((r) => ({
     adId: r.ad_id ?? "",
     adName: r.ad_name ?? "",
@@ -219,16 +223,17 @@ export async function fetchAdInsights(
 
 // Current object status (ACTIVE/PAUSED/...) — insights doesn't carry this, it's a
 // separate object-list lookup. id -> effective_status, across all active accounts.
-async function fetchObjectStatuses(account: AdAccount, edge: "campaigns" | "ads"): Promise<[string, string][]> {
+async function fetchObjectStatuses(token: string, account: AdAccount, edge: "campaigns" | "ads"): Promise<[string, string][]> {
   const rows = await fetchEdgePaged<{ id: string; effective_status: string }>(
+    token,
     account.id, edge, "id,effective_status", 500
   );
   return rows.map((d) => [d.id, d.effective_status] as [string, string]);
 }
 
-export async function fetchAdStatuses(): Promise<Map<string, string>> {
-  const accounts = await fetchActiveAccounts();
-  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchObjectStatuses(a, "ads").catch(() => []));
+export async function fetchAdStatuses(token: string): Promise<Map<string, string>> {
+  const accounts = await fetchActiveAccounts(token);
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchObjectStatuses(token, a, "ads").catch(() => []));
   return new Map(perAccount.flat());
 }
 
@@ -238,8 +243,9 @@ export async function fetchAdStatuses(): Promise<Map<string, string>> {
 // in which case the campaign's own daily_budget is empty and we sum its active ad sets'
 // budgets instead. The ad sets edge is only queried for accounts that actually have an
 // ABO campaign, to avoid paying for it everywhere.
-async function fetchCampaignMetaForAccount(account: AdAccount): Promise<{ statuses: [string, string][]; budgets: [string, number][] }> {
+async function fetchCampaignMetaForAccount(token: string, account: AdAccount): Promise<{ statuses: [string, string][]; budgets: [string, number][] }> {
   const campaigns = await fetchEdgePaged<{ id: string; daily_budget?: string; effective_status: string }>(
+    token,
     account.id, "campaigns", "id,daily_budget,effective_status", 500
   );
   const statuses = campaigns.map((c) => [c.id, c.effective_status] as [string, string]);
@@ -249,6 +255,7 @@ async function fetchCampaignMetaForAccount(account: AdAccount): Promise<{ status
   const adSetBudgetByCampaign = new Map<string, number>();
   if (needsAdSets) {
     const adSets = await fetchEdgePaged<{ campaign_id: string; daily_budget?: string; effective_status: string }>(
+      token,
       account.id, "adsets", "campaign_id,daily_budget,effective_status", 500
     );
     for (const a of adSets) {
@@ -274,10 +281,10 @@ export interface CampaignMeta {
 // Status and daily budget both live on the campaigns edge, so they come back from one sweep.
 // They used to be two independent full passes over the same edge across every account —
 // double the calls against the very limit the concurrency cap exists to protect.
-export async function fetchCampaignMeta(): Promise<CampaignMeta> {
-  const accounts = await fetchActiveAccounts();
+export async function fetchCampaignMeta(token: string): Promise<CampaignMeta> {
+  const accounts = await fetchActiveAccounts(token);
   const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) =>
-    fetchCampaignMetaForAccount(a).catch(() => ({ statuses: [] as [string, string][], budgets: [] as [string, number][] }))
+    fetchCampaignMetaForAccount(token, a).catch(() => ({ statuses: [] as [string, string][], budgets: [] as [string, number][] }))
   );
   return {
     statuses: new Map(perAccount.flatMap((r) => r.statuses)),

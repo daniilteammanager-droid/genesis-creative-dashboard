@@ -5,21 +5,35 @@ import { buildLiveCampaignItems, buildLiveCreativeItems } from "@/lib/reports-li
 import { loadCampaignPeriod, loadCreativePeriod } from "@/lib/reports-live/crmSource";
 import type { LiveMode } from "@/lib/reports-live/types";
 import type { Period } from "@/lib/reports-live/periods";
+import { reportConfigFor } from "@/lib/reports-live/config";
 
-// Caches only the Meta API call (the expensive/rate-limited part) per mode+period.
-// The CRM sheet list is always re-fetched so a newly-added week shows up immediately.
+// Кэшируется только поход в Meta — самая дорогая и самая лимитируемая часть.
+// Список листов CRM перечитывается всегда, чтобы новая неделя появлялась сразу.
+//
+// В ключе кэша обязан быть человек. Раньше ключом были режим и период, и это
+// работало, пока источник был один на всех. С личными подключениями тот же ключ
+// означал бы, что один баер получает цифры другого — молча и правдоподобно.
 const CACHE_TTL_MS = 5 * 60_000;
 const cache = new Map<string, { data: unknown; at: number }>();
-
-const DENIED = "Раздел работает по твоим подключениям, а их пока нет";
 
 export async function GET(req: Request) {
   try {
     // Проверка стоит и здесь, а не только в layout страницы: роут вызывается
     // напрямую, и спрятанная страница ничего не закрывает.
     const me = await getProfile();
-    if (!me || me.role === "buyer") {
-      return NextResponse.json({ error: DENIED }, { status: 403 });
+    if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
+
+    const config = await reportConfigFor(me);
+    if ("missing" in config) {
+      return NextResponse.json(
+        {
+          error:
+            me.role === "buyer"
+              ? `Подключи ${config.missing.join(", ")} в Настройках → Интеграции`
+              : `Не заданы переменные окружения: ${config.missing.join(", ")}`,
+        },
+        { status: me.role === "buyer" ? 403 : 500 }
+      );
     }
 
 
@@ -37,17 +51,17 @@ export async function GET(req: Request) {
     let totalActiveDailyBudget = 0;
 
     if (mode === "campaigns") {
-      const loaded = await loadCampaignPeriod(requestedPeriod);
+      const loaded = await loadCampaignPeriod(config.campaignsUrl, requestedPeriod);
       periods = loaded.periods;
       period = loaded.period;
-      const cacheKey = `campaigns:${period.key}`;
+      const cacheKey = `${config.cacheKey}:campaigns:${period.key}`;
       const hit = cache.get(cacheKey);
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return NextResponse.json({ ...(hit.data as object), periods, fetchedFrom: "cache" });
       }
       const [meta, campaignMeta] = await Promise.all([
-        fetchCampaignInsights(period.since, period.until),
-        fetchCampaignMeta(),
+        fetchCampaignInsights(config.metaToken, period.since, period.until),
+        fetchCampaignMeta(config.metaToken),
       ]);
       failedAccounts = meta.failedAccounts;
       items = buildLiveCampaignItems(loaded.rows, meta.items, campaignMeta.statuses, campaignMeta.dailyBudgets);
@@ -57,18 +71,18 @@ export async function GET(req: Request) {
         (sum, id) => sum + (campaignMeta.dailyBudgets.get(id) ?? 0), 0
       );
     } else {
-      const loaded = await loadCreativePeriod(requestedPeriod);
+      const loaded = await loadCreativePeriod(config.adsSheetId, config.adsByIdSheetId, requestedPeriod);
       periods = loaded.periods;
       period = loaded.period;
-      const cacheKey = `ads:${period.key}`;
+      const cacheKey = `${config.cacheKey}:ads:${period.key}`;
       const hit = cache.get(cacheKey);
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return NextResponse.json({ ...(hit.data as object), periods, fetchedFrom: "cache" });
       }
       const [meta, statuses, campaignMeta] = await Promise.all([
-        fetchAdInsights(period.since, period.until),
-        fetchAdStatuses(),
-        fetchCampaignMeta(),
+        fetchAdInsights(config.metaToken, period.since, period.until),
+        fetchAdStatuses(config.metaToken),
+        fetchCampaignMeta(config.metaToken),
       ]);
       failedAccounts = meta.failedAccounts;
       items = buildLiveCreativeItems(meta.items, loaded.crmByName, loaded.crmById, statuses, campaignMeta.dailyBudgets);
@@ -85,7 +99,8 @@ export async function GET(req: Request) {
 
     const data = { mode, period, items, totalActiveDailyBudget, generatedAt: new Date().toISOString(), warning };
     // Don't cache a partial-failure response — a retry a moment later should get real data.
-    if (!warning) cache.set(`${mode}:${period.key}`, { data, at: Date.now() });
+    // Ключ записи обязан совпадать с ключом чтения выше — включая человека.
+    if (!warning) cache.set(`${config.cacheKey}:${mode}:${period.key}`, { data, at: Date.now() });
     return NextResponse.json({ ...data, periods, fetchedFrom: "api" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
