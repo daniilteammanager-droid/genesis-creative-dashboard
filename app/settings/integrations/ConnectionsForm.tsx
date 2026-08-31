@@ -12,6 +12,20 @@ const field =
 
 const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
 
+// Набор колонок один на все три выгрузки. Отсутствующая колонка не станет нулём —
+// в складе будет прочерк, чтобы «не выгружали» не путалось с «выгрузили ноль».
+const CRM_COLUMNS = [
+  "Название",
+  "Клики",
+  "Подписчики",
+  "Диалоги",
+  "Кол-во регистраций",
+  "Кол-во продаж",
+  "Сумма продаж",
+  "Кол-во повторных продаж",
+  "Сумма повторных продаж",
+];
+
 export default function ConnectionsForm({
   initial,
   loadError,
@@ -171,10 +185,26 @@ export default function ConnectionsForm({
         <input type="text" placeholder="1AbC…" value={adsById}
                onChange={(e) => setAdsById(e.target.value)} className={field} />
 
-        <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+        <p className="text-[11px] text-zinc-600 leading-relaxed mt-2 mb-3">
           Все три — дневные, ключ таблицы это кусок её адреса между <code>/d/</code> и <code>/edit</code>.
           Выгрузка по названию нужна для раздела Креативы, по id объявления — чтобы видеть
           депозиты на отдельном объявлении и на адсете.
+        </p>
+
+        {/* Колонки прямо здесь, а не в отдельной инструкции: их набирают руками в
+            Торро, и человек не должен искать список в другом месте. Порядок не
+            важен, код читает по заголовкам — важен состав. */}
+        <p className="text-[11px] text-zinc-600 mb-1.5">Колонки в каждой выгрузке, ровно эти:</p>
+        <div className="flex flex-wrap gap-1.5">
+          {CRM_COLUMNS.map((c) => (
+            <span key={c} className="text-[11px] px-2 py-1 rounded-lg bg-[#0d0b14] border border-violet-900/40 text-zinc-400">
+              {c}
+            </span>
+          ))}
+        </div>
+        <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+          Период — дневной. Группировка своя у каждой: по id кампании, по названию
+          объявления, по id объявления.
         </p>
       </div>
 

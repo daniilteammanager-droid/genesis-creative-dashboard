@@ -24,7 +24,10 @@
 create table if not exists public.wh_ad_days (
   -- Чьими ключами добыта строка. У двух баеров с общим кабинетом будут свои
   -- строки на одно объявление — и это верно: каждый видит свою картину.
-  user_id       uuid not null references public.profiles(id) on delete cascade,
+  -- restrict, а не cascade: удаление профиля не должно уносить с собой склад.
+  -- Профили мы не удаляем (Decision 033), но правило на памяти людей однажды
+  -- нарушат, и месяцы статистики исчезли бы молча.
+  user_id       uuid not null references public.profiles(id) on delete restrict,
   date          date not null,
   ad_id         text not null,
   -- Имя хранится как есть, без нормализации: оно же ключ стыка с CRM
@@ -57,7 +60,7 @@ create index if not exists wh_ad_days_by_campaign on public.wh_ad_days (user_id,
 -- разница ноль — это доказательство полноты. Станет не ноль — увидим сразу,
 -- а не потеряем тихо (Decision 041).
 create table if not exists public.wh_campaign_days (
-  user_id       uuid not null references public.profiles(id) on delete cascade,
+  user_id       uuid not null references public.profiles(id) on delete restrict,
   date          date not null,
   campaign_id   text not null,
   campaign_name text,
@@ -87,7 +90,7 @@ create table if not exists public.wh_campaign_days (
 -- пропорционально — ровно тот способ получить правдоподобную и неверную цифру,
 -- от которого мы уходим во всём проекте.
 create table if not exists public.wh_crm_ad_periods (
-  user_id       uuid not null references public.profiles(id) on delete cascade,
+  user_id       uuid not null references public.profiles(id) on delete restrict,
   period_start  date not null,
   period_end    date not null,
   ad_name       text not null,
@@ -121,7 +124,7 @@ create table if not exists public.wh_crm_ad_periods (
 -- сойтись со строкой by-name. Расхождение — это либо переименование объявления в
 -- кабинете (by-name ломается молча, by-id переживает), либо пропущенный прогон.
 create table if not exists public.wh_crm_ad_id_periods (
-  user_id       uuid not null references public.profiles(id) on delete cascade,
+  user_id       uuid not null references public.profiles(id) on delete restrict,
   period_start  date not null,
   period_end    date not null,
   ad_id         text not null,
@@ -139,7 +142,7 @@ create table if not exists public.wh_crm_ad_id_periods (
 
 -- ─── Torro: кампании за период ───────────────────────────────────────────────
 create table if not exists public.wh_crm_campaign_periods (
-  user_id       uuid not null references public.profiles(id) on delete cascade,
+  user_id       uuid not null references public.profiles(id) on delete restrict,
   period_start  date not null,
   period_end    date not null,
   campaign_id   text not null,
@@ -162,7 +165,8 @@ create table if not exists public.wh_crm_campaign_periods (
 -- надо: пустой отчёт и сломанная загрузка выглядят одинаково (Decision 018).
 create table if not exists public.wh_ingest_runs (
   id            uuid primary key default gen_random_uuid(),
-  user_id       uuid references public.profiles(id) on delete cascade,
+  -- Журнал — история запусков, а не данные: его отпустить можно.
+  user_id       uuid references public.profiles(id) on delete set null,
   kind          text not null check (kind in ('today', 'window')),
   since         date,
   until         date,
