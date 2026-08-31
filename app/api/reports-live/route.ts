@@ -1,7 +1,9 @@
-// ВНИМАНИЕ: интерфейса у этого роута сейчас нет — Reports переехали на склад.
-// Он остаётся ради Чекса: чек за сегодня тянет живую Мету, потому что склад
-// отстаёт на четверть часа, а выгрузка Торро обновляется раз в пять минут.
-// Не удалять как мёртвый код.
+// ВНИМАНИЕ: этот роут больше никто не зовёт. Reports переехали на склад, а чек
+// за сегодня ходит в живую Мету через свой /api/check.
+//
+// Здесь он оставлен до решения владельца: сносить его вместе с ручной сверкой
+// (/api/reports/manual, lib/reports/, buildLiveItems, crmSource) или держать
+// запасным путём. Молча удалять работающую сверку не стали.
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { fetchCampaignInsights, fetchAdInsights, fetchAdStatuses, fetchCampaignMeta } from "@/lib/reports-live/metaApi";
