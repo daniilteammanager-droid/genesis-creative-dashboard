@@ -27,8 +27,11 @@ Implemented:
 - Creative Library
 - Analytics Dashboard
 - Check Module (Forex Check)
-- Reports — Live Auto Report (Meta Marketing API + CRM)
-- Reports — Manual (ручная загрузка MVP + FBTool XLSX)
+- Reports — дерево кампания → адсет → объявление и таблица по креативам (из склада)
+- Креативы — новая картотека на складе, фильтры по баеру и стране
+- Checks — живой чек (Meta за сегодня, склад за прошлое) и ручной по XLSX
+- Склад данных (`wh_*`) и загрузка по крону через `/api/ingest`
+- Авторизация, роли, приглашения, подключения баеров
 - General Report 3.0 (Google Sheets API)
 - Upload Module (bulk upload в R2 через presigned URL)
 - Медиатека (rename / delete / диагностика "не загружено")
@@ -43,9 +46,9 @@ Implemented:
 
 Currently in development:
 
-- Check Module v2
-- Creative Automation
+- Первые подключения баеров — склад пока пуст
 - Автозапись General Report 3.0 в основную таблицу
+- Creative Automation
 
 Handled outside this repo:
 
@@ -155,16 +158,16 @@ Contains:
 
 Independent module.
 
-Purpose:
+Route: `/check`. Два режима переключателем:
 
-- Facebook Tool parsing
-- MVP parsing
-- Check generation
-- Summary
-- Mismatch diagnostics
-- Creative analysis
+- **Живой** — чек за период в трёх разрезах (кампании, креативы, страны) плюс
+  готовый текст для телеги. Сегодня — живая Meta по подключениям, другой период —
+  склад (Decision 040). «Сегодня» считается по Москве (Decision 046).
+- **Ручной** — сверка загруженных руками XLSX: FB Tool, MVP, диагностика
+  несовпадений. Работает целиком в браузере и ни от чего не зависит — поэтому и
+  остаётся запасным путём.
 
-This module must remain independent from the Creative Dashboard.
+Ручной режим должен оставаться независимым от склада и подключений.
 
 ---
 
@@ -172,11 +175,14 @@ This module must remain independent from the Creative Dashboard.
 
 Route: `/reports`
 
-Two modes:
+Аналог FB Tool, читает **только склад** — в Meta и Sheets на открытие отчёта не ходит.
 
-- **Auto (Live)** — Meta Marketing API + CRM-выгрузки из Google Sheets, без FBTool.
-  Подрежимы: Кампании (матч по campaign_id) и Объявления (матч по имени объявления).
-- **Manual** — ручная загрузка пары XLSX (MVP + FBTool) для разовой сверки.
+Два вида:
+
+- **По кампаниям** — дерево кампания → адсет → объявление с разворачиванием.
+- **По креативам** — таблица по имени объявления, общая с разделом Креативы.
+
+Деления на Auto и Manual больше нет: ручная сверка живёт в Checks.
 
 ---
 
@@ -276,11 +282,14 @@ lib/
 Business logic. Одна папка на модуль:
 
 - `lib/auth/` — сессия, профиль, проверка роли (`getProfile`, `requireRole`)
-- `lib/creatives/` — код крео, CSV библиотеки, матчинг медиа, форматирование
-- `lib/forex-check/` — Check Module
-- `lib/reports/` — парсеры MVP / FBTool XLSX, сборка строк отчёта
-- `lib/reports-live/` — Meta API, CRM-выгрузки, сборка Live-отчёта
+- `lib/creatives/` — код крео, CSV легаси-библиотеки, матчинг медиа
+- `lib/forex-check/` — ручной чек
+- `lib/warehouse/` — склад: загрузка (`ingest`), чтение, крео, дерево отчёта, чек
+- `lib/connections/` — подключения баеров, шифрование токена, проверка доступа
+- `lib/reports-live/` — клиент Meta API, периоды, конфиг источников
 - `lib/general-report/` — Google Sheets API, парсеры листов, агрегация
+- `lib/day.ts` — «сегодня» по Москве для сервера и браузера
+- `lib/reports/` — легаси парсеры MVP / FBTool XLSX
 - `lib/supabase.ts` — единая точка входа в Supabase
 
 supabase/
@@ -305,20 +314,23 @@ Cloudflare R2 stores only:
 - videos
 - thumbnails
 
-Supabase stores only:
+Supabase stores:
 
-- notes
-- favorites
-- transcriptions
-- `ignored` — флаг "не показывать в списке ненайденных крео"
-- `creative_match_suffixes` — список гео/вариант-суффиксов для матчинга по базовому имени
+- профили, роли, приглашения, подключения баеров
+- склад `wh_*` — дневная статистика Meta и выгрузки Torro
+- заметки и избранное (личные), транскрипции и `ignored` (общие)
+- `creative_match_suffixes` — суффиксы для матчинга по базовому имени
+
+Склад критичен, остальное — нет. Граница проходит здесь, а не по сервису целиком:
+без заметок дашборд работает, без склада отчёты пустые.
 
 Google Sheets — источник истины для Reports и General Report 3.0:
 
 - CRM-выгрузки по кампаниям и объявлениям (по неделям, лист = период)
 - байерские и страновые таблицы General Report 3.0
 
-Meta Marketing API — источник истины по расходу, кликам, показам и статусам.
+Meta Marketing API — источник истины по расходу, кликам, показам, статусам
+**и по стране**: гео берётся из таргета адсета, а не из имени (Decision 045).
 
 CSV (опубликованная Google-таблица) remains the source of truth for the Creative
 Library's all-time metrics.
@@ -454,11 +466,11 @@ https://app.notion.com/p/393b916ff39280f18ad3ef8b6a099d3f
 | 4. Development Guide | Принципы и workflow разработки |
 | 5. Database & Storage | R2, Supabase, Google Sheets, матчинг медиа |
 | 6. API Reference | Все API routes проекта |
-| 7. Check Module | Forex Check (`/check`) |
+| 7. Check Module | Checks (`/check`): живой чек и ручной |
 | 8. Performance Decisions | Почему приняты те или иные оптимизации |
 | 9. Roadmap | Что сделано, что в планах |
 | 10. Decision Log | Архитектурные решения и их причины |
-| 11. Reports Module | Live Auto Report (`/reports`): Meta API + CRM |
+| 11. Reports Module | `/reports`: дерево РК и таблица по креативам из склада |
 | 12. General Report 3.0 | `/general-report`: Google Sheets API, сводные таблицы |
 | 13. Upload & Media Library | Загрузка крео в R2 и Медиатека |
 | 14. Environment Variables | Все env-переменные и что сломается без них |
