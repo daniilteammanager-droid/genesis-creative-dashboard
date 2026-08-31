@@ -405,3 +405,40 @@ export async function fetchCampaignDays(
     }));
   return { items, failedAccounts };
 }
+
+// ─── Таргет адсетов: страна как факт ─────────────────────────────────────────
+// Гео берётся отсюда, а не из имени: имена пишет человек, и половина не по
+// шаблону (замер 31.08.2026). Одна выборка на кабинет, не на адсет.
+
+export interface AdSetTargeting {
+  adsetId: string;
+  adsetName: string;
+  accountId: string;
+  countries: string[];
+}
+
+export async function fetchAdSetTargeting(token: string): Promise<{ items: AdSetTargeting[]; failedAccounts: number }> {
+  const accounts = await fetchActiveAccounts(token);
+  let failedAccounts = 0;
+
+  const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, async (a) => {
+    try {
+      const rows = await fetchEdgePaged<{
+        id: string;
+        name?: string;
+        targeting?: { geo_locations?: { countries?: string[] } };
+      }>(token, a.id, "adsets", "id,name,targeting{geo_locations}");
+      return rows.map((r) => ({
+        adsetId: r.id,
+        adsetName: r.name ?? "",
+        accountId: a.id,
+        countries: r.targeting?.geo_locations?.countries ?? [],
+      }));
+    } catch {
+      failedAccounts++;
+      return [];
+    }
+  });
+
+  return { items: perAccount.flat(), failedAccounts };
+}

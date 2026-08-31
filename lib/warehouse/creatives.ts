@@ -13,9 +13,18 @@ export interface CreativeRow {
   scheme: "v2" | "legacy";
   medium?: string;
   approach: string;
-  geo: string;
+  // Страны из настроек таргета адсетов, в которых крутилось объявление. Это
+  // ФАКТ из Meta, а не разбор имени: имена пишет человек, шаблон соблюдён не у
+  // всех, и старые имена никуда не денутся (Decision 045).
+  countries: string[];
+  // Гео, как его понимает код креатива. Держим отдельно и только ради сверки:
+  // расхождение с таргетом означает, что крео улетело не туда, куда написано.
+  geoFromCode: string;
   language?: string;
   buyerFromCode?: string;    // bN из имени — для сверки, не для доступа
+  // Гео в имени не совпало ни с одной страной таргета. Не ошибка расчёта, а
+  // повод посмотреть: спенд ушёл не в ту страну, что указана в коде.
+  geoMismatch: boolean;
   owners: string[];          // чьи подключения дали эту строку
 
   spend: number;
@@ -40,6 +49,9 @@ export interface CreativesResult {
   until: string;
   rows: CreativeRow[];
   buyers: { id: string; label: string }[];
+  // Все страны, встретившиеся за период, — для фильтра. Считаются до фильтрации,
+  // иначе выбранная страна осталась бы в списке одна.
+  countries: string[];
   // Роль едет в ответе: страница Reports клиентская и сама её не знает.
   isBuyer: boolean;
   // Периоды выгрузок, попавшие в диапазон не целиком. По ним депозиты показать
@@ -67,7 +79,8 @@ export async function loadCreatives(
   me: Profile,
   since: string,
   until: string,
-  buyerFilter?: string
+  buyerFilter?: string,
+  countryFilter?: string
 ): Promise<CreativesResult> {
   const db = warehouse();
 
@@ -99,7 +112,7 @@ export async function loadCreatives(
         : buyers.map((b) => b.id);
 
   const empty: CreativesResult = {
-    since, until, rows: [], buyers, isBuyer: me.role === "buyer", partialPeriods: [],
+    since, until, rows: [], buyers, countries: [], isBuyer: me.role === "buyer", partialPeriods: [],
     totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0, depCount: 0 },
     generatedAt: new Date().toISOString(),
   };
@@ -108,11 +121,12 @@ export async function loadCreatives(
   // ─── Meta: дни объявлений ────────────────────────────────────────────────
   type AdDay = {
     user_id: string; ad_name: string; ad_id: string; campaign_id: string | null;
+    adset_id: string | null;
     spend: number | string; clicks: number; impressions: number;
   };
   const adDays = await selectAll<AdDay>((from, to) =>
     db.from("wh_ad_days")
-      .select("user_id, ad_name, ad_id, campaign_id, spend, clicks, impressions")
+      .select("user_id, ad_name, ad_id, campaign_id, adset_id, spend, clicks, impressions")
       .in("user_id", scope).gte("date", since).lte("date", until).range(from, to)
   );
 
@@ -147,7 +161,9 @@ export async function loadCreatives(
       scheme: parsed.scheme,
       medium: parsed.scheme === "v2" ? parsed.medium : undefined,
       approach: approachOf(code),
-      geo: geoOf(code),
+      countries: [],
+      geoFromCode: geoOf(code),
+      geoMismatch: false,
       language: parsed.scheme === "v2" ? parsed.language : undefined,
       buyerFromCode: buyerOf(code),
       owners: [],
@@ -159,6 +175,7 @@ export async function loadCreatives(
 
   const adIds = new Map<string, Set<string>>();
   const campaignIds = new Map<string, Set<string>>();
+  const adsetIds = new Map<string, Set<string>>();
 
   for (const d of adDays) {
     const code = (d.ad_name ?? "").trim();
@@ -174,6 +191,10 @@ export async function loadCreatives(
     if (d.campaign_id) {
       if (!campaignIds.has(code)) campaignIds.set(code, new Set());
       campaignIds.get(code)!.add(d.campaign_id);
+    }
+    if (d.adset_id) {
+      if (!adsetIds.has(code)) adsetIds.set(code, new Set());
+      adsetIds.get(code)!.add(d.adset_id);
     }
     rows.set(code, row);
   }
@@ -196,16 +217,36 @@ export async function loadCreatives(
     rows.set(code, row);
   }
 
-  const list = [...rows.values()].map((r) => ({
-    ...r,
-    adCount: adIds.get(r.code)?.size ?? 0,
-    campaigns: campaignIds.get(r.code)?.size ?? 0,
-  }));
+  // ─── Страны из таргета адсетов ───────────────────────────────────────────
+  const allAdsets = [...new Set([...adsetIds.values()].flatMap((s) => [...s]))];
+  const geoByAdset = new Map<string, string[]>();
+  for (let i = 0; i < allAdsets.length; i += 300) {
+    const { data } = await db.from("wh_adsets").select("adset_id, countries").in("adset_id", allAdsets.slice(i, i + 300));
+    for (const a of data ?? []) geoByAdset.set(a.adset_id as string, (a.countries as string[]) ?? []);
+  }
 
-  list.sort((a, b) => b.spend - a.spend || a.code.localeCompare(b.code));
+  const list = [...rows.values()].map((r) => {
+    const countries = [...new Set([...(adsetIds.get(r.code) ?? [])].flatMap((id) => geoByAdset.get(id) ?? []))].sort();
+    return {
+      ...r,
+      countries,
+      // Сверять есть смысл только когда обе стороны известны: у старых имён
+      // гео не разбирается вовсе, и молчание тут не расхождение.
+      geoMismatch:
+        countries.length > 0 && r.geoFromCode !== "unknown"
+          ? !countries.some((c) => c.toLowerCase() === r.geoFromCode.toLowerCase())
+          : false,
+      adCount: adIds.get(r.code)?.size ?? 0,
+      campaigns: campaignIds.get(r.code)?.size ?? 0,
+    };
+  });
+
+  const filtered = countryFilter ? list.filter((r) => r.countries.includes(countryFilter)) : list;
+  filtered.sort((a, b) => b.spend - a.spend || a.code.localeCompare(b.code));
 
   return {
-    since, until, rows: list, buyers, isBuyer: me.role === "buyer",
+    since, until, rows: filtered, buyers, isBuyer: me.role === "buyer",
+    countries: [...new Set(list.flatMap((r) => r.countries))].sort(),
     partialPeriods: [...partialKeys].map((k) => {
       const [s, u] = k.split("_");
       return { since: s, until: u };
@@ -213,11 +254,11 @@ export async function loadCreatives(
     // Итоги считаются из сумм базовых чисел, а не усреднением строк — то же
     // правило, что и в General Report 3.0 (Decision 024).
     totals: {
-      spend: list.reduce((s, r) => s + r.spend, 0),
-      clicks: list.reduce((s, r) => s + r.clicks, 0),
-      impressions: list.reduce((s, r) => s + r.impressions, 0),
-      depSum: list.reduce((s, r) => s + (r.depSum ?? 0) + (r.redepSum ?? 0), 0),
-      depCount: list.reduce((s, r) => s + (r.depCount ?? 0) + (r.redepCount ?? 0), 0),
+      spend: filtered.reduce((s, r) => s + r.spend, 0),
+      clicks: filtered.reduce((s, r) => s + r.clicks, 0),
+      impressions: filtered.reduce((s, r) => s + r.impressions, 0),
+      depSum: filtered.reduce((s, r) => s + (r.depSum ?? 0) + (r.redepSum ?? 0), 0),
+      depCount: filtered.reduce((s, r) => s + (r.depCount ?? 0) + (r.redepCount ?? 0), 0),
     },
     generatedAt: new Date().toISOString(),
   };

@@ -36,6 +36,7 @@ export default function CreativesTable() {
   const [since, setSince] = useState(daysAgo(13));
   const [until, setUntil] = useState(daysAgo(0));
   const [buyer, setBuyer] = useState<string>("all");
+  const [country, setCountry] = useState<string>("all");
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function CreativesTable() {
     let alive = true;
     const q = new URLSearchParams({ since, until });
     if (buyer !== "all") q.set("buyer", buyer);
+    if (country !== "all") q.set("country", country);
 
     fetch(`/api/creatives?${q}`)
       .then((r) => r.json() as Promise<CreativesResult & { error?: string }>)
@@ -67,7 +69,7 @@ export default function CreativesTable() {
       });
 
     return () => { alive = false; };
-  }, [since, until, buyer]);
+  }, [since, until, buyer, country]);
 
   // Пока едет новый ответ, на экране прежние цифры. Помечаем их, чтобы не
   // принять данные за прошлый период за текущие.
@@ -107,6 +109,18 @@ export default function CreativesTable() {
       )}
 
       {/* ─── Период CRM задет краем ────────────────────────────────────── */}
+      {(data?.countries.length ?? 0) > 0 && (
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Страны</span>
+          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
+            {data!.countries.map((c) => (
+              <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {(data?.partialPeriods.length ?? 0) > 0 && (
         <div className="bg-amber-950/30 border border-amber-700/30 rounded-2xl px-5 py-4 mb-4">
           <p className="text-sm text-amber-200/90 leading-relaxed">
@@ -166,7 +180,7 @@ export default function CreativesTable() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-violet-900/25">
-                  {["Код креатива", "Гео", "Подход", "Расход", "Клики", "Показы",
+                  {["Код креатива", "Страны", "Подход", "Расход", "Клики", "Показы",
                     "Подписки", "Диалоги", "Депозиты", "Доход", "ROMI"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
@@ -185,7 +199,18 @@ export default function CreativesTable() {
                         <span className="ml-2 text-[10px] text-zinc-600 border border-zinc-700/50 rounded px-1 py-0.5">старый</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-zinc-400">{r.geo}</td>
+                    <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
+                      {r.countries.length ? r.countries.slice(0, 3).join(", ") : "—"}
+                      {r.countries.length > 3 && <span className="text-zinc-600"> +{r.countries.length - 3}</span>}
+                      {/* Гео в имени разошлось с таргетом: крео открутилось не
+                          туда, куда написано. Не ошибка расчёта — повод глянуть. */}
+                      {r.geoMismatch && (
+                        <span className="ml-1.5 text-[10px] text-amber-400 border border-amber-700/40 rounded px-1"
+                              title={`В коде указано «${r.geoFromCode}», а таргет другой`}>
+                          ≠ {r.geoFromCode}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-zinc-400">{r.approach}</td>
                     <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">{money(r.spend)}</td>
                     <td className="px-3 py-2.5 text-zinc-400">{n(r.clicks)}</td>
@@ -206,6 +231,9 @@ export default function CreativesTable() {
           </div>
 
           <p className="text-[11px] text-zinc-600 mt-3">
+            Страны берутся из настроек таргета адсета, а не из имени креатива: имена пишет человек,
+            и старые продолжают работать. Пометка ≠ значит, что гео в коде разошлось с таргетом.
+            <br />
             Строка с доходом и нулевым расходом — не ошибка: депозит записывается в день, когда он
             сделан, а крео могли выключить раньше.
           </p>

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { fetchAdDays, fetchCampaignDays } from "@/lib/reports-live/metaApi";
+import { fetchAdDays, fetchCampaignDays, fetchAdSetTargeting } from "@/lib/reports-live/metaApi";
 import { listSheetTitles, fetchSheetValues } from "@/lib/general-report/googleSheets";
 import { toPeriods, type Period } from "@/lib/reports-live/periods";
 import { getConnection } from "@/lib/connections/store";
@@ -29,6 +29,7 @@ export interface IngestResult {
   adRows: number;
   campaignRows: number;
   crmRows: number;
+  adsetRows: number;
   failedAccounts: number;
   skipped?: string;
 }
@@ -79,7 +80,7 @@ function coveredDays(periods: Period[]): { since: string; until: string } | null
 
 export async function ingestForUser(userId: string, kind: IngestKind): Promise<IngestResult> {
   const db = admin();
-  const empty = { userId, kind, since: "", until: "", adRows: 0, campaignRows: 0, crmRows: 0, failedAccounts: 0 };
+  const empty = { userId, kind, since: "", until: "", adRows: 0, campaignRows: 0, crmRows: 0, adsetRows: 0, failedAccounts: 0 };
 
   const conn = await getConnection(userId);
   if (!conn?.metaToken) return { ...empty, skipped: "нет ключа Meta" };
@@ -177,7 +178,28 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
       campaignRows = rows.length;
     }
 
-    const result = { ...base, adRows, campaignRows, crmRows, failedAccounts };
+    // ─── Страны таргета ──────────────────────────────────────────────────────
+    // Это состояние «сейчас», а не история: у адсета одна текущая настройка.
+    // Поэтому обновляем целиком каждый полный прогон, а в частом срезе не
+    // трогаем — таргет за пятнадцать минут не меняется, а выборка стоит по
+    // вызову на кабинет.
+    let adsetRows = 0;
+    if (kind === "window") {
+      const { items, failedAccounts: f } = await fetchAdSetTargeting(conn.metaToken);
+      failedAccounts += f;
+      const rows = items.map((a) => ({
+        adset_id: a.adsetId, adset_name: a.adsetName || null,
+        account_id: a.accountId, countries: a.countries,
+        updated_at: new Date().toISOString(),
+      }));
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await db.from("wh_adsets").upsert(rows.slice(i, i + 500), { onConflict: "adset_id" });
+        if (error) throw new Error(`wh_adsets: ${error.message}`);
+      }
+      adsetRows = rows.length;
+    }
+
+    const result = { ...base, adRows, campaignRows, crmRows, adsetRows, failedAccounts };
     await db.from("wh_ingest_runs").update({
       finished_at: new Date().toISOString(),
       ad_rows: adRows, campaign_rows: campaignRows, crm_rows: crmRows, failed_accounts: failedAccounts,

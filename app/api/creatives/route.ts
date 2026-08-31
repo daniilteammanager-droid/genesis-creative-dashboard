@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   try {
     // Фильтр по баеру приходит из запроса, но проверяется внутри: баеру он
     // ничего не даёт, он всегда видит только себя.
-    const data = await loadCreatives(me, since, until, p.get("buyer") ?? undefined);
+    const data = await loadCreatives(me, since, until, p.get("buyer") ?? undefined, p.get("country") ?? undefined);
     return NextResponse.json(data);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Ошибка";
