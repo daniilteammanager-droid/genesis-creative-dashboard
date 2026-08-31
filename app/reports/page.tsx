@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import type { ReportRow, ReportSummary, SourceStatus } from "@/lib/reports/types";
 import LiveAutoReport from "./LiveAutoReport";
+import ReportTree from "./ReportTree";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,10 @@ type SortField = keyof Pick<
 >;
 type SortDir      = "asc" | "desc";
 type ActivityFilter = "all" | "active" | "paused" | "other";
-type ReportMode   = "auto" | "manual";
+// «Дерево» читает склад и заменит собой Auto, когда склад наполнится: тогда
+// Auto уйдёт, а Manual переедет в Checks запасным путём (решено 30.08.2026).
+// Пока склад пуст, отбирать у владельца рабочий Auto нельзя.
+type ReportMode   = "tree" | "auto" | "manual";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -225,7 +229,7 @@ export default function ReportsPage() {
 
         {/* Mode switch */}
         <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
-          {(["auto", "manual"] as ReportMode[]).map((m) => (
+          {(["tree", "auto", "manual"] as ReportMode[]).map((m) => (
             <button
               key={m}
               onClick={() => handleModeSwitch(m)}
@@ -235,12 +239,13 @@ export default function ReportsPage() {
                   : "text-zinc-400 hover:text-violet-300"
               }`}
             >
-              {m === "auto" ? "Auto Report" : "Manual Report"}
+              {m === "tree" ? "Дерево" : m === "auto" ? "Auto Report" : "Manual Report"}
             </button>
           ))}
         </div>
 
         {/* Auto Report — live Meta Marketing API + CRM, replaces FBTool */}
+        {mode === "tree" && <ReportTree />}
         {mode === "auto" && <LiveAutoReport />}
 
         {/* Manual upload panel */}

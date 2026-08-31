@@ -85,7 +85,7 @@ export default function CreativesTable({ isBuyer }: { isBuyer: boolean }) {
         <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
 
         <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
-          {([[6, "7 дней"], [13, "14 дней"], [29, "30 дней"]] as const).map(([d, label]) => (
+          {([[0, "Сегодня"], [6, "7 дней"], [13, "14 дней"], [29, "30 дней"]] as const).map(([d, label]) => (
             <button key={d} onClick={() => { setSince(daysAgo(d)); setUntil(daysAgo(0)); }} className={chip(since === daysAgo(d) && until === daysAgo(0))}>
               {label}
             </button>

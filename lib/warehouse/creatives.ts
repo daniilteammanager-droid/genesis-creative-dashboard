@@ -70,17 +70,24 @@ export async function loadCreatives(
   const db = warehouse();
 
   // ─── Кого показываем ─────────────────────────────────────────────────────
-  // Баер видит только себя, что бы ни пришло в параметрах.
-  const { data: buyerProfiles } = await db
-    .from("profiles")
-    .select("id, name, email, buyer_code")
-    .eq("role", "buyer")
-    .order("buyer_code", { ascending: true });
+  // Список строится по тем, у кого ЕСТЬ подключения, а не по роли «баер».
+  // Иначе владелец, подключивший свой ключ для проверки, не увидел бы
+  // собственные данные: они лежали бы в складе и не попадали в выборку.
+  const { data: connected } = await db.from("buyer_connections").select("user_id");
+  const ids = [...new Set((connected ?? []).map((c) => c.user_id as string))];
 
-  const buyers = (buyerProfiles ?? []).map((b) => ({
-    id: b.id as string,
-    label: (b.name as string) || (b.buyer_code as string) || (b.email as string),
-  }));
+  const { data: profiles } = ids.length
+    ? await db.from("profiles").select("id, name, email, buyer_code, role").in("id", ids)
+    : { data: [] as { id: string; name: string | null; email: string; buyer_code: string | null; role: string }[] };
+
+  const buyers = (profiles ?? [])
+    .map((b) => ({
+      id: b.id as string,
+      label: (b.name as string) || (b.buyer_code as string) || (b.email as string),
+      sort: (b.buyer_code as string) ?? "\uffff",
+    }))
+    .sort((a, b) => a.sort.localeCompare(b.sort, "ru", { numeric: true }))
+    .map(({ id, label }) => ({ id, label }));
 
   const scope =
     me.role === "buyer"
