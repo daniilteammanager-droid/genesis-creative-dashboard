@@ -289,7 +289,6 @@ Business logic. Одна папка на модуль:
 - `lib/reports-live/` — клиент Meta API, периоды, конфиг источников
 - `lib/general-report/` — Google Sheets API, парсеры листов, агрегация
 - `lib/day.ts` — «сегодня» по Москве для сервера и браузера
-- `lib/reports/` — легаси парсеры MVP / FBTool XLSX
 - `lib/supabase.ts` — единая точка входа в Supabase
 
 supabase/
@@ -637,7 +636,7 @@ Planned major features:
 - Creative Dashboard
 - Analytics
 - Check Module
-- Reports (Live + Manual)
+- Reports (дерево РК и таблица по креативам)
 - General Report 3.0
 - Upload Module / Медиатека
 - Cloudflare R2 integration
