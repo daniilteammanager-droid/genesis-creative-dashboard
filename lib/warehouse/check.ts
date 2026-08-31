@@ -42,6 +42,9 @@ export interface CheckResult {
   totals: { spend: number; revenue: number; romi: number | null };
   text: string;
   buyers: { id: string; label: string }[];
+  // Чьими ключами добыты цифры. Без этой строки чек владельца выглядит как
+  // «данные всей команды», хотя на деле это его собственные кабинеты.
+  sources: string[];
   // Кого сервер реально посчитал. Интерфейс сравнивает это с выбранным и по
   // расхождению понимает, что ответ ещё в пути.
   buyer: string;
@@ -95,7 +98,7 @@ export function buildCheckText(rows: CheckRow[], totalBudget: number | null, now
 
 // ─── Выгрузки Torro за период ────────────────────────────────────────────────
 type CrmTotals = { subscribers: number | null; dialogs: number | null; revenue: number | null };
-type CrmForRange = { rows: Map<string, CrmTotals>; covered: boolean };
+type CrmForRange = { rows: Map<string, CrmTotals>; covered: boolean; nearest?: string };
 const NO_CRM: CrmForRange = { rows: new Map(), covered: false };
 
 // covered отвечает на вопрос «а была ли вообще выгрузка за этот период».
@@ -105,8 +108,14 @@ const NO_CRM: CrmForRange = { rows: new Map(), covered: false };
 // (замер 31.08.2026).
 async function crmForRange(sheetId: string, since: string, until: string): Promise<CrmForRange> {
   const titles = await listSheetTitles(sheetId);
-  const periods = toPeriods(titles).filter((p) => p.since >= since && p.until <= until);
-  if (periods.length === 0) return NO_CRM;
+  const all = toPeriods(titles);
+  const periods = all.filter((p) => p.since >= since && p.until <= until);
+  if (periods.length === 0) {
+    // Называем ближайший лист: «выгрузки нет» и «выгрузка недельная, а спросили
+    // день» — разные беды, и чинятся они по-разному.
+    const nearest = all.filter((p) => p.until >= since && p.since <= until).map((p) => p.key).sort()[0];
+    return { ...NO_CRM, nearest };
+  }
 
   const values = await fetchSheetValues(sheetId, periods.map((p) => p.key));
   const merged = new Map<string, { subscribers: number | null; dialogs: number | null; revenue: number | null }>();
@@ -178,7 +187,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    totals: { spend: 0, revenue: 0, romi: null }, text: "", buyers,
+    totals: { spend: 0, revenue: 0, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -218,8 +227,14 @@ export async function loadCheck(
     return "страна не определена";
   };
 
+  const buyerLabel = new Map(buyers.map((b) => [b.id, b.label]));
+  let sourceLabels: string[] = scope.map((id) => buyerLabel.get(id) ?? id);
+
   if (live) {
     const sources = await liveSources(me, scope, buyerFilter);
+    sourceLabels = sources.map((c) =>
+      c.cacheKey === "team" ? "мои кабинеты (ключи из окружения)" : buyerLabel.get(c.cacheKey) ?? c.cacheKey
+    );
     if (sources.length === 0) {
       const cfg = await reportConfigFor(me);
       return {
@@ -231,6 +246,7 @@ export async function loadCheck(
     }
     let failedAccounts = 0;
     let uncovered = 0;
+    let nearestSheet: string | undefined;
 
     // У живого чека таргет спрашивается прямо у Meta. Склад тут не помощник: он
     // собирается по подключениям баеров, а кабинеты владельца в него не попадают
@@ -256,7 +272,7 @@ export async function loadCheck(
 
       for (const { meta, campaignMeta, crm } of parts) {
         failedAccounts += meta.failedAccounts;
-        if (!crm.covered) uncovered++;
+        if (!crm.covered) { uncovered++; if (crm.nearest) nearestSheet = crm.nearest; }
         for (const c of meta.items) {
           const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId);
           row.spend += c.spend;
@@ -287,7 +303,7 @@ export async function loadCheck(
 
       for (const { meta, crm } of parts) {
         failedAccounts += meta.failedAccounts;
-        if (!crm.covered) uncovered++;
+        if (!crm.covered) { uncovered++; if (crm.nearest) nearestSheet = crm.nearest; }
 
         for (const a of meta.items) {
           const key = groupBy === "creative" ? a.adName.trim() : countryKey(a.adsetId);
@@ -314,8 +330,11 @@ export async function loadCheck(
     const notes: string[] = [];
     if (failedAccounts > 0) notes.push(`не прочиталось кабинетов: ${failedAccounts}`);
     if (uncovered > 0) {
+      const what = nearestSheet
+        ? `ближайший лист выгрузки — ${nearestSheet}, под этот период он не подходит`
+        : "выгрузка Torro за этот период не найдена";
       notes.push(uncovered === sources.length
-        ? "выгрузка Torro за этот период не найдена — показан только расход"
+        ? `${what} — показан только расход`
         : `у ${uncovered} из ${sources.length} подключений нет выгрузки за этот период`);
     }
     if (notes.length > 0) warning = `Цифры неполные: ${notes.join("; ")}.`;
@@ -385,6 +404,7 @@ export async function loadCheck(
 
   return {
     ...base,
+    sources: sourceLabels,
     rows: list,
     totalBudget,
     totals: { spend, revenue, romi: spend > 0 ? ((revenue - spend) / spend) * 100 : null },

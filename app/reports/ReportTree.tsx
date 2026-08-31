@@ -119,15 +119,23 @@ export default function ReportTree() {
         </div>
       </div>
 
-      {!isBuyer && (data?.buyers.length ?? 0) > 0 && (
+      {/* Показываем и когда выбирать некого: пропавший переключатель читается
+          как поломка, а не как «баеры ещё не подключились». */}
+      {!isBuyer && data && (
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Баеры</span>
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
-            <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
-            {data!.buyers.map((b) => (
-              <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
-            ))}
-          </div>
+          {data.buyers.length > 0 ? (
+            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+              <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
+              {data.buyers.map((b) => (
+                <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
+              ))}
+            </div>
+          ) : (
+            <span className="text-sm text-zinc-500">
+              Никто из баеров ещё не подключил ключи — выбирать пока некого
+            </span>
+          )}
         </div>
       )}
 

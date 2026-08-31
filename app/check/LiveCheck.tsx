@@ -95,21 +95,30 @@ export default function LiveCheck() {
         )}
       </div>
 
-      {!isBuyer && (data?.buyers.length ?? 0) > 0 && (
+      {/* Переключатель баеров показывается и когда выбирать некого: иначе
+          непонятно, куда он делся и почему в чеке видно только свои кабинеты. */}
+      {!isBuyer && data && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Баеры</span>
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
-            <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Все</button>
-            {data!.buyers.map((b) => (
-              <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
-            ))}
-          </div>
+          {data.buyers.length > 0 ? (
+            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+              <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Все</button>
+              {data.buyers.map((b) => (
+                <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
+              ))}
+            </div>
+          ) : (
+            <span className="text-sm text-zinc-500">
+              Никто из баеров ещё не подключил ключи — выбирать пока некого
+            </span>
+          )}
         </div>
       )}
 
-      {/* Откуда цифры — говорим прямо: у живого и складского чека разная свежесть */}
+      {/* Откуда цифры. Две разные вещи: чьи это ключи и насколько свежие числа. */}
       {data && (
         <p className="text-[11px] text-zinc-600 mb-4">
+          {data.sources.length > 0 && <>Считаю по: {data.sources.join(", ")}. </>}
           {data.live
             ? "Чек за сегодня: расход тянется из Meta в момент запроса."
             : "Прошлый период: цифры из склада, он собирается кроном."}
