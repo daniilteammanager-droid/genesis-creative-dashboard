@@ -248,6 +248,7 @@ export async function fetchAdInsights(
   const items = rows.map((r) => ({
     adId: r.ad_id ?? "",
     adName: r.ad_name ?? "",
+    adsetId: r.adset_id ?? "",
     campaignId: r.campaign_id ?? "",
     campaignName: r.campaign_name ?? "",
     accountId: r.account_id,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
+import { mskDaysAgo } from "@/lib/day";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -26,11 +27,7 @@ function romi(spend: number, revenue: number): string {
   return `${(((revenue - spend) / spend) * 100).toFixed(0)}%`;
 }
 
-function daysAgo(days: number) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
+const daysAgo = (days: number) => mskDaysAgo(days);
 
 export default function CreativesTable() {
   const [since, setSince] = useState(daysAgo(13));

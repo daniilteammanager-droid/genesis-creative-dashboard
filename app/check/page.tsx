@@ -12,6 +12,7 @@ import {
 import type {
   CheckRow, EntityMode, BuildResult, CreativeSummaryRow,
 } from "@/lib/forex-check/types";
+import LiveCheck from "./LiveCheck";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -395,7 +396,7 @@ function MultiSelect({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function CheckPage() {
+function ManualCheck() {
   // Files
   const [fbFile, setFbFile] = useState<File | null>(null);
   const [mvpFile, setMvpFile] = useState<File | null>(null);
@@ -684,11 +685,7 @@ export default function CheckPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#0a080f] text-white">
-      <div className="max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
-
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Checks</h1>
-
+    <>
         {/* Upload card */}
         <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6 mb-6">
           <h2 className="text-lg font-semibold text-white mb-4">Загрузи выгрузки</h2>
@@ -960,6 +957,37 @@ export default function CheckPage() {
             )}
           </>
         )}
+    </>
+  );
+}
+
+// Живой чек и ручной живут на одной странице: ручной — запасной путь на случай,
+// когда склад ещё не собрался или у баера не подключены выгрузки.
+//
+// Ручной остаётся смонтированным и просто прячется: в нём лежат загруженные XLSX,
+// и терять их при переключении туда-обратно было бы обидно. Живой, наоборот,
+// монтируется только когда его смотрят — иначе он ходил бы в Meta вхолостую.
+export default function CheckPage() {
+  const [mode, setMode] = useState<"live" | "manual">("live");
+  const tab = (on: boolean) =>
+    `px-4 py-2 rounded-xl text-sm font-semibold transition ${
+      on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
+         : "text-zinc-400 hover:text-violet-300"
+    }`;
+
+  return (
+    <div className="min-h-screen bg-[#0a080f] text-white">
+      <div className="max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
+        <div className="flex items-center gap-4 mb-6 flex-wrap">
+          <h1 className="text-white text-3xl font-semibold tracking-wide">Checks</h1>
+          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+            <button onClick={() => setMode("live")} className={tab(mode === "live")}>Живой</button>
+            <button onClick={() => setMode("manual")} className={tab(mode === "manual")}>Ручной</button>
+          </div>
+        </div>
+
+        {mode === "live" && <LiveCheck />}
+        <div className={mode === "manual" ? "" : "hidden"}><ManualCheck /></div>
       </div>
     </div>
   );

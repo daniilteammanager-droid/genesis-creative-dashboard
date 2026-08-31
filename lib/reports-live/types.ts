@@ -19,6 +19,9 @@ export interface MetaCampaignRow {
 export interface MetaAdRow {
   adId: string;
   adName: string;
+  // Нужен, чтобы достать страну таргета: гео живёт в настройках адсета, а не в
+  // имени (Decision 045). Поле и так запрашивается у Meta, оставалось донести.
+  adsetId: string;
   campaignId: string;
   campaignName: string;
   accountId: string;
