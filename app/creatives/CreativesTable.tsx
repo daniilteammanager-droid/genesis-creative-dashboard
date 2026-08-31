@@ -32,13 +32,14 @@ function daysAgo(days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function CreativesTable({ isBuyer }: { isBuyer: boolean }) {
+export default function CreativesTable() {
   const [since, setSince] = useState(daysAgo(13));
   const [until, setUntil] = useState(daysAgo(0));
   const [buyer, setBuyer] = useState<string>("all");
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isBuyer = data?.isBuyer ?? false;
 
   useEffect(() => {
     // Состояние меняется только в колбэках ответа, а не в теле эффекта: иначе
@@ -48,7 +49,7 @@ export default function CreativesTable({ isBuyer }: { isBuyer: boolean }) {
     // мог прийти после нового и подменить свежие цифры прошлыми.
     let alive = true;
     const q = new URLSearchParams({ since, until });
-    if (!isBuyer && buyer !== "all") q.set("buyer", buyer);
+    if (buyer !== "all") q.set("buyer", buyer);
 
     fetch(`/api/creatives?${q}`)
       .then((r) => r.json() as Promise<CreativesResult & { error?: string }>)
@@ -66,7 +67,7 @@ export default function CreativesTable({ isBuyer }: { isBuyer: boolean }) {
       });
 
     return () => { alive = false; };
-  }, [since, until, buyer, isBuyer]);
+  }, [since, until, buyer]);
 
   // Пока едет новый ответ, на экране прежние цифры. Помечаем их, чтобы не
   // принять данные за прошлый период за текущие.

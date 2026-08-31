@@ -1,3 +1,7 @@
+// ВНИМАНИЕ: интерфейса у этого роута сейчас нет — ручной режим убран из Reports.
+// Он остаётся ради Чекса: туда переезжает запасной путь на случай проблем с
+// токеном, когда чек собирают из выгруженных файлов руками.
+// Не удалять как мёртвый код.
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { parseMvpXlsx } from "@/lib/reports/parseMvpXlsx";

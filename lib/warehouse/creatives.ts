@@ -40,6 +40,8 @@ export interface CreativesResult {
   until: string;
   rows: CreativeRow[];
   buyers: { id: string; label: string }[];
+  // Роль едет в ответе: страница Reports клиентская и сама её не знает.
+  isBuyer: boolean;
   // Периоды выгрузок, попавшие в диапазон не целиком. По ним депозиты показать
   // нельзя: недельное число не делится по дням, а делить его пропорционально
   // значит придумать цифру.
@@ -97,7 +99,7 @@ export async function loadCreatives(
         : buyers.map((b) => b.id);
 
   const empty: CreativesResult = {
-    since, until, rows: [], buyers, partialPeriods: [],
+    since, until, rows: [], buyers, isBuyer: me.role === "buyer", partialPeriods: [],
     totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0, depCount: 0 },
     generatedAt: new Date().toISOString(),
   };
@@ -203,7 +205,7 @@ export async function loadCreatives(
   list.sort((a, b) => b.spend - a.spend || a.code.localeCompare(b.code));
 
   return {
-    since, until, rows: list, buyers,
+    since, until, rows: list, buyers, isBuyer: me.role === "buyer",
     partialPeriods: [...partialKeys].map((k) => {
       const [s, u] = k.split("_");
       return { since: s, until: u };

@@ -13,7 +13,7 @@ export default async function CreativesPage() {
     <main className="min-h-screen bg-[#0a080f] text-white p-8">
       <div className="max-w-screen-2xl mx-auto">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Креативы</h1>
-        <CreativesTable isBuyer={profile.role === "buyer"} />
+        <CreativesTable />
       </div>
     </main>
   );

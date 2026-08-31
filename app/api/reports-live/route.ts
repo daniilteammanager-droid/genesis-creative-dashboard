@@ -1,3 +1,7 @@
+// ВНИМАНИЕ: интерфейса у этого роута сейчас нет — Reports переехали на склад.
+// Он остаётся ради Чекса: чек за сегодня тянет живую Мету, потому что склад
+// отстаёт на четверть часа, а выгрузка Торро обновляется раз в пять минут.
+// Не удалять как мёртвый код.
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { fetchCampaignInsights, fetchAdInsights, fetchAdStatuses, fetchCampaignMeta } from "@/lib/reports-live/metaApi";
