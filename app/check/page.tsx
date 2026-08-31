@@ -558,8 +558,19 @@ function ManualCheck() {
 
   // ── Sum metrics ────────────────────────────────────────────────────────────
 
+  // Строки «есть в MVP, нет в ФБ» — диагностика, а не результат. Расход у них
+  // нулевой, а ПДП и диалоги настоящие, поэтому в итогах они завышали лиды и
+  // занижали их цену: у кампании с расходом $100 и 10 ПДП плюс диагностическая
+  // строка с 90 ПДП карточка показывала цену ПДП $1 вместо $10 — вдесятеро
+  // оптимистичнее, и незаметно, потому что расход при этом верный.
+  //
+  // В таблице они остаются (галочка «Показывать строки только в MVP» их и
+  // включает), но в итоги не идут: правило модуля — диагностика отдельно от чека.
+  const checkRows = useMemo(() => filteredRows.filter((r) => r.inCheck), [filteredRows]);
+  const diagnosticRows = filteredRows.length - checkRows.length;
+
   const metrics = useMemo(() => {
-    const r = filteredRows;
+    const r = checkRows;
     const spend = sumField(r, "spend") ?? 0;
     const sub = sumField(r, "sub") ?? 0;
     const chat = sumField(r, "chat") ?? 0;
@@ -579,7 +590,7 @@ function ManualCheck() {
       { label: "Цена ПДП", value: sub ? formatMoney(spend / sub) : "—" },
       { label: "Цена диа", value: chat ? formatMoney(spend / chat) : "—" },
     ];
-  }, [filteredRows]);
+  }, [checkRows]);
 
   const creoMetrics = useMemo(() => {
     const r = creoFilteredSummary;
@@ -827,9 +838,16 @@ function ManualCheck() {
                   ) : null}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-10 gap-3 mb-5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-10 gap-3 mb-2">
                   {metrics.map(({ label, value }) => <MetricCard key={label} label={label} value={value} />)}
                 </div>
+
+                {diagnosticRows > 0 && (
+                  <p className="text-[11px] text-zinc-600 mb-4">
+                    Ниже показаны ещё {diagnosticRows} строк, которых нет в ФБ. В итоги они не входят —
+                    это диагностика, разбор во вкладке «Несовпадения».
+                  </p>
+                )}
 
                 <DataTable cols={SUM_COLS} rows={filteredRows} sort={sumSort} onSort={handleSumSort} />
               </div>

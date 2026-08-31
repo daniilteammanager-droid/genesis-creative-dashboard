@@ -92,7 +92,9 @@ export async function loadReportTree(
   const days = await selectAll<AdDay>((from, to) =>
     db.from("wh_ad_days")
       .select("ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name, spend, clicks, impressions")
-      .in("user_id", scope).gte("date", since).lte("date", until).range(from, to)
+      .in("user_id", scope).gte("date", since).lte("date", until)
+      .order("user_id").order("date").order("ad_id")
+      .range(from, to)
   );
 
   type CrmAd = {
@@ -104,7 +106,9 @@ export async function loadReportTree(
   const crmRaw = await selectAll<CrmAd>((from, to) =>
     db.from("wh_crm_ad_id_periods")
       .select("ad_id, period_start, period_end, subscribers, dialogs, dep_count, dep_sum, redep_count, redep_sum")
-      .in("user_id", scope).gte("period_end", since).lte("period_start", until).range(from, to)
+      .in("user_id", scope).gte("period_end", since).lte("period_start", until)
+      .order("user_id").order("period_start").order("ad_id")
+      .range(from, to)
   );
   // Только периоды, целиком лежащие внутри диапазона: задетый краем принёс бы
   // цифры за дни снаружи.

@@ -127,7 +127,9 @@ export async function loadCreatives(
   const adDays = await selectAll<AdDay>((from, to) =>
     db.from("wh_ad_days")
       .select("user_id, ad_name, ad_id, campaign_id, adset_id, spend, clicks, impressions")
-      .in("user_id", scope).gte("date", since).lte("date", until).range(from, to)
+      .in("user_id", scope).gte("date", since).lte("date", until)
+      .order("user_id").order("date").order("ad_id")
+      .range(from, to)
   );
 
   // ─── Torro: периоды по имени объявления ──────────────────────────────────
@@ -142,7 +144,9 @@ export async function loadCreatives(
   const crm = await selectAll<CrmPeriod>((from, to) =>
     db.from("wh_crm_ad_periods")
       .select("user_id, ad_name, period_start, period_end, clicks, subscribers, dialogs, registrations, dep_count, dep_sum, redep_count, redep_sum")
-      .in("user_id", scope).gte("period_end", since).lte("period_start", until).range(from, to)
+      .in("user_id", scope).gte("period_end", since).lte("period_start", until)
+      .order("user_id").order("period_start").order("ad_name")
+      .range(from, to)
   );
 
   const inside = crm.filter((r) => r.period_start >= since && r.period_end <= until);

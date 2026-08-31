@@ -39,7 +39,7 @@ export interface CheckResult {
   live: boolean;
   rows: CheckRow[];
   totalBudget: number | null;
-  totals: { spend: number; revenue: number; romi: number | null };
+  totals: { spend: number; revenue: number | null; romi: number | null };
   text: string;
   buyers: { id: string; label: string }[];
   // Чьими ключами добыты цифры. Без этой строки чек владельца выглядит как
@@ -78,8 +78,13 @@ function derive(r: CheckRow): CheckRow {
 //
 //   29.08 T2A 79Genesis ES 1 - [350$]
 //   125,30 / 10,44 / 25,06 / 0 / -100%
-const nf = (v: number | null, d = 2) =>
-  v === null ? "0" : v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
+const nf = (v: number, d = 2) =>
+  v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// «Не знаем» и «ноль» — разные вещи, и в чате их путать нельзя. Строка вида
+// «420,59 / 0 / 0 / 0 / —» читается как «подписчики бесплатные, дохода нет»,
+// хотя на деле выгрузка за этот период просто не подошла.
+const nfOr = (v: number | null, d = 2) => (v === null ? "—" : nf(v, d));
 
 export function buildCheckText(rows: CheckRow[], totalBudget: number | null, now: Date): string {
   const head = `Отчет по трафу / ${mskStamp(now)}` + (totalBudget !== null ? ` / [${nf(totalBudget, 0)}$]` : "");
@@ -89,7 +94,8 @@ export function buildCheckText(rows: CheckRow[], totalBudget: number | null, now
     const budget = r.dailyBudget !== null ? ` - [${nf(r.dailyBudget, 0)}$]` : "";
     lines.push(`${r.label}${budget}`);
     lines.push(
-      [nf(r.spend), nf(r.costPdp), nf(r.costDia), nf(r.revenue), r.romi === null ? "—" : `${r.romi.toFixed(0)}%`].join(" / ")
+      [nf(r.spend), nfOr(r.costPdp), nfOr(r.costDia), nfOr(r.revenue),
+       r.romi === null ? "—" : `${r.romi.toFixed(0)}%`].join(" / ")
     );
     lines.push("");
   }
@@ -187,7 +193,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    totals: { spend: 0, revenue: 0, romi: null }, text: "", buyers, sources: [],
+    totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -213,7 +219,7 @@ export async function loadCheck(
   const geoByAdset = new Map<string, string[]>();
   if (groupBy === "country") {
     const all = await selectAll<{ adset_id: string; countries: string[] }>((from, to) =>
-      db.from("wh_adsets").select("adset_id, countries").range(from, to)
+      db.from("wh_adsets").select("adset_id, countries").order("adset_id").range(from, to)
     );
     for (const a of all) geoByAdset.set(a.adset_id, a.countries ?? []);
   }
@@ -229,6 +235,31 @@ export async function loadCheck(
 
   const buyerLabel = new Map(buyers.map((b) => [b.id, b.label]));
   let sourceLabels: string[] = scope.map((id) => buyerLabel.get(id) ?? id);
+
+
+  // Страна имени объявления, а не отдельного объявления.
+  //
+  // Выгрузка Torro агрегирована по имени: одна строка на имя, все адсеты вместе.
+  // Если объявления с этим именем крутятся в адсетах на разные страны, разделить
+  // доход между ними нечем — и раньше он целиком уезжал в страну того адсета,
+  // который оказался последним в ответе Meta. Испания получала +200%, Италия
+  // −100%, хотя привели обе.
+  //
+  // Поэтому такое имя целиком — и расход, и доход — уходит в строку «несколько
+  // стран». Точно так же, как уже сделано для адсета, таргетящего несколько
+  // стран: страновой разрез не имеет права угадывать.
+  function countryByName(pairs: { name: string; adsetId: string }[]): Map<string, string> {
+    const seen = new Map<string, Set<string>>();
+    for (const { name, adsetId } of pairs) {
+      if (!name) continue;
+      const set = seen.get(name) ?? new Set<string>();
+      set.add(countryKey(adsetId));
+      seen.set(name, set);
+    }
+    return new Map([...seen].map(([name, set]) =>
+      [name, set.size === 1 ? [...set][0] : "несколько стран"]
+    ));
+  }
 
   if (live) {
     const sources = await liveSources(me, scope, buyerFilter);
@@ -305,20 +336,27 @@ export async function loadCheck(
         failedAccounts += meta.failedAccounts;
         if (!crm.covered) { uncovered++; if (crm.nearest) nearestSheet = crm.nearest; }
 
+        // Расход и доход раскладываются по одному ключу — иначе строка страны
+        // получила бы расход одного множества объявлений и доход другого.
+        const country = countryByName(meta.items.map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId })));
+
         for (const a of meta.items) {
-          const key = groupBy === "creative" ? a.adName.trim() : countryKey(a.adsetId);
-          if (!key) continue;
+          const name = a.adName.trim();
+          // Расход не теряем даже у безымянного объявления: в разрезе по крео
+          // такому взяться неоткуда, а в разрезе по странам оно всё равно
+          // относится к своему адсету.
+          if (!name && groupBy === "creative") continue;
+          const key = groupBy === "creative"
+            ? name
+            : country.get(name) ?? countryKey(a.adsetId);
           const row = rows.get(key) ?? blank(key, key);
           row.spend += a.spend;
           rows.set(key, row);
         }
 
-        // Доход по имени объявления: у страны своей выгрузки нет, поэтому для
-        // страновой группировки цифры CRM собираются через адсет объявления.
-        const byAd = new Map(meta.items.map((a) => [a.adName.trim(), a.adsetId]));
         for (const [name, c] of crm.rows) {
-          const key = groupBy === "creative" ? name : countryKey(byAd.get(name) ?? "");
-          const row = rows.get(key);
+          const key = groupBy === "creative" ? name : country.get(name);
+          const row = key ? rows.get(key) : undefined;
           if (!row) continue;
           row.subscribers = add(row.subscribers, c.subscribers);
           row.dialogs = add(row.dialogs, c.dialogs);
@@ -340,21 +378,37 @@ export async function loadCheck(
     if (notes.length > 0) warning = `Цифры неполные: ${notes.join("; ")}.`;
   } else {
     // ─── Из склада ─────────────────────────────────────────────────────────
+    //
+    // Выгрузка попадает в расчёт, только если её период целиком внутри
+    // запрошенного. Частично пересекающие строки разделить нечем: недельная
+    // строка не делится на дни. Раньше они просто не выбирались из базы, и день
+    // внутри недели показывал расход при нулевом доходе — без единого признака,
+    // что доход есть, просто он недельный. Теперь такие строки видно, и о них
+    // говорится вслух.
+    let partial = 0;
+    const inside = (from: string, to: string) => from >= since && to <= until;
+
     if (groupBy === "campaign") {
       const days = await selectAll<{ campaign_id: string; campaign_name: string | null; spend: number | string }>((from, to) =>
         db.from("wh_campaign_days").select("campaign_id, campaign_name, spend")
-          .in("user_id", scope).gte("date", since).lte("date", until).range(from, to)
+          .in("user_id", scope).gte("date", since).lte("date", until)
+          .order("user_id").order("date").order("campaign_id")
+          .range(from, to)
       );
       for (const d of days) {
         const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id);
         row.spend += num(d.spend);
         rows.set(d.campaign_id, row);
       }
+
       const crm = await selectAll<{ campaign_id: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
         db.from("wh_crm_campaign_periods").select("campaign_id, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
-          .in("user_id", scope).gte("period_start", since).lte("period_end", until).range(from, to)
+          .in("user_id", scope).lte("period_start", until).gte("period_end", since)
+          .order("user_id").order("period_start").order("campaign_id")
+          .range(from, to)
       );
       for (const c of crm) {
+        if (!inside(c.period_start, c.period_end)) { partial++; continue; }
         const row = rows.get(c.campaign_id) ?? blank(c.campaign_id, c.campaign_id);
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
@@ -367,25 +421,39 @@ export async function loadCheck(
     } else {
       const days = await selectAll<{ ad_name: string; adset_id: string | null; spend: number | string }>((from, to) =>
         db.from("wh_ad_days").select("ad_name, adset_id, spend")
-          .in("user_id", scope).gte("date", since).lte("date", until).range(from, to)
+          .in("user_id", scope).gte("date", since).lte("date", until)
+          .order("user_id").order("date").order("ad_id")
+          .range(from, to)
       );
-      const adsetByName = new Map<string, string>();
+
+      const country = countryByName(days.map((d) => ({ name: (d.ad_name ?? "").trim(), adsetId: d.adset_id ?? "" })));
+
       for (const d of days) {
         const name = (d.ad_name ?? "").trim();
-        if (!name) continue;
-        if (d.adset_id) adsetByName.set(name, d.adset_id);
-        const key = groupBy === "creative" ? name : countryKey(d.adset_id ?? "");
+        if (!name && groupBy === "creative") continue;
+        const key = groupBy === "creative"
+          ? name
+          : country.get(name) ?? countryKey(d.adset_id ?? "");
         const row = rows.get(key) ?? blank(key, key);
         row.spend += num(d.spend);
         rows.set(key, row);
       }
-      const crm = await selectAll<{ ad_name: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
-        db.from("wh_crm_ad_periods").select("ad_name, subscribers, dialogs, dep_sum, redep_sum")
-          .in("user_id", scope).gte("period_start", since).lte("period_end", until).range(from, to)
+
+      const crm = await selectAll<{ ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
+        db.from("wh_crm_ad_periods").select("ad_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
+          .in("user_id", scope).lte("period_start", until).gte("period_end", since)
+          .order("user_id").order("period_start").order("ad_name")
+          .range(from, to)
       );
       for (const c of crm) {
+        if (!inside(c.period_start, c.period_end)) { partial++; continue; }
         const name = (c.ad_name ?? "").trim();
-        const key = groupBy === "creative" ? name : countryKey(adsetByName.get(name) ?? "");
+        if (!name) continue;
+        // По креативам строка выгрузки создаёт свою строку даже без расхода:
+        // объявление могли выключить, а депозиты по нему ещё доходят.
+        // По странам так нельзя — страну выключенного объявления взять неоткуда.
+        const key = groupBy === "creative" ? name : country.get(name);
+        if (!key) continue;
         const row = rows.get(key) ?? blank(key, key);
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
@@ -396,18 +464,32 @@ export async function loadCheck(
         rows.set(key, row);
       }
     }
+
+    if (partial > 0) {
+      warning = `Цифры неполные: ${partial} строк выгрузки шире запрошенного периода ` +
+        `(например, недельная выгрузка на однодневном чеке). Разделить их по дням нечем, ` +
+        `поэтому доход по ним не показан — возьми период целиком.`;
+    }
   }
 
   const list = [...rows.values()].map(derive).sort((a, b) => b.spend - a.spend);
   const spend = list.reduce((s, r) => s + r.spend, 0);
-  const revenue = list.reduce((s, r) => s + (r.revenue ?? 0), 0);
+  // Складываем только известное. Если дохода не знает ни одна строка — итог тоже
+  // неизвестен: иначе карточка показывала бы «Доход $0.00» и «ROMI −100%» там,
+  // где в таблице у всех строк честное «—», и по этому экрану выключили бы связку.
+  const withRevenue = list.filter((r) => r.revenue !== null);
+  const revenue = withRevenue.length ? withRevenue.reduce((s, r) => s + (r.revenue as number), 0) : null;
 
   return {
     ...base,
     sources: sourceLabels,
     rows: list,
     totalBudget,
-    totals: { spend, revenue, romi: spend > 0 ? ((revenue - spend) / spend) * 100 : null },
+    totals: {
+      spend,
+      revenue,
+      romi: revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null,
+    },
     text: buildCheckText(list, totalBudget, new Date()),
     warning,
   };

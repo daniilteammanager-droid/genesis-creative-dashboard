@@ -57,7 +57,13 @@ export default function LiveCheck() {
         if (d.error) throw new Error(d.error);
         setData(d); setError(null); setLoading(false);
       })
-      .catch((e: Error) => { if (alive) { setError(e.message); setLoading(false); } });
+      .catch((e: Error) => {
+        if (!alive) return;
+        // Данные обнуляем намеренно. Оставить прежние — значит показать строки
+        // одного разреза под заголовком другого, а кнопка «Скопировать» отправит
+        // это в чат как свежий чек.
+        setData(null); setError(e.message); setLoading(false);
+      });
     return () => { alive = false; };
   }, [since, until, group, buyer]);
 
@@ -144,7 +150,7 @@ export default function LiveCheck() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {([
               ["Расход", `$${nf(data.totals.spend)}`],
-              ["Доход", `$${nf(data.totals.revenue)}`],
+              ["Доход", data.totals.revenue === null ? "—" : `$${nf(data.totals.revenue)}`],
               ["ROMI", data.totals.romi === null ? "—" : `${data.totals.romi.toFixed(0)}%`],
               ["Дейли бюджет", data.totalBudget === null ? "—" : `$${nf(data.totalBudget, 0)}`],
             ] as const).map(([label, value]) => (

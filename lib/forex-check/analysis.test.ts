@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { parseFB, parseMVP, formatMoney } from "./parse";
-import { buildCheckFromItems, buildRows } from "./analysis";
-import type { SheetData } from "./types";
+import { buildCheckFromItems, buildRows, buildAdCreativeAnalysis } from "./analysis";
+import type { SheetData, FBDetailedItem, CheckRow } from "./types";
 
 // Ручной чек — запасной путь на случай, когда склад или подключения недоступны.
 // Значит ломаться он не имеет права тем более. Правило Decision 004: источник
@@ -82,4 +82,46 @@ assert.ok(text.includes(`Общ.: ${formatMoney(125.3)}`) || text.includes("Об
 assert.equal(buildCheckFromItems([], []), "");
 assert.deepEqual(buildRows([], [], true), []);
 
+// ── Крео по странам: метрики кампании не размножаются по числу крео ──────────
+// Когда MVP-файла по объявлениям нет, метрики берутся из основного чека на
+// уровне кампании. Раньше каждое крео получало ПДП кампании целиком: у кампании
+// с 10 ПДП и тремя крео сводка показывала 30 — и это уезжало в телегу.
+const ad = (adTitle: string, spend: number): FBDetailedItem => ({
+  title: adTitle, normalizedTitle: adTitle, entity: "ad",
+  campaignTitle: "31.08 - SPAIN-ES - CAMP", campaignNormalizedTitle: "31.08 - SPAIN-ES - CAMP",
+  adTitle, adNormalizedTitle: adTitle, creative: adTitle, geo: "Испания",
+  date: "31.08", cabinet: "", spend, budget: null, clicks: null, views: null,
+  status: "", adStatus: "", accountStatus: "", rawId: "", adId: adTitle,
+  campaignId: "c1", rowNumber: 1, firstSeenIndex: 0,
+});
+
+const campaignRow: CheckRow = {
+  status: "✅ OK", title: "31.08 - SPAIN-ES - CAMP", geo: "Испания", date: "31.08",
+  cabinet: "", budget: "", spend: 100, sub: 10, chat: 5, deposits: 300,
+  depSummary: 300, redepSummary: 0, websiteClicks: 0,
+  costPerSub: 10, costPerChat: 20, fbClicks: null, views: null,
+  fbRow: 1, mvpRow: 1, inCheck: true,
+};
+
+const analysis = buildAdCreativeAnalysis({
+  adItemsRaw: [ad("EDIT-1", 40), ad("EDIT-2", 30), ad("EDIT-3", 30)],
+  mvpAdItemsRaw: [],
+  metricRows: [campaignRow],
+});
+
+const totalSub = analysis.summaryRows.reduce((s, r) => s + r.sub, 0);
+const totalChat = analysis.summaryRows.reduce((s, r) => s + r.chat, 0);
+const totalDep = analysis.summaryRows.reduce((s, r) => s + r.deposits, 0);
+const totalSpend = analysis.summaryRows.reduce((s, r) => s + r.spendTotal, 0);
+
+assert.ok(Math.abs(totalSub - 10) < 1e-9, `ПДП по крео должны сойтись с кампанией, а не утроиться: ${totalSub}`);
+assert.ok(Math.abs(totalChat - 5) < 1e-9, `диалоги: ${totalChat}`);
+assert.ok(Math.abs(totalDep - 300) < 1e-9, `депозиты: ${totalDep}`);
+assert.equal(totalSpend, 100);
+
+// Доля считается по расходу: 40% расхода — 40% лидов.
+const first = analysis.summaryRows.find((r) => r.creative === "EDIT-1")!;
+assert.ok(Math.abs(first.sub - 4) < 1e-9, `у крео на 40% расхода должно быть 4 ПДП: ${first.sub}`);
+
 console.log("forex-check: кампания без пары в MVP остаётся в чеке с нулями ✓");
+console.log("forex-check: метрики кампании разносятся по крео, а не размножаются ✓");

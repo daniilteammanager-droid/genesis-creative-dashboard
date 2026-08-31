@@ -35,4 +35,23 @@ assert.ok(!past.includes("["), "квадратных скобок без бюд�
 // Пустой чек не роняет сборку
 assert.ok(buildCheckText([], null, new Date("2025-12-31T21:00:00Z")).startsWith("Отчет по трафу / 01.01 - 00:00"));
 
+// Неизвестное и ноль — разные вещи. Когда выгрузка за период не подошла, доход
+// не «ноль», а «не знаем»: строка «420,59 / 0 / 0 / 0 / —» читается как
+// «подписчики бесплатные, дохода нет» и по ней выключают связку.
+const unknown = buildCheckText(
+  [row({ label: "videoM17CLst-es", spend: 420.59, subscribers: null, dialogs: null, revenue: null, costPdp: null, costDia: null, romi: null })],
+  null,
+  new Date("2026-08-31T07:27:00Z")
+);
+assert.equal(unknown.split("\n")[3], "420,59 / — / — / — / —");
+
+// Настоящий ноль по-прежнему ноль, формат владельца не сломан.
+const zero = buildCheckText(
+  [row({ label: "Испания", spend: 10, subscribers: 2, dialogs: 1, revenue: 0, costPdp: 5, costDia: 10, romi: -100 })],
+  null,
+  new Date("2026-08-31T07:27:00Z")
+);
+assert.equal(zero.split("\n")[3], "10,00 / 5,00 / 10,00 / 0,00 / -100%");
+
 console.log("check: шаблон для телеги совпадает с образцом");
+console.log("check: «не знаем» печатается прочерком, а не нулём ✓");

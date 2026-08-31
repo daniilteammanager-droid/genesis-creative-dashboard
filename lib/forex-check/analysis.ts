@@ -216,7 +216,7 @@ function metricStatusLabel(matchType: string): string {
   if (matchType === "mvp_ad_id") return "✅ Найдено в MVP объявлениях по ID";
   if (matchType === "mvp_ad") return "✅ Найдено в MVP объявлениях по названию";
   if (matchType === "check_ad") return "⚠️ Метрики из основного чека: объявление";
-  if (matchType === "check_campaign") return "⚠️ Метрики из основного чека: кампания";
+  if (matchType === "check_campaign") return "≈ Метрики кампании, разнесены по расходу";
   return "⚠️ Нет в MVP объявлениях";
 }
 
@@ -224,7 +224,7 @@ function metricSourceLabel(matchType: string): string {
   if (matchType === "mvp_ad_id") return "MVP объявления: ID";
   if (matchType === "mvp_ad") return "MVP объявления: название";
   if (matchType === "check_ad") return "основной чек: объявление";
-  if (matchType === "check_campaign") return "основной чек: кампания";
+  if (matchType === "check_campaign") return "кампания, доля по расходу";
   return "—";
 }
 
@@ -294,6 +294,20 @@ export function buildAdCreativeAnalysis({
 
   const metricByTitle = new Map(metricRows.map((row) => [normalizeSpaces(row.title), row]));
 
+  // Расход кампании — знаменатель для разноски её метрик по объявлениям.
+  //
+  // Без этого запасной путь «метрики из кампании» отдавал КАЖДОМУ объявлению
+  // кампании её ПДП целиком: у кампании с 10 ПДП и тремя крео сводка показывала
+  // 10 у каждого и 30 в карточке. В телегу уезжали утроенные цифры.
+  //
+  // Делим пропорционально расходу: сумма по крео снова равна кампании. Это
+  // оценка, а не факт, поэтому строка помечена «≈» и человек видит источник.
+  const campaignSpend = new Map<string, number>();
+  for (const ad of adItems) {
+    const c = ad.campaignNormalizedTitle;
+    if (c) campaignSpend.set(c, (campaignSpend.get(c) ?? 0) + ad.spend);
+  }
+
   const metricForAd = (ad: FBDetailedItem): MetricMatch => {
     const candidates = mvpHasIds
       ? (ad.adId ? (mvpByAdId.get(ad.adId) || []) : [])
@@ -323,13 +337,31 @@ export function buildAdCreativeAnalysis({
     if (!row) {
       return { key: "", matchType: "", sub: 0, chat: 0, deposits: 0, websiteClicks: 0, mvpRow: null, mvpId: "" };
     }
+
+    if (adMetric) {
+      return {
+        key: `check::${normalizeSpaces(row.title)}`,
+        matchType: "check_ad",
+        sub: Number(row.sub || 0),
+        chat: Number(row.chat || 0),
+        deposits: Number(row.deposits || 0),
+        websiteClicks: Number(row.websiteClicks || 0),
+        mvpRow: row.mvpRow || null,
+        mvpId: "",
+      };
+    }
+
+    // Метрики кампании: доля по расходу. Ключ уникален для объявления — иначе
+    // дедупликация в ведре засчитала бы только первую долю и потеряла остальные.
+    const total = campaignSpend.get(ad.campaignNormalizedTitle) ?? 0;
+    const share = total > 0 ? ad.spend / total : 0;
     return {
-      key: `check::${normalizeSpaces(row.title)}`,
-      matchType: adMetric ? "check_ad" : "check_campaign",
-      sub: Number(row.sub || 0),
-      chat: Number(row.chat || 0),
-      deposits: Number(row.deposits || 0),
-      websiteClicks: Number(row.websiteClicks || 0),
+      key: `check_campaign::${normalizeSpaces(row.title)}::${ad.adId || ad.normalizedTitle}`,
+      matchType: "check_campaign",
+      sub: Number(row.sub || 0) * share,
+      chat: Number(row.chat || 0) * share,
+      deposits: Number(row.deposits || 0) * share,
+      websiteClicks: Number(row.websiteClicks || 0) * share,
       mvpRow: row.mvpRow || null,
       mvpId: "",
     };

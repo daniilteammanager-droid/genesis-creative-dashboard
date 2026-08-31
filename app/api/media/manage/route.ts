@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { S3Client, CopyObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getProfile, createClient } from "@/lib/auth/server";
+import { getFileBaseName } from "@/lib/creatives/naming";
 
 // Rename / delete an already-uploaded R2 object. R2 has no native rename,
 // so rename = copy to the new key + delete the old one (thumbnail moved the same way).
@@ -49,11 +51,40 @@ async function copyAndDelete(fromKey: string, toKey: string) {
   await s3.send(new DeleteObjectCommand({ Bucket, Key: fromKey }));
 }
 
+// Кто вправе трогать чужой файл.
+//
+// До этого роут не спрашивал вообще ничего и удалял любой ключ бакета всякому,
+// кто вошёл. Пока дашборд был на одного человека, это было терпимо; с баерами —
+// нет: удаление в R2 необратимо, а библиотека общая.
+//
+// Правило: баер распоряжается тем, что загрузил сам (Decision 034), владелец и
+// тимлид — чем угодно. Легаси-файлы загрузчика не имеют, поэтому баер их не
+// трогает: это общая библиотека команды, а не его папка.
+async function mayManage(key: string): Promise<string | null> {
+  const me = await getProfile();
+  if (!me) return "Нужно войти";
+  if (me.role !== "buyer") return null;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("creative_uploads")
+    .select("user_id")
+    .eq("creative_code", getFileBaseName(key))
+    .maybeSingle();
+
+  return data?.user_id === me.id
+    ? null
+    : "Этот файл загружал не ты — переименовать или удалить его может владелец";
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as { op?: "rename" | "delete"; key?: string; newName?: string };
     const { op, key } = body;
     if (!key) return NextResponse.json({ error: "Не указан key" }, { status: 400 });
+
+    const denied = await mayManage(key);
+    if (denied) return NextResponse.json({ error: denied }, { status: denied === "Нужно войти" ? 401 : 403 });
 
     if (op === "delete") {
       await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
