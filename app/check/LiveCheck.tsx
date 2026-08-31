@@ -17,10 +17,10 @@ const field =
 const nf = (v: number | null, d = 2) =>
   v === null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-const GROUPS: { id: CheckGroup; label: string }[] = [
-  { id: "campaign", label: "По кампаниям" },
-  { id: "creative", label: "По креативам" },
-  { id: "country", label: "По странам" },
+const GROUPS: { id: CheckGroup; label: string; head: string }[] = [
+  { id: "campaign", label: "По кампаниям", head: "Кампания" },
+  { id: "creative", label: "По креативам", head: "Креатив" },
+  { id: "country", label: "По странам", head: "Страна" },
 ];
 
 // Тот же московский день, что и на сервере: иначе в час ночи клиент просил бы
@@ -38,6 +38,13 @@ export default function LiveCheck() {
   const [copied, setCopied] = useState(false);
 
   const isBuyer = data?.isBuyer ?? false;
+  // Живая Мета отвечает 4–7 секунд (замер 31.08.2026). Ответ помнит, что у него
+  // спрашивали, — если это не то, что выбрано сейчас, значит запрос ещё в пути.
+  // Иначе смена разреза выглядела бы как «кнопка не нажалась»: цифры те же.
+  const pending = Boolean(data) && (
+    data!.since !== since || data!.until !== until || data!.groupBy !== group ||
+    (!isBuyer && data!.buyer !== buyer)
+  );
 
   useEffect(() => {
     let alive = true;
@@ -83,6 +90,9 @@ export default function LiveCheck() {
             <button key={g.id} onClick={() => setGroup(g.id)} className={chip(group === g.id)}>{g.label}</button>
           ))}
         </div>
+        {pending && !loading && (
+          <span className="w-4 h-4 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+        )}
       </div>
 
       {!isBuyer && (data?.buyers.length ?? 0) > 0 && (
@@ -121,7 +131,7 @@ export default function LiveCheck() {
       )}
 
       {data && !loading && (
-        <>
+        <div className={pending ? "opacity-40 transition-opacity" : "transition-opacity"}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {([
               ["Расход", `$${nf(data.totals.spend)}`],
@@ -155,7 +165,7 @@ export default function LiveCheck() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-violet-900/25">
-                    {[GROUPS.find((g) => g.id === group)!.label.replace("По ", ""), "Дейли", "Спенд",
+                    {[GROUPS.find((g) => g.id === group)!.head, "Дейли", "Спенд",
                       "Цена ПДП", "Цена диалога", "Доход", "ROMI"].map((h) => (
                       <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
@@ -186,7 +196,7 @@ export default function LiveCheck() {
               несколько стран, сведены в одну строку: доход между странами разделить нечем.
             </p>
           )}
-        </>
+        </div>
       )}
     </div>
   );

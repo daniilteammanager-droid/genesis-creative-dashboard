@@ -42,6 +42,9 @@ export interface CheckResult {
   totals: { spend: number; revenue: number; romi: number | null };
   text: string;
   buyers: { id: string; label: string }[];
+  // Кого сервер реально посчитал. Интерфейс сравнивает это с выбранным и по
+  // расхождению понимает, что ответ ещё в пути.
+  buyer: string;
   isBuyer: boolean;
   warning?: string;
   generatedAt: string;
@@ -176,6 +179,7 @@ export async function loadCheck(
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
     totals: { spend: 0, revenue: 0, romi: null }, text: "", buyers,
+    buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
   // Пустая область видимости — приговор только для склада: он собирается по
