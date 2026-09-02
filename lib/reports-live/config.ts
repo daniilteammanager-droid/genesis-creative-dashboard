@@ -71,11 +71,17 @@ export async function reportConfigFor(me: Profile, mode?: LiveMode): Promise<Rep
   // подключения.
   const campaignsSheetId =
     process.env.MVP_CAMPAIGN_DAILY_SHEET_ID ?? process.env.MVP_CAMPAIGN_DAILY_XLSX_URL;
-  const adsSheetId = process.env.GR_SPREADSHEET_ADS_BY_NAME;
+  // Дневная выгрузка по крео идёт первой, недельная — запасной.
+  //
+  // Обе keyed по имени объявления, но чек за день из недельного листа не
+  // собирается вовсе: период не влезает. Замер 02.09.2026 — в дневном листе
+  // 32 из 36 сегодняшних объявлений Meta нашлись по имени, ПДП 145,
+  // диалогов 40, депозиты $18 500. Из недельного за тот же день — ноль строк.
+  const adsSheetId = process.env.MVP_CREATIVE_DAILY_SHEET_ID ?? process.env.GR_SPREADSHEET_ADS_BY_NAME;
 
   const missing = whatIsMissing(
     mode,
-    { token: "META_ACCESS_TOKEN", campaigns: "MVP_CAMPAIGN_DAILY_SHEET_ID", ads: "GR_SPREADSHEET_ADS_BY_NAME" },
+    { token: "META_ACCESS_TOKEN", campaigns: "MVP_CAMPAIGN_DAILY_SHEET_ID", ads: "MVP_CREATIVE_DAILY_SHEET_ID" },
     { token: Boolean(metaToken), campaigns: Boolean(campaignsSheetId), ads: Boolean(adsSheetId) }
   );
   if (missing.length > 0) return { missing };
