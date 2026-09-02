@@ -79,6 +79,7 @@ const accountsCaches = new Map<string, { accounts: AdAccount[]; at: number }>();
 // два десятка лишних вызовов на каждый холодный отчёт, впустую против лимита.
 // Держим сам промис: второй и третий дожидаются первого.
 const accountsInFlight = new Map<string, Promise<AdAccount[]>>();
+const grantedCaches = new Map<string, { ids: Set<string> | null; at: number }>();
 // Matches the route's report-level cache. The hour-long TTL was a workaround for sharing
 // the app's rate limit with other buyers' tools on the old app — this app is dedicated to
 // the dashboard now, so there's no need to hold discovery this stale.
@@ -118,6 +119,56 @@ export async function fetchActiveAccounts(token: string, scope?: AccountScope): 
   return started;
 }
 
+
+// ─── Что именно разрешено этому токену ───────────────────────────────────────
+//
+// Meta умеет выдавать разрешение не «на всё», а на выбранные объекты: при
+// авторизации человек отмечает конкретные рекламные кабинеты. Увидеть это можно
+// в debug_token → granular_scopes: у разрешения появляется список target_ids.
+//
+// Ради этого и заведён фильтр. Токен, которому назначили три кабинета, всё
+// равно может увидеть больше — например через Business Manager, где он состоит.
+// Мы обязаны показывать не то, что он способен прочитать, а то, на что ему
+// выдали право (Decision 051).
+//
+// Пусто — значит разрешение выдано без ограничения, и фильтровать нечего.
+export async function fetchGrantedAccountIds(token: string): Promise<Set<string> | null> {
+  const cached = grantedCaches.get(token);
+  if (cached && Date.now() - cached.at < ACCOUNTS_CACHE_TTL_MS) return cached.ids;
+
+  type Debug = {
+    data?: { granular_scopes?: { scope: string; target_ids?: string[] }[] };
+    error?: { message: string };
+  };
+  const url = `https://graph.facebook.com/${API_VERSION}/debug_token`
+    + `?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`;
+
+  let ids: Set<string> | null = null;
+  try {
+    const res = await fetch(url);
+    const body = (await res.json()) as Debug;
+    // Своя же проверка не должна ронять отчёт: не ответила — считаем, что
+    // ограничений нет, и работаем как раньше.
+    if (!body.error) {
+      const ads = (body.data?.granular_scopes ?? []).filter((g) => g.scope === "ads_read" || g.scope === "ads_management");
+      // Хотя бы одно разрешение без ограничения — значит ограничения нет вовсе.
+      const unrestricted = ads.length === 0 || ads.some((g) => !g.target_ids?.length);
+      if (!unrestricted) {
+        ids = new Set(ads.flatMap((g) => g.target_ids ?? []).map(normalizeAccountId));
+      }
+    }
+  } catch {
+    ids = null;
+  }
+
+  grantedCaches.set(token, { ids, at: Date.now() });
+  return ids;
+}
+
+// target_ids приходят голыми числами, кабинеты в остальном API — с префиксом
+// act_. Сравниваем по числу, чтобы не зависеть от формы.
+const normalizeAccountId = (v: string) => v.replace(/^act_/, "");
+
 async function discoverAccounts(token: string, scope?: AccountScope): Promise<AdAccount[]> {
   const accountsCache = accountsCaches.get(scopeKey(token, scope));
 
@@ -149,6 +200,23 @@ async function discoverAccounts(token: string, scope?: AccountScope): Promise<Ad
   const byId = new Map<string, AdAccount>();
   for (const a of [...direct, ...viaBusinesses.flat()]) {
     if (a.account_status === 1) byId.set(a.id, a);
+  }
+
+  // Оставляем только то, на что выдано разрешение.
+  const granted = await fetchGrantedAccountIds(token);
+  if (granted && granted.size > 0) {
+    const allowed = [...byId.entries()].filter(([id]) => granted.has(normalizeAccountId(id)));
+    // Пересечение пустое при непустом разрешении — это не «нет кабинетов», а
+    // расхождение форматов или отозванный доступ. Молча отдать ноль нельзя
+    // (Decision 018), поэтому оставляем список как есть и говорим в лог.
+    if (allowed.length === 0) {
+      console.warn(
+        `Meta: разрешение выдано на ${granted.size} кабинетов, но ни один из ${byId.size} найденных под него не подошёл. Фильтр не применён.`
+      );
+    } else {
+      byId.clear();
+      for (const [id, a] of allowed) byId.set(id, a);
+    }
   }
 
   if (byId.size === 0 && discoveryError && !accountsCache) {
