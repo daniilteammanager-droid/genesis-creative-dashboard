@@ -84,27 +84,42 @@ const accountsInFlight = new Map<string, Promise<AdAccount[]>>();
 // the dashboard now, so there's no need to hold discovery this stale.
 const ACCOUNTS_CACHE_TTL_MS = 5 * 60_000;
 
-// /me/adaccounts only lists accounts shared directly to this Facebook login — accounts
-// shared as a partner to the app's Business Manager (not to this specific person) never
-// show up there, even though the token can query them directly by ID. Business Manager
-// discovery closes that gap: every account owned by, or shared as a client to, any
-// Business this token belongs to. Merged + deduped with the direct list, active only.
-export async function fetchActiveAccounts(token: string): Promise<AdAccount[]> {
-  const accountsCache = accountsCaches.get(token);
+// Какие кабинеты считать «своими» для этого токена.
+//
+// /me/adaccounts отдаёт только то, что расшарено напрямую на этот логин. Кабинеты,
+// расшаренные партнёром на Business Manager приложения, там не появляются, хотя
+// токен их читает — ради них и заведён обход Business Manager (Decision 017,
+// замер 03.09.2026: командному токену он всё ещё добавляет 2 кабинета).
+//
+// Но для баерского подключения тот же обход — дыра. Смысл системного пользователя
+// в том, что ему назначают ровно его кабинеты, и /me/adaccounts тогда и есть
+// «то, к чему выдан доступ». Обход Business Manager вернул бы туда весь бизнес
+// целиком и обнулил бы всю настройку.
+export interface AccountScope {
+  // false — брать только то, что токен получил напрямую. Для баеров всегда так.
+  includeBusinesses?: boolean;
+}
+
+const scopeKey = (token: string, scope?: AccountScope) =>
+  `${scope?.includeBusinesses === false ? "direct" : "all"}::${token}`;
+
+export async function fetchActiveAccounts(token: string, scope?: AccountScope): Promise<AdAccount[]> {
+  const key = scopeKey(token, scope);
+  const accountsCache = accountsCaches.get(key);
   if (accountsCache && Date.now() - accountsCache.at < ACCOUNTS_CACHE_TTL_MS) {
     return accountsCache.accounts;
   }
 
-  const running = accountsInFlight.get(token);
+  const running = accountsInFlight.get(key);
   if (running) return running;
 
-  const started = discoverAccounts(token).finally(() => accountsInFlight.delete(token));
-  accountsInFlight.set(token, started);
+  const started = discoverAccounts(token, scope).finally(() => accountsInFlight.delete(key));
+  accountsInFlight.set(key, started);
   return started;
 }
 
-async function discoverAccounts(token: string): Promise<AdAccount[]> {
-  const accountsCache = accountsCaches.get(token);
+async function discoverAccounts(token: string, scope?: AccountScope): Promise<AdAccount[]> {
+  const accountsCache = accountsCaches.get(scopeKey(token, scope));
 
   // Track discovery errors (bad/expired token, revoked permissions) instead of swallowing
   // them into an empty list — an empty list looks identical to "no ad accounts" and used to
@@ -115,10 +130,12 @@ async function discoverAccounts(token: string): Promise<AdAccount[]> {
       discoveryError = e;
       return [];
     }),
-    fetchEdgePaged<Business>(token, "me", "businesses", "id").catch((e) => {
-      discoveryError = e;
-      return [];
-    }),
+    scope?.includeBusinesses === false
+      ? Promise.resolve([] as Business[])
+      : fetchEdgePaged<Business>(token, "me", "businesses", "id").catch((e) => {
+          discoveryError = e;
+          return [];
+        }),
   ]);
 
   const viaBusinesses = await mapWithConcurrency(businesses, CONCURRENCY, async (b) => {
@@ -140,7 +157,7 @@ async function discoverAccounts(token: string): Promise<AdAccount[]> {
 
   // Stale cache beats an empty report if this pass itself got rate-limited.
   const accounts = byId.size > 0 ? [...byId.values()] : (accountsCache?.accounts ?? []);
-  accountsCaches.set(token, { accounts, at: Date.now() });
+  accountsCaches.set(scopeKey(token, scope), { accounts, at: Date.now() });
   return accounts;
 }
 
@@ -222,9 +239,10 @@ async function fetchInsightsForAllAccounts(
 export async function fetchCampaignInsights(
   token: string,
   since: string,
-  until: string
+  until: string,
+  scope?: AccountScope
 ): Promise<{ items: MetaCampaignRow[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token);
+  const accounts = await fetchActiveAccounts(token, scope);
   const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "campaign", since, until);
   const items = rows.map((r) => ({
     campaignId: r.campaign_id ?? "",
@@ -241,9 +259,10 @@ export async function fetchCampaignInsights(
 export async function fetchAdInsights(
   token: string,
   since: string,
-  until: string
+  until: string,
+  scope?: AccountScope
 ): Promise<{ items: MetaAdRow[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token);
+  const accounts = await fetchActiveAccounts(token, scope);
   const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "ad", since, until);
   const items = rows.map((r) => ({
     adId: r.ad_id ?? "",
@@ -270,8 +289,8 @@ async function fetchObjectStatuses(token: string, account: AdAccount, edge: "cam
   return rows.map((d) => [d.id, d.effective_status] as [string, string]);
 }
 
-export async function fetchAdStatuses(token: string): Promise<Map<string, string>> {
-  const accounts = await fetchActiveAccounts(token);
+export async function fetchAdStatuses(token: string, scope?: AccountScope): Promise<Map<string, string>> {
+  const accounts = await fetchActiveAccounts(token, scope);
   const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) => fetchObjectStatuses(token, a, "ads").catch(() => []));
   return new Map(perAccount.flat());
 }
@@ -320,8 +339,8 @@ export interface CampaignMeta {
 // Status and daily budget both live on the campaigns edge, so they come back from one sweep.
 // They used to be two independent full passes over the same edge across every account —
 // double the calls against the very limit the concurrency cap exists to protect.
-export async function fetchCampaignMeta(token: string): Promise<CampaignMeta> {
-  const accounts = await fetchActiveAccounts(token);
+export async function fetchCampaignMeta(token: string, scope?: AccountScope): Promise<CampaignMeta> {
+  const accounts = await fetchActiveAccounts(token, scope);
   const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, (a) =>
     fetchCampaignMetaForAccount(token, a).catch(() => ({ statuses: [] as [string, string][], budgets: [] as [string, number][] }))
   );
@@ -362,9 +381,10 @@ export interface MetaCampaignDay {
 }
 
 export async function fetchAdDays(
-  token: string, since: string, until: string
+  token: string, since: string, until: string,
+  scope?: AccountScope
 ): Promise<{ items: MetaAdDay[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token);
+  const accounts = await fetchActiveAccounts(token, scope);
   const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "ad", since, until, true);
   const items = rows
     // Строка без даты означает, что Meta проигнорировала дневную разбивку.
@@ -389,9 +409,10 @@ export async function fetchAdDays(
 }
 
 export async function fetchCampaignDays(
-  token: string, since: string, until: string
+  token: string, since: string, until: string,
+  scope?: AccountScope
 ): Promise<{ items: MetaCampaignDay[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token);
+  const accounts = await fetchActiveAccounts(token, scope);
   const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "campaign", since, until, true);
   const items = rows
     .filter((r) => r.date_start && r.campaign_id)
@@ -418,8 +439,8 @@ export interface AdSetTargeting {
   countries: string[];
 }
 
-export async function fetchAdSetTargeting(token: string): Promise<{ items: AdSetTargeting[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token);
+export async function fetchAdSetTargeting(token: string, scope?: AccountScope): Promise<{ items: AdSetTargeting[]; failedAccounts: number }> {
+  const accounts = await fetchActiveAccounts(token, scope);
   let failedAccounts = 0;
 
   const perAccount = await mapWithConcurrency(accounts, CONCURRENCY, async (a) => {

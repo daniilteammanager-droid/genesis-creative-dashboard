@@ -1,6 +1,7 @@
 import { getConnection } from "@/lib/connections/store";
 import type { Profile } from "@/lib/auth/types";
 import type { LiveMode } from "./types";
+import type { AccountScope } from "./metaApi";
 
 // Откуда Reports берут данные для конкретного человека.
 //
@@ -16,6 +17,10 @@ export interface ReportConfig {
   // закэшированные цифры другого — молча и правдоподобно.
   cacheKey: string;
   metaToken: string;
+  // Какие кабинеты считать своими. У баера — только назначенные его токену,
+  // иначе системный пользователь с тремя кабинетами превращается обратно во
+  // «все кабинеты бизнеса» (Decision 050).
+  accountScope: AccountScope;
   campaignsSheetId: string;
   adsSheetId: string;
   adsByIdSheetId?: string;
@@ -55,6 +60,7 @@ export async function reportConfigFor(me: Profile, mode?: LiveMode): Promise<Rep
     return {
       cacheKey: me.id,
       metaToken: c!.metaToken as string,
+      accountScope: { includeBusinesses: false },
       campaignsSheetId: c!.crmCampaignsSheetId ?? "",
       adsSheetId: c!.crmAdsSheetId ?? "",
       // Третья выгрузка: депозиты на конкретном объявлении и на адсете берутся
@@ -89,6 +95,9 @@ export async function reportConfigFor(me: Profile, mode?: LiveMode): Promise<Rep
   return {
     cacheKey: "team",
     metaToken: metaToken as string,
+    // Владельцу обход Business Manager нужен: замер 03.09.2026 — он добавляет
+    // 2 кабинета сверх /me/adaccounts (Decision 017).
+    accountScope: {},
     campaignsSheetId: campaignsSheetId ?? "",
     adsSheetId: adsSheetId ?? "",
     // Резервный путь матча по Ad ID. Необязателен, у баеров его нет вовсе.

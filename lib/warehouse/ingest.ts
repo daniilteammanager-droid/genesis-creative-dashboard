@@ -21,6 +21,11 @@ const WINDOW_DAYS = 14;
 
 export type IngestKind = "today" | "window";
 
+// Склад собирается только по баерским подключениям, а у баера «его кабинеты» —
+// это ровно то, что назначено его токену. Обход Business Manager вернул бы весь
+// бизнес и записал бы каждому баеру расход всей команды (Decision 050).
+const DIRECT_ONLY = { includeBusinesses: false } as const;
+
 export interface IngestResult {
   userId: string;
   kind: IngestKind;
@@ -146,7 +151,7 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
     let adRows = 0, campaignRows = 0, failedAccounts = 0;
 
     if (adWindow) {
-      const { items, failedAccounts: f } = await fetchAdDays(conn.metaToken, adWindow.since, adWindow.until);
+      const { items, failedAccounts: f } = await fetchAdDays(conn.metaToken, adWindow.since, adWindow.until, DIRECT_ONLY);
       failedAccounts += f;
       const rows = items.map((r) => ({
         user_id: userId, date: r.date, ad_id: r.adId, ad_name: r.adName,
@@ -164,7 +169,7 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
     }
 
     if (campaignWindow) {
-      const { items, failedAccounts: f } = await fetchCampaignDays(conn.metaToken, campaignWindow.since, campaignWindow.until);
+      const { items, failedAccounts: f } = await fetchCampaignDays(conn.metaToken, campaignWindow.since, campaignWindow.until, DIRECT_ONLY);
       failedAccounts += f;
       const rows = items.map((r) => ({
         user_id: userId, date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
@@ -185,7 +190,7 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
     // вызову на кабинет.
     let adsetRows = 0;
     if (kind === "window") {
-      const { items, failedAccounts: f } = await fetchAdSetTargeting(conn.metaToken);
+      const { items, failedAccounts: f } = await fetchAdSetTargeting(conn.metaToken, DIRECT_ONLY);
       failedAccounts += f;
       const rows = items.map((a) => ({
         adset_id: a.adsetId, adset_name: a.adsetName || null,

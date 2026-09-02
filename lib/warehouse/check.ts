@@ -151,6 +151,7 @@ async function liveSources(me: Profile, scope: string[], buyerFilter?: string): 
     list.push({
       cacheKey: id,
       metaToken: c.metaToken,
+      accountScope: { includeBusinesses: false },
       campaignsSheetId: c.crmCampaignsSheetId ?? "",
       adsSheetId: c.crmAdsSheetId ?? "",
     });
@@ -284,7 +285,7 @@ export async function loadCheck(
     // вовсе — страновой чек за сегодня иначе состоял бы из одной строки
     // «страна не определена» (замер 31.08.2026).
     if (groupBy === "country") {
-      const targeting = await Promise.all(sources.map((c) => fetchAdSetTargeting(c.metaToken)));
+      const targeting = await Promise.all(sources.map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
       for (const t of targeting) {
         failedAccounts += t.failedAccounts;
         for (const a of t.items) geoByAdset.set(a.adsetId, a.countries);
@@ -294,8 +295,8 @@ export async function loadCheck(
     if (groupBy === "campaign") {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, campaignMeta, crm] = await Promise.all([
-          fetchCampaignInsights(config.metaToken, since, until),
-          fetchCampaignMeta(config.metaToken),
+          fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
+          fetchCampaignMeta(config.metaToken, config.accountScope),
           config.campaignsSheetId ? crmForRange(config.campaignsSheetId, since, until) : NO_CRM,
         ]);
         return { meta, campaignMeta, crm };
@@ -326,7 +327,7 @@ export async function loadCheck(
     } else {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, crm] = await Promise.all([
-          fetchAdInsights(config.metaToken, since, until),
+          fetchAdInsights(config.metaToken, since, until, config.accountScope),
           config.adsSheetId ? crmForRange(config.adsSheetId, since, until) : NO_CRM,
         ]);
         return { meta, crm };
