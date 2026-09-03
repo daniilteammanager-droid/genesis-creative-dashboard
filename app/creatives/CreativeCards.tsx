@@ -5,10 +5,10 @@ import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
 import { MediaWide } from "@/components/CreativeMedia";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/media";
-import { isSupabaseConfigured, supabase, selectAllRows, currentUserId, type CreativeNote } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
-import type { CreativeRow as LegacyRow } from "@/lib/creatives/types";
 import { mskDaysAgo } from "@/lib/day";
+import { toLegacy } from "./toLegacy";
 
 // Плитка новой картотеки: то же, что на легаси-странице, но за выбранный период.
 //
@@ -41,7 +41,17 @@ const num = (v: number | null) => (v === null ? "—" : v.toLocaleString("ru-RU"
 // Показываем не всё сразу: за месяц строк бывает много, а карточка тянет превью.
 const PAGE = 120;
 
-export default function CreativeCards() {
+export default function CreativeCards({
+  media,
+  suffixes,
+  notes,
+  onNotesChange,
+}: {
+  media: MediaFile[];
+  suffixes: string[];
+  notes: Record<string, CreativeNote>;
+  onNotesChange: (updater: (prev: Record<string, CreativeNote>) => Record<string, CreativeNote>) => void;
+}) {
   const [since, setSince] = useState(daysAgo(0));
   const [until, setUntil] = useState(daysAgo(0));
   const [buyer, setBuyer] = useState("all");
@@ -51,9 +61,6 @@ export default function CreativeCards() {
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
 
-  const [media, setMedia] = useState<MediaFile[]>([]);
-  const [suffixes, setSuffixes] = useState<string[]>([]);
-  const [notes, setNotes] = useState<Record<string, CreativeNote>>({});
   const [selected, setSelected] = useState<CreativeRow | null>(null);
 
   const isBuyer = data?.isBuyer ?? false;
@@ -75,48 +82,6 @@ export default function CreativeCards() {
     return () => { alive = false; };
   }, [since, until, buyer, country]);
 
-  // ─── Файлы из R2 и суффиксы матчинга ───────────────────────────────────────
-  useEffect(() => {
-    fetch("/api/media")
-      .then((r) => r.json())
-      .then((d) => setMedia(Array.isArray(d) ? d : []))
-      .catch(() => setMedia([]));
-
-    if (!isSupabaseConfigured) return;
-    supabase.from("creative_match_suffixes").select("suffix")
-      .then(({ data: d }) => setSuffixes((d ?? []).map((r) => r.suffix as string)));
-  }, []);
-
-  // ─── Заметки: расшифровка общая, заметка и избранное личные ────────────────
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    (async () => {
-      try {
-        const [shared, mine] = await Promise.all([
-          selectAllRows<{ creative_code: string; transcription_ru: string | null; ignored: boolean | null; updated_at: string }>(
-            "creative_notes", "creative_code, transcription_ru, ignored, updated_at"),
-          selectAllRows<{ creative_code: string; favorite: boolean; note: string | null; updated_at: string }>(
-            "creative_user_notes", "creative_code, favorite, note, updated_at"),
-        ]);
-        const map: Record<string, CreativeNote> = {};
-        for (const r of shared) {
-          map[r.creative_code] = {
-            creative_code: r.creative_code, favorite: false, note: null,
-            transcription_ru: r.transcription_ru, ignored: r.ignored ?? false, updated_at: r.updated_at,
-          };
-        }
-        for (const r of mine) {
-          const base = map[r.creative_code];
-          map[r.creative_code] = base
-            ? { ...base, favorite: r.favorite, note: r.note }
-            : { creative_code: r.creative_code, favorite: r.favorite, note: r.note,
-                transcription_ru: null, ignored: false, updated_at: r.updated_at };
-        }
-        setNotes(map);
-      } catch { /* заметки не критичны — Decision 005 */ }
-    })();
-  }, []);
-
   const index = useMemo(() => buildMediaIndex(media, new Set(suffixes)), [media, suffixes]);
   const findMedia = useCallback((code: string) => lookupMedia(index, code), [index]);
 
@@ -127,26 +92,13 @@ export default function CreativeCards() {
     const updated: CreativeNote = existing
       ? { ...existing, favorite: next, updated_at: new Date().toISOString() }
       : { creative_code: code, favorite: next, note: null, transcription_ru: null, ignored: false, updated_at: new Date().toISOString() };
-    setNotes((p) => ({ ...p, [code]: updated }));
+    onNotesChange((p) => ({ ...p, [code]: updated }));
     // Пишем только своё поле: расшифровку сюда класть нельзя, её пишет воркер.
     await supabase.from("creative_user_notes").upsert(
       { user_id: await currentUserId(), creative_code: code, favorite: next, updated_at: updated.updated_at },
       { onConflict: "user_id,creative_code" }
     );
-  }, [notes]);
-
-  // Модал построен на строке легаси-библиотеки: там метрики за всё время
-  // строками. Переводим строку склада в ту же форму, чтобы не плодить второй модал.
-  const toLegacy = (r: CreativeRow): LegacyRow => ({
-    creative: r.code,
-    spend: String(r.spend ?? 0),
-    revenue: String((r.depSum ?? 0) + (r.redepSum ?? 0)),
-    deposits: String(r.depCount ?? 0),
-    pdp: String(r.subscribers ?? 0),
-    dia: String(r.dialogs ?? 0),
-    romi: r.spend > 0 ? String((((r.depSum ?? 0) + (r.redepSum ?? 0) - r.spend) / r.spend) * 100) : "",
-    text: "",
-  });
+  }, [notes, onNotesChange]);
 
   const rows = data?.rows ?? [];
   const shown = rows.slice(0, limit);
@@ -312,7 +264,7 @@ export default function CreativeCards() {
           supabaseAvailable={isSupabaseConfigured}
           onClose={() => setSelected(null)}
           onToggleFavorite={toggleFavorite}
-          onNotesUpdated={(u) => setNotes((p) => ({ ...p, [u.creative_code]: u }))}
+          onNotesUpdated={(u) => onNotesChange((p) => ({ ...p, [u.creative_code]: u }))}
         />
       )}
     </div>
