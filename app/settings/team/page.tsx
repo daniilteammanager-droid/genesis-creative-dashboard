@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireRole, createClient } from "@/lib/auth/server";
 import TeamManager from "./TeamManager";
+import AccountOwners from "./AccountOwners";
 import type { Profile } from "@/lib/auth/types";
 
 // Список команды. Проверка роли на сервере: спрятать ссылку в интерфейсе — не защита,
@@ -21,6 +22,7 @@ export default async function TeamPage() {
         Роль, номер баера и доступ. Изменения применяются сразу.
       </p>
       <TeamManager people={(data as Profile[]) ?? []} meId={me.id} />
+      <AccountOwners />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { warehouse, selectAll } from "./read";
+import { resolveScope } from "./accounts";
 import { reportConfigFor, type ReportConfig } from "@/lib/reports-live/config";
 import { getConnection } from "@/lib/connections/store";
 import { fetchCampaignInsights, fetchAdInsights, fetchCampaignMeta, fetchAdSetTargeting } from "@/lib/reports-live/metaApi";
@@ -188,9 +189,7 @@ export async function loadCheck(
     label: (b.name as string) || (b.buyer_code as string) || (b.email as string),
   }));
 
-  const scope = me.role === "buyer"
-    ? [me.id]
-    : buyerFilter && buyers.some((b) => b.id === buyerFilter) ? [buyerFilter] : buyers.map((b) => b.id);
+  const { userIds: scope, accountIds } = await resolveScope(db, me, buyerFilter);
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
@@ -262,6 +261,16 @@ export async function loadCheck(
     ));
   }
 
+  // Кабинеты, которые ещё никому не отдали, баер не видит. Пустой список — это
+  // не «расхода нет», а «кабинеты не распределены», и говорить об этом надо вслух.
+  if (accountIds !== null && accountIds.length === 0) {
+    return { ...base, text: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда»." };
+  }
+  // Живая Мета отдаёт всё, что видит токен, поэтому фильтровать приходится и
+  // здесь: иначе чек за сегодня противоречил бы отчётам за вчера.
+  const ownAccount = (id: string | undefined) =>
+    accountIds === null || (id !== undefined && accountIds.includes(id.replace(/^act_/, "")));
+
   if (live) {
     const sources = await liveSources(me, scope, buyerFilter);
     sourceLabels = sources.map((c) =>
@@ -306,6 +315,7 @@ export async function loadCheck(
         failedAccounts += meta.failedAccounts;
         if (!crm.covered) { uncovered++; if (crm.nearest) nearestSheet = crm.nearest; }
         for (const c of meta.items) {
+          if (!ownAccount(c.accountId)) continue;
           const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId);
           row.spend += c.spend;
           row.dailyBudget = campaignMeta.dailyBudgets.get(c.campaignId) ?? null;
@@ -339,9 +349,12 @@ export async function loadCheck(
 
         // Расход и доход раскладываются по одному ключу — иначе строка страны
         // получила бы расход одного множества объявлений и доход другого.
-        const country = countryByName(meta.items.map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId })));
+        const country = countryByName(
+          meta.items.filter((a) => ownAccount(a.accountId)).map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId }))
+        );
 
         for (const a of meta.items) {
+          if (!ownAccount(a.accountId)) continue;
           const name = a.adName.trim();
           // Расход не теряем даже у безымянного объявления: в разрезе по крео
           // такому взяться неоткуда, а в разрезе по странам оно всё равно
@@ -390,13 +403,19 @@ export async function loadCheck(
     const inside = (from: string, to: string) => from >= since && to <= until;
 
     if (groupBy === "campaign") {
-      const days = await selectAll<{ campaign_id: string; campaign_name: string | null; spend: number | string }>((from, to) =>
-        db.from("wh_campaign_days").select("campaign_id, campaign_name, spend")
-          .in("user_id", scope).gte("date", since).lte("date", until)
+      const days = await selectAll<{ campaign_id: string; campaign_name: string | null; account_id: string | null; date: string; spend: number | string }>((from, to) => {
+        const q = db.from("wh_campaign_days").select("campaign_id, campaign_name, account_id, date, spend")
+          .gte("date", since).lte("date", until);
+        return (accountIds ? q.in("account_id", accountIds) : q)
           .order("user_id").order("date").order("campaign_id")
-          .range(from, to)
-      );
+          .range(from, to);
+      });
+      // Один день одной кампании мог прийти от двух токенов (Decision 052).
+      const seenDay = new Set<string>();
       for (const d of days) {
+        const dayKey = `${d.date}|${d.campaign_id}`;
+        if (seenDay.has(dayKey)) continue;
+        seenDay.add(dayKey);
         const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id);
         row.spend += num(d.spend);
         rows.set(d.campaign_id, row);
@@ -420,12 +439,21 @@ export async function loadCheck(
         rows.set(c.campaign_id, row);
       }
     } else {
-      const days = await selectAll<{ ad_name: string; adset_id: string | null; spend: number | string }>((from, to) =>
-        db.from("wh_ad_days").select("ad_name, adset_id, spend")
-          .in("user_id", scope).gte("date", since).lte("date", until)
+      const daysRaw = await selectAll<{ ad_name: string; ad_id: string; adset_id: string | null; account_id: string | null; date: string; spend: number | string }>((from, to) => {
+        const q = db.from("wh_ad_days").select("ad_name, ad_id, adset_id, account_id, date, spend")
+          .gte("date", since).lte("date", until);
+        return (accountIds ? q.in("account_id", accountIds) : q)
           .order("user_id").order("date").order("ad_id")
-          .range(from, to)
-      );
+          .range(from, to);
+      });
+      // Один день одного объявления мог прийти от двух токенов (Decision 052).
+      const seenDay = new Set<string>();
+      const days = daysRaw.filter((d) => {
+        const k = `${d.date}|${d.ad_id}`;
+        if (seenDay.has(k)) return false;
+        seenDay.add(k);
+        return true;
+      });
 
       const country = countryByName(days.map((d) => ({ name: (d.ad_name ?? "").trim(), adsetId: d.adset_id ?? "" })));
 

@@ -1,4 +1,5 @@
 import { warehouse, selectAll } from "./read";
+import { resolveScope } from "./accounts";
 import type { Profile } from "@/lib/auth/types";
 
 // Reports как аналог FB Tool: кампании, внутри адсеты, внутри объявления.
@@ -34,6 +35,8 @@ export interface ReportTreeResult {
   // переключатель баеров не показывался тому, кому он ничего не даёт.
   isBuyer: boolean;
   totals: { spend: number; clicks: number; impressions: number; depSum: number };
+  // Почему пусто. Пустая таблица без объяснения читается как поломка.
+  notice?: string;
   generatedAt: string;
 }
 
@@ -69,12 +72,16 @@ export async function loadReportTree(
     label: (b.name as string) || (b.buyer_code as string) || (b.email as string),
   }));
 
-  const scope =
-    me.role === "buyer"
-      ? [me.id]
-      : buyerFilter && buyers.some((b) => b.id === buyerFilter)
-        ? [buyerFilter]
-        : buyers.map((b) => b.id);
+  const { userIds: scope, accountIds } = await resolveScope(db, me, buyerFilter);
+
+  if (accountIds !== null && accountIds.length === 0) {
+    return {
+      since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
+      totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 },
+      notice: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда».",
+      generatedAt: new Date().toISOString(),
+    };
+  }
 
   const empty: ReportTreeResult = {
     since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
@@ -87,15 +94,17 @@ export async function loadReportTree(
     ad_id: string; ad_name: string;
     adset_id: string | null; adset_name: string | null;
     campaign_id: string | null; campaign_name: string | null;
+    account_id: string | null; date: string;
     spend: number | string; clicks: number; impressions: number;
   };
-  const days = await selectAll<AdDay>((from, to) =>
-    db.from("wh_ad_days")
-      .select("ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name, spend, clicks, impressions")
-      .in("user_id", scope).gte("date", since).lte("date", until)
+  const days = await selectAll<AdDay>((from, to) => {
+    const q = db.from("wh_ad_days")
+      .select("ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name, account_id, date, spend, clicks, impressions")
+      .gte("date", since).lte("date", until);
+    return (accountIds ? q.in("account_id", accountIds) : q)
       .order("user_id").order("date").order("ad_id")
-      .range(from, to)
-  );
+      .range(from, to);
+  });
 
   type CrmAd = {
     ad_id: string; period_start: string; period_end: string;
@@ -128,7 +137,14 @@ export async function loadReportTree(
 
   // ─── Объявления ──────────────────────────────────────────────────────────
   const ads = new Map<string, TreeNode & { adsetId: string; campaignId: string; adsetName: string; campaignName: string }>();
+  // Один и тот же день одного объявления мог прийти от двух токенов сразу —
+  // считаем один раз (Decision 052).
+  const seenAdDay = new Set<string>();
+
   for (const d of days) {
+    const dayKey = `${d.date}|${d.ad_id}`;
+    if (seenAdDay.has(dayKey)) continue;
+    seenAdDay.add(dayKey);
     const key = d.ad_id;
     const node = ads.get(key) ?? {
       id: key, name: d.ad_name || key, level: "ad" as const,

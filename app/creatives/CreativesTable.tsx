@@ -139,6 +139,17 @@ export default function CreativesTable() {
         </div>
       )}
 
+      {data?.notice && (
+
+        <div className="bg-amber-950/30 border border-amber-700/30 rounded-xl px-4 py-3 text-amber-200/90 text-sm mb-4">
+
+          {data.notice}
+
+        </div>
+
+      )}
+
+
       {error && (
         <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm mb-4">{error}</div>
       )}

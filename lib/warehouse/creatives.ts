@@ -1,4 +1,5 @@
 import { warehouse, selectAll } from "./read";
+import { resolveScope } from "./accounts";
 import { parseCreativeCode, geoOf, approachOf, buyerOf } from "@/lib/creatives/code";
 import type { Profile } from "@/lib/auth/types";
 
@@ -59,6 +60,8 @@ export interface CreativesResult {
   // значит придумать цифру.
   partialPeriods: { since: string; until: string }[];
   totals: { spend: number; clicks: number; impressions: number; depSum: number; depCount: number };
+  // Почему пусто. Пустая таблица без объяснения читается как поломка.
+  notice?: string;
   generatedAt: string;
 }
 
@@ -104,12 +107,17 @@ export async function loadCreatives(
     .sort((a, b) => a.sort.localeCompare(b.sort, "ru", { numeric: true }))
     .map(({ id, label }) => ({ id, label }));
 
-  const scope =
-    me.role === "buyer"
-      ? [me.id]
-      : buyerFilter && buyers.some((b) => b.id === buyerFilter)
-        ? [buyerFilter]
-        : buyers.map((b) => b.id);
+  // Кабинеты решают, чей это расход; выгрузки Torro по-прежнему личные.
+  const { userIds: scope, accountIds } = await resolveScope(db, me, buyerFilter);
+
+  if (accountIds !== null && accountIds.length === 0) {
+    return {
+      since, until, rows: [], buyers, countries: [], isBuyer: me.role === "buyer", partialPeriods: [],
+      totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0, depCount: 0 },
+      notice: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда».",
+      generatedAt: new Date().toISOString(),
+    };
+  }
 
   const empty: CreativesResult = {
     since, until, rows: [], buyers, countries: [], isBuyer: me.role === "buyer", partialPeriods: [],
@@ -121,16 +129,17 @@ export async function loadCreatives(
   // ─── Meta: дни объявлений ────────────────────────────────────────────────
   type AdDay = {
     user_id: string; ad_name: string; ad_id: string; campaign_id: string | null;
-    adset_id: string | null;
+    adset_id: string | null; account_id: string | null; date: string;
     spend: number | string; clicks: number; impressions: number;
   };
-  const adDays = await selectAll<AdDay>((from, to) =>
-    db.from("wh_ad_days")
-      .select("user_id, ad_name, ad_id, campaign_id, adset_id, spend, clicks, impressions")
-      .in("user_id", scope).gte("date", since).lte("date", until)
+  const adDays = await selectAll<AdDay>((from, to) => {
+    const q = db.from("wh_ad_days")
+      .select("user_id, ad_name, ad_id, campaign_id, adset_id, account_id, date, spend, clicks, impressions")
+      .gte("date", since).lte("date", until);
+    return (accountIds ? q.in("account_id", accountIds) : q)
       .order("user_id").order("date").order("ad_id")
-      .range(from, to)
-  );
+      .range(from, to);
+  });
 
   // ─── Torro: периоды по имени объявления ──────────────────────────────────
   // Берём только периоды, целиком лежащие внутри запрошенного диапазона.
@@ -181,9 +190,17 @@ export async function loadCreatives(
   const campaignIds = new Map<string, Set<string>>();
   const adsetIds = new Map<string, Set<string>>();
 
+  // Один день одного объявления могли принести токены двух баеров: цифры в них
+  // одинаковые, поэтому берём первую и пропускаем остальные. Без этого расход
+  // задвоился бы ровно на числе людей, чей ключ видит кабинет (Decision 052).
+  const seenAdDay = new Set<string>();
+
   for (const d of adDays) {
     const code = (d.ad_name ?? "").trim();
     if (!code) continue;
+    const dayKey = `${d.date}|${d.ad_id}`;
+    if (seenAdDay.has(dayKey)) continue;
+    seenAdDay.add(dayKey);
     const row = rows.get(code) ?? blank(code);
     row.spend += num(d.spend);
     row.clicks += num(d.clicks);
