@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
 import { MediaWide } from "@/components/CreativeMedia";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/media";
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
-import { mskDaysAgo } from "@/lib/day";
 import { toLegacy } from "./toLegacy";
 
 // Плитка новой картотеки: то же, что на легаси-странице, но за выбранный период.
@@ -15,16 +14,6 @@ import { toLegacy } from "./toLegacy";
 // Строки задаёт склад — это объявления, которые реально крутились за период.
 // Файл к строке ищется по ВСЕМУ бакету R2, без фильтра по владельцу: старым
 // форматом льют до сих пор, и эти файлы лежат в общих папках (Decision 036).
-
-const daysAgo = (d: number) => mskDaysAgo(d);
-
-const PERIODS = [
-  { label: "Сегодня", since: () => daysAgo(0), until: () => daysAgo(0) },
-  { label: "Вчера", since: () => daysAgo(1), until: () => daysAgo(1) },
-  { label: "7 дней", since: () => daysAgo(6), until: () => daysAgo(0) },
-  { label: "14 дней", since: () => daysAgo(13), until: () => daysAgo(0) },
-  { label: "30 дней", since: () => daysAgo(29), until: () => daysAgo(0) },
-];
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -74,24 +63,28 @@ const costPer = (spend: number, count: number | null) =>
   count && count > 0 ? spend / count : null;
 
 export default function CreativeCards({
+  data,
+  loading,
   media,
   suffixes,
   notes,
   onNotesChange,
 }: {
+  data: CreativesResult | null;
+  loading: boolean;
   media: MediaFile[];
   suffixes: string[];
   notes: Record<string, CreativeNote>;
   onNotesChange: (updater: (prev: Record<string, CreativeNote>) => Record<string, CreativeNote>) => void;
 }) {
-  const [since, setSince] = useState(daysAgo(0));
-  const [until, setUntil] = useState(daysAgo(0));
-  const [buyer, setBuyer] = useState("all");
-  const [country, setCountry] = useState("all");
-  const [data, setData] = useState<CreativesResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [limit, setLimit] = useState(PAGE);
+  // Показ ограничен: за месяц строк много, а карточка тянет превью. Счётчик
+  // привязан к периоду — сменились данные, показ снова начинается с начала,
+  // и делать это эффектом не нужно.
+  const [limitBy, setLimitBy] = useState<{ key: string; value: number }>({ key: "", value: PAGE });
+  const periodKey = `${data?.since ?? ""}|${data?.until ?? ""}|${data?.rows.length ?? 0}`;
+  const limit = limitBy.key === periodKey ? limitBy.value : PAGE;
+  const setLimit = (v: number | ((p: number) => number)) =>
+    setLimitBy({ key: periodKey, value: typeof v === "function" ? v(limit) : v });
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
   const [sort, setSort] = useState<Sort>("none");
@@ -102,25 +95,6 @@ export default function CreativeCards({
   const [onlyWithSpend, setOnlyWithSpend] = useState(true);
 
   const [selected, setSelected] = useState<CreativeRow | null>(null);
-
-  const isBuyer = data?.isBuyer ?? false;
-
-  // ─── Данные склада ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    let alive = true;
-    const q = new URLSearchParams({ since, until });
-    if (buyer !== "all") q.set("buyer", buyer);
-    if (country !== "all") q.set("country", country);
-    fetch(`/api/creatives?${q}`)
-      .then((r) => r.json() as Promise<CreativesResult & { error?: string }>)
-      .then((d) => {
-        if (!alive) return;
-        if (d.error) throw new Error(d.error);
-        setData(d); setError(null); setLoading(false); setLimit(PAGE);
-      })
-      .catch((e: Error) => { if (alive) { setData(null); setError(e.message); setLoading(false); } });
-    return () => { alive = false; };
-  }, [since, until, buyer, country]);
 
   const index = useMemo(() => buildMediaIndex(media, new Set(suffixes)), [media, suffixes]);
   const findMedia = useCallback((code: string) => lookupMedia(index, code), [index]);
@@ -207,48 +181,6 @@ export default function CreativeCards({
 
   return (
     <div>
-      {/* ─── Фильтры ─── */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
-        <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
-        <span className="text-zinc-600">—</span>
-        <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
-        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
-          {PERIODS.map((p) => (
-            <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
-                    className={chip(since === p.since() && until === p.until())}>{p.label}</button>
-          ))}
-        </div>
-      </div>
-
-      {!isBuyer && data && (
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Баеры</span>
-          {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
-              <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
-              {data.buyers.map((b) => (
-                <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
-              ))}
-            </div>
-          ) : (
-            <span className="text-sm text-zinc-500">Никто из баеров ещё не подключил ключи</span>
-          )}
-        </div>
-      )}
-
-      {(data?.countries.length ?? 0) > 0 && (
-        <div className="flex items-center gap-3 mb-5 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Страны</span>
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
-            <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
-            {data!.countries.map((c) => (
-              <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Поиск, вкладки и формат. Формат — по новому неймингу: носитель и подход
           читаются из кода крео, а не из папки в R2 (Decision 026). */}
       {data && !loading && (
@@ -315,10 +247,6 @@ export default function CreativeCards({
           {data.notice}
         </div>
       )}
-      {error && (
-        <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm mb-4">{error}</div>
-      )}
-
       {loading && (
         <div className="flex items-center justify-center py-16">
           <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />

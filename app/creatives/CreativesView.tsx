@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import CreativeCards from "./CreativeCards";
+import CreativeAnalytics from "./CreativeAnalytics";
 import CreativesTable from "./CreativesTable";
 import CreativeUploadModal from "@/app/CreativeUploadModal";
 import MediaLibrary from "@/components/MediaLibrary";
@@ -26,8 +27,36 @@ const btn =
   "px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 " +
   "text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5";
 
+const daysAgo = (d: number) => mskDaysAgo(d);
+
+const PERIODS = [
+  { label: "Сегодня", since: () => daysAgo(0), until: () => daysAgo(0) },
+  { label: "Вчера", since: () => daysAgo(1), until: () => daysAgo(1) },
+  { label: "7 дней", since: () => daysAgo(6), until: () => daysAgo(0) },
+  { label: "14 дней", since: () => daysAgo(13), until: () => daysAgo(0) },
+  { label: "30 дней", since: () => daysAgo(29), until: () => daysAgo(0) },
+];
+
+const chip = (on: boolean) =>
+  `px-4 py-2 rounded-xl text-sm font-semibold transition ${
+    on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm" : "text-zinc-400 hover:text-violet-300"
+  }`;
+
+const field =
+  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
+
 export default function CreativesView() {
-  const [view, setView] = useState<"cards" | "table">("cards");
+  const [view, setView] = useState<"cards" | "table" | "analytics">("cards");
+
+  // Период, баер и страна общие для плитки и аналитики: переключая вид, человек
+  // смотрит на те же данные под другим углом, а не выбирает период заново.
+  const [since, setSince] = useState(daysAgo(0));
+  const [until, setUntil] = useState(daysAgo(0));
+  const [buyer, setBuyer] = useState("all");
+  const [country, setCountry] = useState("all");
+  const [data, setData] = useState<CreativesResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaFile[]>([]);
   const [suffixes, setSuffixes] = useState<string[]>([]);
   const [notes, setNotes] = useState<Record<string, CreativeNote>>({});
@@ -53,6 +82,22 @@ export default function CreativesView() {
     const { data } = await supabase.from("creative_match_suffixes").select("suffix");
     setSuffixes((data ?? []).map((r) => r.suffix as string));
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const q = new URLSearchParams({ since, until });
+    if (buyer !== "all") q.set("buyer", buyer);
+    if (country !== "all") q.set("country", country);
+    fetch(`/api/creatives?${q}`)
+      .then((r) => r.json() as Promise<CreativesResult & { error?: string }>)
+      .then((d) => {
+        if (!alive) return;
+        if (d.error) throw new Error(d.error);
+        setData(d); setError(null); setLoading(false);
+      })
+      .catch((e: Error) => { if (alive) { setData(null); setError(e.message); setLoading(false); } });
+    return () => { alive = false; };
+  }, [since, until, buyer, country]);
 
   // Первая загрузка: состояние ставится в колбэке запроса, а не в теле эффекта.
   // loadMedia/loadSuffixes остаются для обработчиков — после заливки и правки
@@ -135,6 +180,7 @@ export default function CreativesView() {
         <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
           <button onClick={() => setView("cards")} className={tab(view === "cards")}>Плитка</button>
           <button onClick={() => setView("table")} className={tab(view === "table")}>Таблица</button>
+          <button onClick={() => setView("analytics")} className={tab(view === "analytics")}>Аналитика</button>
         </div>
         <div className="flex gap-2">
           <button onClick={openLibrary} className={btn}>📁 Медиатека</button>
@@ -142,9 +188,61 @@ export default function CreativesView() {
         </div>
       </div>
 
-      {view === "cards"
-        ? <CreativeCards media={media} suffixes={suffixes} notes={notes} onNotesChange={setNotes} />
-        : <CreativesTable />}
+      {view !== "table" && (
+        <>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
+            <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
+            <span className="text-zinc-600">—</span>
+            <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
+            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+              {PERIODS.map((p) => (
+                <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
+                        className={chip(since === p.since() && until === p.until())}>{p.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {!data?.isBuyer && data && (
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Баеры</span>
+              {data.buyers.length > 0 ? (
+                <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+                  <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
+                  {data.buyers.map((b) => (
+                    <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-sm text-zinc-500">Никто из баеров ещё не подключил ключи</span>
+              )}
+            </div>
+          )}
+
+          {(data?.countries.length ?? 0) > 0 && (
+            <div className="flex items-center gap-3 mb-5 flex-wrap">
+              <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Страны</span>
+              <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+                <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
+                {data!.countries.map((c) => (
+                  <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm mb-4">{error}</div>
+          )}
+        </>
+      )}
+
+      {view === "cards" && (
+        <CreativeCards data={data} loading={loading} media={media} suffixes={suffixes}
+                       notes={notes} onNotesChange={setNotes} />
+      )}
+      {view === "analytics" && <CreativeAnalytics data={data} loading={loading} />}
+      {view === "table" && <CreativesTable />}
 
       {showUpload && (
         <CreativeUploadModal onClose={() => setShowUpload(false)} onUploaded={() => loadMedia(true)} />
