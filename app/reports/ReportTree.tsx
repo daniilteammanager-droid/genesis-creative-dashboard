@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ReportTreeResult, TreeNode } from "@/lib/warehouse/reportTree";
+import { mskDaysAgo } from "@/lib/day";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -23,11 +24,17 @@ function romi(spend: number, revenue: number | null): string {
   return `${(((revenue - spend) / spend) * 100).toFixed(0)}%`;
 }
 
-function daysAgo(days: number) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
+const daysAgo = (days: number) => mskDaysAgo(days);
+
+// Пресеты периодов. Раздел открывается на сегодня: раньше по умолчанию было
+// 14 дней, и каждый раз приходилось переключаться руками.
+const PERIODS = [
+  { label: "Сегодня", since: () => daysAgo(0), until: () => daysAgo(0) },
+  { label: "Вчера", since: () => daysAgo(1), until: () => daysAgo(1) },
+  { label: "7 дней", since: () => daysAgo(6), until: () => daysAgo(0) },
+  { label: "14 дней", since: () => daysAgo(13), until: () => daysAgo(0) },
+  { label: "30 дней", since: () => daysAgo(29), until: () => daysAgo(0) },
+];
 
 // Отступ задаётся классом, а не вычисленным стилем: Tailwind не собирает
 // классы, собранные из строк на лету.
@@ -73,7 +80,7 @@ function Row({ node, depth, open, toggle }: {
 }
 
 export default function ReportTree() {
-  const [since, setSince] = useState(daysAgo(13));
+  const [since, setSince] = useState(daysAgo(0));
   const [until, setUntil] = useState(daysAgo(0));
   const [buyer, setBuyer] = useState("all");
   const [data, setData] = useState<ReportTreeResult | null>(null);
@@ -112,9 +119,12 @@ export default function ReportTree() {
         <span className="text-zinc-600">—</span>
         <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
         <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
-          {([[0, "Сегодня"], [6, "7 дней"], [13, "14 дней"], [29, "30 дней"]] as const).map(([d, label]) => (
-            <button key={d} onClick={() => { setSince(daysAgo(d)); setUntil(daysAgo(0)); }}
-                    className={chip(since === daysAgo(d) && until === daysAgo(0))}>{label}</button>
+          {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
+              календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
+              «вчера» это один день, а не диапазон по сегодня. */}
+          {PERIODS.map((p) => (
+            <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
+                    className={chip(since === p.since() && until === p.until())}>{p.label}</button>
           ))}
         </div>
       </div>

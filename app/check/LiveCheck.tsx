@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CheckResult, CheckGroup } from "@/lib/warehouse/check";
-import { mskDay } from "@/lib/day";
+import { mskDay, mskDaysAgo } from "@/lib/day";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -87,6 +87,8 @@ export default function LiveCheck() {
         <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
         <button onClick={() => { setSince(today()); setUntil(today()); }}
                 className={chip(since === today() && until === today())}>Сегодня</button>
+        <button onClick={() => { setSince(mskDaysAgo(1)); setUntil(mskDaysAgo(1)); }}
+                className={chip(since === mskDaysAgo(1) && until === mskDaysAgo(1))}>Вчера</button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
