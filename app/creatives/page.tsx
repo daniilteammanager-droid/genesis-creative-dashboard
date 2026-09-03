@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth/server";
-import CreativesTable from "./CreativesTable";
+import CreativesView from "./CreativesView";
 
 // Новая картотека. Строки задают подключения баера — его объявления из Meta и
 // его выгрузки Torro (Decision 036). Файлы в R2 по владельцу не фильтруются:
@@ -13,7 +13,7 @@ export default async function CreativesPage() {
     <main className="min-h-screen bg-[#0a080f] text-white p-8">
       <div className="max-w-screen-2xl mx-auto">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Креативы</h1>
-        <CreativesTable />
+        <CreativesView />
       </div>
     </main>
   );

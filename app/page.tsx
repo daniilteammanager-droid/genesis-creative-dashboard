@@ -5,10 +5,11 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, selectAllRows, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
-import { type MediaFile, buildMediaIndex, lookupMedia, isVideo, isImage, getApproach } from "@/lib/creatives/media";
+import { type MediaFile, buildMediaIndex, lookupMedia, getApproach } from "@/lib/creatives/media";
 import { parseNumber, formatSummaryNumber, formatRomiPct } from "@/lib/creatives/format";
 import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
+import { MediaWide, MediaSquare } from "@/components/CreativeMedia";
 import MediaLibrary from "@/components/MediaLibrary";
 import CreativeUploadModal from "./CreativeUploadModal";
 
@@ -650,88 +651,6 @@ const CreativeCard = memo(function CreativeCard({
     </div>
   );
 });
-
-// ─── Media components ─────────────────────────────────────────────────────────
-
-function MediaSquare({ file }: { file?: MediaFile }) {
-  const wrapCls  = "w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-900";
-  const mediaCls = "w-full h-full object-cover";
-
-  if (!file) {
-    return (
-      <div className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center bg-gradient-to-br from-violet-900/25 to-[#0d0a1f]">
-        <span className="text-2xl opacity-55">📷</span>
-      </div>
-    );
-  }
-  if (isVideo(file.url)) {
-    // Если есть poster — показываем лёгкую картинку, видео не грузим
-    if (file.posterUrl) {
-      return (
-        <div className={wrapCls}>
-          <img src={file.posterUrl} alt="" loading="lazy" className={mediaCls} />
-        </div>
-      );
-    }
-    return (
-      <div className={wrapCls}>
-        <video src={file.url} muted loop playsInline preload="none" className={mediaCls} />
-      </div>
-    );
-  }
-  if (isImage(file.url)) {
-    return (
-      <div className={wrapCls}>
-        <img src={file.url} alt="" loading="lazy" className={mediaCls} />
-      </div>
-    );
-  }
-  return (
-    <div className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center bg-gradient-to-br from-violet-900/25 to-[#0d0a1f]">
-      <span className="text-2xl opacity-55">📷</span>
-    </div>
-  );
-}
-
-function MediaWide({ file }: { file?: MediaFile }) {
-  const wrapCls  = "w-full aspect-square bg-zinc-900";
-  const mediaCls = "w-full h-full object-cover";
-
-  if (!file) {
-    return (
-      <div className="w-full aspect-square flex items-center justify-center bg-gradient-to-br from-violet-900/20 to-[#0a080f]">
-        <span className="text-5xl opacity-40">📷</span>
-      </div>
-    );
-  }
-  if (isVideo(file.url)) {
-    // Если есть poster — показываем лёгкую картинку, видео не грузим
-    if (file.posterUrl) {
-      return (
-        <div className={wrapCls}>
-          <img src={file.posterUrl} alt="" loading="lazy" className={mediaCls} />
-        </div>
-      );
-    }
-    return (
-      <div className={wrapCls}>
-        <video src={file.url} muted loop playsInline preload="none" className={mediaCls} />
-      </div>
-    );
-  }
-  if (isImage(file.url)) {
-    return (
-      <div className={wrapCls}>
-        <img src={file.url} alt="" loading="lazy" className={mediaCls} />
-      </div>
-    );
-  }
-  return (
-    <div className="w-full aspect-square flex items-center justify-center bg-gradient-to-br from-violet-900/20 to-[#0a080f]">
-      <span className="text-5xl opacity-40">📷</span>
-    </div>
-  );
-}
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────
 
