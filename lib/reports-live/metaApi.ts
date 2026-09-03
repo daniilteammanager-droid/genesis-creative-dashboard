@@ -507,6 +507,47 @@ export interface AdSetTargeting {
   countries: string[];
 }
 
+// Таргет конкретных адсетов, по списку id.
+//
+// Полный обход берёт все адсеты кабинета и потому запускается редко. Но новый
+// адсет появляется вместе с расходом, и до следующего полного обхода его крео
+// оставались без страны — у Андрея так пропали все LATAM-заливы (замер
+// 04.09.2026: 8 адсетов из 14, весь Латам, $305 расхода).
+//
+// Meta отдаёт объекты пачкой через ?ids=, до 50 за раз.
+export async function fetchAdSetTargetingByIds(token: string, ids: string[]): Promise<AdSetTargeting[]> {
+  const out: AdSetTargeting[] = [];
+  const CHUNK = 50;
+
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = ids.slice(i, i + CHUNK);
+    const url = `${BASE}/?ids=${batch.join(",")}&fields=id,name,account_id,targeting{geo_locations}`
+      + `&access_token=${encodeURIComponent(token)}`;
+    try {
+      const res = await fetch(url);
+      type AdSetNode = {
+        id?: string; name?: string; account_id?: string;
+        targeting?: { geo_locations?: { countries?: string[] } };
+      };
+      const body = (await res.json()) as Record<string, unknown>;
+      if (body.error) continue;
+      for (const [id, raw] of Object.entries(body)) {
+        if (id === "error" || !raw || typeof raw !== "object") continue;
+        const v = raw as AdSetNode;
+        out.push({
+          adsetId: v.id ?? id,
+          adsetName: v.name ?? "",
+          accountId: v.account_id ?? "",
+          countries: v.targeting?.geo_locations?.countries ?? [],
+        });
+      }
+    } catch {
+      // Пачка не ответила — не роняем прогон: страна подтянется следующим.
+    }
+  }
+  return out;
+}
+
 export async function fetchAdSetTargeting(token: string, scope?: AccountScope): Promise<{ items: AdSetTargeting[]; failedAccounts: number }> {
   const accounts = await fetchActiveAccounts(token, scope);
   let failedAccounts = 0;

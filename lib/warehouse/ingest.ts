@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { fetchAdDays, fetchCampaignDays, fetchAdSetTargeting } from "@/lib/reports-live/metaApi";
+import { fetchAdDays, fetchCampaignDays, fetchAdSetTargeting, fetchAdSetTargetingByIds } from "@/lib/reports-live/metaApi";
 import { listSheetTitles, fetchSheetValues } from "@/lib/general-report/googleSheets";
 import { toPeriods, type Period } from "@/lib/reports-live/periods";
 import { getConnection } from "@/lib/connections/store";
@@ -37,6 +37,25 @@ export interface IngestResult {
   adsetRows: number;
   failedAccounts: number;
   skipped?: string;
+}
+
+async function upsertAdsets(
+  db: ReturnType<typeof admin>,
+  items: { adsetId: string; adsetName: string; accountId: string; countries: string[] }[]
+): Promise<number> {
+  if (items.length === 0) return 0;
+  const rows = items.map((a) => ({
+    adset_id: a.adsetId,
+    adset_name: a.adsetName || null,
+    account_id: a.accountId || null,
+    countries: a.countries,
+    updated_at: new Date().toISOString(),
+  }));
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from("wh_adsets").upsert(rows.slice(i, i + 500), { onConflict: "adset_id" });
+    if (error) throw new Error(`wh_adsets: ${error.message}`);
+  }
+  return rows.length;
 }
 
 function admin() {
@@ -149,10 +168,13 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
     const campaignWindow = coveredDays(campaigns?.periods ?? []);
 
     let adRows = 0, campaignRows = 0, failedAccounts = 0;
+    // Адсеты, встреченные в расходе: по ним добираем страну, если её ещё нет.
+    const seenAdsets = new Set<string>();
 
     if (adWindow) {
       const { items, failedAccounts: f } = await fetchAdDays(conn.metaToken, adWindow.since, adWindow.until, DIRECT_ONLY);
       failedAccounts += f;
+      for (const r of items) if (r.adsetId) seenAdsets.add(r.adsetId);
       const rows = items.map((r) => ({
         user_id: userId, date: r.date, ad_id: r.adId, ad_name: r.adName,
         adset_id: r.adsetId || null, adset_name: r.adsetName || null,
@@ -184,24 +206,31 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
     }
 
     // ─── Страны таргета ──────────────────────────────────────────────────────
-    // Это состояние «сейчас», а не история: у адсета одна текущая настройка.
-    // Поэтому обновляем целиком каждый полный прогон, а в частом срезе не
-    // трогаем — таргет за пятнадцать минут не меняется, а выборка стоит по
-    // вызову на кабинет.
+    // Таргет — состояние «сейчас», а не история, поэтому полный обход всех
+    // адсетов идёт редко, полным прогоном: он стоит вызова на кабинет.
+    //
+    // Но новый адсет появляется СРАЗУ с расходом, и до следующего полного
+    // обхода его крео оставались без страны. Замер 04.09.2026: у Андрея так
+    // потерялись все восемь LATAM-адсетов, $305 расхода — в разделе он выглядел
+    // как заливающий только в Испанию.
+    //
+    // Поэтому каждый прогон, даже частый, добирает таргет ровно тех адсетов,
+    // которые встретились в расходе и которых ещё нет в складе. Это запрос по
+    // списку id, а не обход кабинета: пачками по 50 и только для новых.
     let adsetRows = 0;
+
     if (kind === "window") {
       const { items, failedAccounts: f } = await fetchAdSetTargeting(conn.metaToken, DIRECT_ONLY);
       failedAccounts += f;
-      const rows = items.map((a) => ({
-        adset_id: a.adsetId, adset_name: a.adsetName || null,
-        account_id: a.accountId, countries: a.countries,
-        updated_at: new Date().toISOString(),
-      }));
-      for (let i = 0; i < rows.length; i += 500) {
-        const { error } = await db.from("wh_adsets").upsert(rows.slice(i, i + 500), { onConflict: "adset_id" });
-        if (error) throw new Error(`wh_adsets: ${error.message}`);
+      adsetRows = await upsertAdsets(db, items);
+    } else if (seenAdsets.size > 0) {
+      const ids = [...seenAdsets];
+      const { data: known } = await db.from("wh_adsets").select("adset_id").in("adset_id", ids);
+      const have = new Set((known ?? []).map((k) => k.adset_id as string));
+      const missing = ids.filter((id) => !have.has(id));
+      if (missing.length > 0) {
+        adsetRows = await upsertAdsets(db, await fetchAdSetTargetingByIds(conn.metaToken, missing));
       }
-      adsetRows = rows.length;
     }
 
     const result = { ...base, adRows, campaignRows, crmRows, adsetRows, failedAccounts };
