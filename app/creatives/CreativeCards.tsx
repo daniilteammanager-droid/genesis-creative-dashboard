@@ -41,6 +41,38 @@ const num = (v: number | null) => (v === null ? "—" : v.toLocaleString("ru-RU"
 // Показываем не всё сразу: за месяц строк бывает много, а карточка тянет превью.
 const PAGE = 120;
 
+// Порог, с которого о крео вообще можно судить. В легаси-библиотеке стоит $1000,
+// но там метрики за всё время. Здесь период короткий, и по $1000 в «тестах»
+// оказалось бы всё подряд. Берём порог зрелости из правил проекта — $200.
+const MATURE = 200;
+
+type Tab = "all" | "win" | "lose" | "test" | "fav";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "all", label: "Все" },
+  { id: "win", label: "Win" },
+  { id: "lose", label: "Lose" },
+  { id: "test", label: "Test" },
+  { id: "fav", label: "★ Fav" },
+];
+
+const SORTS = [
+  { id: "none", label: "Сорт: по расходу" },
+  { id: "romi", label: "Сорт: ROMI" },
+  { id: "deposits", label: "Сорт: депозиты" },
+  { id: "costPdp", label: "Сорт: цена ПДП" },
+  { id: "costDia", label: "Сорт: цена диалога" },
+] as const;
+type Sort = (typeof SORTS)[number]["id"];
+
+const romiOf = (r: CreativeRow) => {
+  const revenue = (r.depSum ?? 0) + (r.redepSum ?? 0);
+  return r.spend > 0 ? ((revenue - r.spend) / r.spend) * 100 : null;
+};
+// Цена берётся из сумм за период, а не усреднением по дням (Decision 024).
+const costPer = (spend: number, count: number | null) =>
+  count && count > 0 ? spend / count : null;
+
 export default function CreativeCards({
   media,
   suffixes,
@@ -60,6 +92,14 @@ export default function CreativeCards({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
+  const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<Tab>("all");
+  const [sort, setSort] = useState<Sort>("none");
+  const [medium, setMedium] = useState("all");
+  const [approach, setApproach] = useState("all");
+  // Крео без расхода за период — обычно шум: объявление есть, но не крутилось.
+  // По умолчанию прячем, но выключателем возвращаются.
+  const [onlyWithSpend, setOnlyWithSpend] = useState(true);
 
   const [selected, setSelected] = useState<CreativeRow | null>(null);
 
@@ -100,9 +140,70 @@ export default function CreativeCards({
     );
   }, [notes, onNotesChange]);
 
-  const rows = data?.rows ?? [];
+  const all = useMemo(() => data?.rows ?? [], [data]);
+
+  // Носители и подходы — из самих данных, а не из списка в коде: словарь
+  // команды пополняется, и хардкод означал бы деплой ради каждого подхода.
+  const mediums = useMemo(
+    () => [...new Set(all.map((r) => r.medium).filter(Boolean) as string[])].sort(),
+    [all]
+  );
+  const approaches = useMemo(
+    () => [...new Set(all.map((r) => r.approach).filter((a) => a && a !== "unknown"))].sort(),
+    [all]
+  );
+
+  // Счётчики считаются до вкладки, но после поиска и формата — иначе цифра на
+  // вкладке не сходилась бы с тем, что человек увидит, нажав её.
+  const beforeTab = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return all
+      .filter((r) => !onlyWithSpend || r.spend > 0)
+      .filter((r) => !q || r.code.toLowerCase().includes(q))
+      .filter((r) => medium === "all" || r.medium === medium)
+      .filter((r) => approach === "all" || r.approach === approach);
+  }, [all, search, medium, approach, onlyWithSpend]);
+
+  const counts = useMemo(() => ({
+    all: beforeTab.length,
+    win: beforeTab.filter((r) => (romiOf(r) ?? -1) >= 150 && r.spend >= MATURE).length,
+    lose: beforeTab.filter((r) => (romiOf(r) ?? 0) < 0 && r.spend >= MATURE).length,
+    test: beforeTab.filter((r) => r.spend < MATURE).length,
+    fav: beforeTab.filter((r) => notes[r.code]?.favorite).length,
+  }), [beforeTab, notes]);
+
+  const rows = useMemo(() => {
+    const filtered = beforeTab.filter((r) => {
+      if (tab === "all") return true;
+      if (tab === "win") return (romiOf(r) ?? -1) >= 150 && r.spend >= MATURE;
+      if (tab === "lose") return (romiOf(r) ?? 0) < 0 && r.spend >= MATURE;
+      if (tab === "test") return r.spend < MATURE;
+      return notes[r.code]?.favorite === true;
+    });
+
+    const key = (r: CreativeRow): number | null => {
+      if (sort === "romi") return romiOf(r);
+      if (sort === "deposits") return r.depCount ?? 0;
+      if (sort === "costPdp") return costPer(r.spend, r.subscribers);
+      if (sort === "costDia") return costPer(r.spend, r.dialogs);
+      return r.spend;
+    };
+    // Цена — чем меньше, тем лучше; остальное — чем больше. Строки без числа
+    // уходят вниз в обоих случаях: «неизвестно» не должно выглядеть как лучшее.
+    const asc = sort === "costPdp" || sort === "costDia";
+    return [...filtered].sort((a, b) => {
+      const x = key(a), y = key(b);
+      if (x === null && y === null) return 0;
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return asc ? x - y : y - x;
+    });
+  }, [beforeTab, tab, sort, notes]);
+
   const shown = rows.slice(0, limit);
   const withoutFile = rows.filter((r) => !findMedia(r.code)).length;
+  const dirty = search !== "" || tab !== "all" || sort !== "none" || medium !== "all" || approach !== "all" || !onlyWithSpend;
+  const zeroSpend = all.filter((r) => r.spend === 0).length;
 
   return (
     <div>
@@ -144,6 +245,67 @@ export default function CreativeCards({
             {data!.countries.map((c) => (
               <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Поиск, вкладки и формат. Формат — по новому неймингу: носитель и подход
+          читаются из кода крео, а не из папки в R2 (Decision 026). */}
+      {data && !loading && (
+        <div className="mb-4 space-y-3">
+          <input
+            type="text"
+            placeholder="Поиск крео…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm"
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+              {TABS.map((t) => (
+                <button key={t.id} onClick={() => { setTab(t.id); setLimit(PAGE); }} className={chip(tab === t.id)}>
+                  {t.label} <span className="text-[11px] opacity-60">{counts[t.id]}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1" />
+
+            <button onClick={() => { setOnlyWithSpend((v) => !v); setLimit(PAGE); }}
+                    title={`Крео без расхода за период: ${zeroSpend}`}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition border ${
+                      onlyWithSpend
+                        ? "bg-violet-900/40 text-violet-200 border-violet-700/40"
+                        : "bg-[#0d0b14] text-zinc-500 border-violet-900/40 hover:text-violet-300"
+                    }`}>
+              Только с расходом
+            </button>
+
+            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={field}>
+              {SORTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+
+            {mediums.length > 0 && (
+              <select value={medium} onChange={(e) => { setMedium(e.target.value); setLimit(PAGE); }} className={field}>
+                <option value="all">Носитель: все</option>
+                {mediums.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
+
+            {approaches.length > 0 && (
+              <select value={approach} onChange={(e) => { setApproach(e.target.value); setLimit(PAGE); }} className={field}>
+                <option value="all">Подход: все</option>
+                {approaches.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            )}
+
+            {dirty && (
+              <button onClick={() => { setSearch(""); setTab("all"); setSort("none"); setMedium("all"); setApproach("all"); setOnlyWithSpend(true); }}
+                      className="px-3 py-2 rounded-xl text-sm text-zinc-500 hover:text-violet-300 transition">
+                сбросить
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -229,8 +391,11 @@ export default function CreativeCards({
                           ["Доход", revenue > 0 ? money(revenue) : "—"],
                           ["Депозиты", num(r.depCount)],
                           ["ПДП", num(r.subscribers)],
+                          ["Цена ПДП", money(costPer(r.spend, r.subscribers))],
                           ["Диалоги", num(r.dialogs)],
+                          ["Цена диа", money(costPer(r.spend, r.dialogs))],
                           ["Клики", num(r.clicks)],
+                          ["Показы", num(r.impressions)],
                         ] as const).map(([label, value]) => (
                           <div key={label}>
                             <p className="text-[10px] text-zinc-600 uppercase tracking-wider">{label}</p>

@@ -20,8 +20,11 @@ import { mskDay, mskDaysAgo } from "@/lib/day";
 // Медиа, суффиксы и заметки живут на этом уровне: ими пользуются и плитка, и
 // Медиатека. Иначе оба тянули бы /api/media по своему разу.
 
+// Оформление кнопок один в один с легаси-разделом: там они выглядят лучше и
+// человек не должен переучиваться, переходя между разделами.
 const btn =
-  "px-4 py-2 rounded-xl text-sm font-semibold bg-violet-900/40 text-violet-200 hover:bg-violet-900/60 transition";
+  "px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 " +
+  "text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5";
 
 export default function CreativesView() {
   const [view, setView] = useState<"cards" | "table">("cards");
@@ -134,8 +137,8 @@ export default function CreativesView() {
           <button onClick={() => setView("table")} className={tab(view === "table")}>Таблица</button>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowUpload(true)} className={btn}>Загрузить крео</button>
-          <button onClick={openLibrary} className={btn}>Медиатека</button>
+          <button onClick={openLibrary} className={btn}>📁 Медиатека</button>
+          <button onClick={() => setShowUpload(true)} className={btn}>⬆ Загрузить</button>
         </div>
       </div>
 
