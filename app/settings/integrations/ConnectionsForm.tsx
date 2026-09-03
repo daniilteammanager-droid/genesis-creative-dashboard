@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ConnectionView } from "@/lib/connections/store";
+import AdAccounts from "./AdAccounts";
 
 const TORRO_HELP =
   "https://torrocrm.com/ru/help/nastroika-analitiki-i-trekinga/nastroika-avtomaticheskoi-vygruzki-dannykh-iz-mvp-v-google-sheets";
@@ -153,6 +154,10 @@ export default function ConnectionsForm({
             Забыл — вставь новый.
           </p>
         </div>
+
+        {/* Кабинеты живут рядом с ключом: ключ их проверяет, по ним считается
+            расход. Владельцу здесь нечего закреплять — его ключ командный. */}
+        {!isMain && <AdAccounts metaConnected={Boolean(view?.metaConnected)} />}
       </div>
 
       <div className={card}>

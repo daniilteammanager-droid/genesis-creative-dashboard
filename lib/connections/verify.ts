@@ -40,3 +40,34 @@ export async function verifySheet(spreadsheetId: string): Promise<string | null>
     return `Не удалось прочитать таблицу: ${msg}`;
   }
 }
+
+// Кабинет по id: видит ли его этот ключ и как он называется.
+//
+// Проверяется в момент закрепления, а не при первом отчёте: человек должен
+// сразу узнать, что ошибся цифрой, и увидеть имя кабинета рядом с id —
+// набор цифр сам по себе ни о чём не говорит.
+export async function verifyAdAccount(
+  token: string,
+  accountId: string
+): Promise<{ id: string; name: string } | string> {
+  try {
+    const res = await fetch(
+      `${META}/act_${encodeURIComponent(accountId)}?fields=id,name,account_status&access_token=${encodeURIComponent(token)}`
+    );
+    const body = (await res.json()) as {
+      error?: { message?: string; code?: number };
+      id?: string;
+      name?: string;
+      account_status?: number;
+    };
+    if (body.error) {
+      // Meta отвечает одинаково и на «нет такого», и на «нет доступа» — для
+      // человека это одно и то же: этот ключ такой кабинет не видит.
+      return "Ключ Meta не видит кабинет с таким id — проверь цифры или доступ";
+    }
+    if (!body.id) return "Meta ответила не тем, чем должна";
+    return { id: body.id.replace(/^act_/, ""), name: body.name ?? body.id };
+  } catch {
+    return "Не удалось достучаться до Meta — попробуй ещё раз";
+  }
+}
