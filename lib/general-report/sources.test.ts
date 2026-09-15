@@ -43,6 +43,15 @@ const dup = envExtras(
 );
 assert.deepEqual(dup.map((s) => s.spreadsheetId), ["sheet-a", "sheet-b"], "дубль таблицы отбрасывается");
 
+// Ключ с пробелом или переносом — та же таблица, а не новая
+process.env.T_SPACE = " sheet-a\n";
+const spaced = envExtras(
+  [{ id: "env:space", label: "Space", env: "T_SPACE", kind: "country" as const }],
+  new Set(["sheet-a"]),
+  "common"
+);
+assert.deepEqual(spaced, [], "ключ сверяется без пробелов по краям");
+
 // Переданное множество не портится — вызывающий использует его дальше
 const known = new Set(["sheet-a"]);
 envExtras(LIST, known, "common");

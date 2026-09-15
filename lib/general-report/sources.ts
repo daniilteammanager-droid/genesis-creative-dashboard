@@ -37,12 +37,10 @@ const ENV_COMMON: { id: string; label: string; env: string; kind: GrKind }[] = [
   { id: "env:wa",    label: "💬 WA",    env: "GR_SPREADSHEET_WA",    kind: "wa" },
 ];
 
-const ENV_BUYERS: { id: string; label: string; env: string }[] = [
-  { id: "env:artem",  label: "Артём",  env: "GR_SPREADSHEET_ARTEM" },
-  { id: "env:matvey", label: "Матвей", env: "GR_SPREADSHEET_MATVEY" },
-  { id: "env:andrey", label: "Андрей", env: "GR_SPREADSHEET_ANDREY" },
-  { id: "env:sayan",  label: "Саян",   env: "GR_SPREADSHEET_SAYAN" },
-];
+// Байерских таблиц в env больше нет: все они заведены в профилях. Старые
+// GR_SPREADSHEET_ARTEM/MATVEY/ANDREY/SAYAN давали второй источник рядом с
+// профилем, стоило ключу в переменной отличиться хоть пробелом — и в «Сводной»
+// та же таблица считалась дважды.
 
 // Таблицы из env, которых ещё нет в базе. Вынесено отдельно и накрыто
 // самопроверкой (sources.test.ts): именно здесь ошибка не роняет отчёт, а тихо
@@ -55,9 +53,10 @@ export function envExtras(
   const seen = new Set(known);
   const out: InternalSource[] = [];
   for (const e of list) {
-    const spreadsheetId = process.env[e.env];
+    const spreadsheetId = process.env[e.env]?.trim();
     // Пустая переменная — не источник. Уже известная таблица — не дубль:
-    // одна и та же таблица не должна попасть в «Сводную» дважды.
+    // одна и та же таблица не должна попасть в «Сводную» дважды. Сверка без
+    // пробелов по краям: ключ, вставленный в Vercel с переносом, иначе не совпадёт.
     if (!spreadsheetId || seen.has(spreadsheetId)) continue;
     seen.add(spreadsheetId);
     out.push({ id: e.id, label: e.label, group, kind: e.kind, spreadsheetId });
@@ -127,13 +126,10 @@ export async function collectSources(me: Profile): Promise<InternalSource[]> {
   // исчезали разом. Отчёт при этом не падал, а показывал меньшие суммы. Такое
   // не замечают: цифра правдоподобная, просто неверная.
   const known = new Set(
-    out.concat(buyerSources).map((s) => s.spreadsheetId).filter((v): v is string => Boolean(v))
+    out.concat(buyerSources).map((s) => s.spreadsheetId?.trim()).filter((v): v is string => Boolean(v))
   );
 
   out.push(...envExtras(ENV_COMMON, known, "common"));
-  buyerSources.push(
-    ...envExtras(ENV_BUYERS.map((e) => ({ ...e, kind: "country" as GrKind })), known, "buyers")
-  );
 
   if (buyerSources.length > 0) {
     // Сводная считается по байерским таблицам, поэтому и стоит первой среди них.
