@@ -7,8 +7,11 @@ export interface GrSheet {
   id: string;
   name: string;
   spreadsheet_id: string;
-  kind: "country" | "wa";
+  kind: Kind;
 }
+
+type Kind = "country" | "wa" | "v4";
+const KIND_LABELS: Record<Kind, string> = { country: "страновая", wa: "WhatsApp", v4: "General 4.0 (общая)" };
 
 const field =
   "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
@@ -18,7 +21,7 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
   const router = useRouter();
   const [name, setName] = useState("");
   const [sheetId, setSheetId] = useState("");
-  const [kind, setKind] = useState<"country" | "wa">("country");
+  const [kind, setKind] = useState<Kind>("country");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,9 +61,10 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
 
   return (
     <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
-      <h2 className="text-lg font-semibold text-white mb-2">Таблицы General Report 3.0</h2>
+      <h2 className="text-lg font-semibold text-white mb-2">Таблицы General Report</h2>
       <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
-        Общие таблицы команды. Байерские подключаются отдельно, на вкладке «Команда».
+        Общие таблицы команды. Для General 4.0 нужна одна — общая, с типом «General 4.0».
+        Байерские подключаются отдельно, на вкладке «Команда».
         {serviceAccount && (
           <>
             {" "}Каждую таблицу открой на чтение для{" "}
@@ -74,7 +78,7 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
           {sheets.map((s) => (
             <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 flex-wrap">
               <span className="text-sm text-zinc-200 flex-1 min-w-[120px]">{s.name}</span>
-              <span className="text-[11px] text-zinc-600">{s.kind === "wa" ? "WhatsApp" : "страновая"}</span>
+              <span className="text-[11px] text-zinc-600">{KIND_LABELS[s.kind] ?? s.kind}</span>
               <button
                 disabled={busy}
                 onClick={() => send({ method: "DELETE" }, `/api/gr-sheets?id=${s.id}`)}
@@ -103,10 +107,9 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
                className={`${field} flex-1 min-w-[160px]`} />
         {/* Тип обязателен: у WA-таблиц другой парсер, и ошибка здесь даёт
             таблицу, которая разберётся молча и неверно. */}
-        <select value={kind} onChange={(e) => setKind(e.target.value as "country" | "wa")}
+        <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}
                 className={`${field} cursor-pointer`}>
-          <option value="country">страновая</option>
-          <option value="wa">WhatsApp</option>
+          {(Object.keys(KIND_LABELS) as Kind[]).map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
         </select>
         <button type="submit" disabled={busy}
                 className="px-4 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">

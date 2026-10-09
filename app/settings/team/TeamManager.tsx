@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, normalizeBuyerCode, type Profile, type UserRole } from "@/lib/auth/types";
 
+// Две таблицы баера: General 3.0 (старый формат) и 4.0 (новый). Каждая — своё
+// поле профиля и своя пара аргументов admin_update_profile.
+const SHEET_FIELDS = {
+  gr:  { label: "General 3.0", column: "gr_spreadsheet_id",  set: "p_gr_sheet",  clear: "p_clear_gr" },
+  gr4: { label: "General 4.0", column: "gr4_spreadsheet_id", set: "p_gr4_sheet", clear: "p_clear_gr4" },
+} as const;
+type SheetField = keyof typeof SHEET_FIELDS;
+
 export default function TeamManager({ people, meId }: { people: Profile[]; meId: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -12,6 +20,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
   const [saved, setSaved] = useState<string | null>(null);
   // Код правится в поле и уходит по Enter или потере фокуса, а не на каждый символ.
   const [codeDraft, setCodeDraft] = useState<Record<string, string>>({});
+  // Черновики таблиц по ключу «id|поле»: у баера их две — General 3.0 и 4.0.
   const [sheetDraft, setSheetDraft] = useState<Record<string, string>>({});
 
   async function update(id: string, patch: Record<string, unknown>) {
@@ -27,7 +36,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
       // Черновики откатываем: иначе поле продолжает показывать то, что база не
       // приняла, и выглядит это как сохранённое значение.
       setCodeDraft((d) => { const rest = { ...d }; delete rest[id]; return rest; });
-      setSheetDraft((d) => { const rest = { ...d }; delete rest[id]; return rest; });
+      setSheetDraft((d) => Object.fromEntries(Object.entries(d).filter(([k]) => !k.startsWith(`${id}|`))));
       return;
     }
     setSaved(id);
@@ -36,11 +45,13 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
 
   // Таблицу проверяем до записи: непошаренная на сервисный аккаунт таблица
   // сохранится молча и обернётся пустым отчётом через неделю.
-  async function commitSheet(p: Profile) {
-    const draft = (sheetDraft[p.id] ?? "").trim();
-    if (draft === (p.gr_spreadsheet_id ?? "")) return;
+  async function commitSheet(p: Profile, which: SheetField) {
+    const { column, set, clear } = SHEET_FIELDS[which];
+    const key = `${p.id}|${which}`;
+    const draft = (sheetDraft[key] ?? "").trim();
+    if (draft === (p[column] ?? "")) return;
 
-    if (draft === "") { update(p.id, { p_clear_gr: true }); return; }
+    if (draft === "") { update(p.id, { [clear]: true }); return; }
 
     setBusy(p.id);
     setError(null);
@@ -70,10 +81,10 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
     if (!ok) {
       setBusy(null);
       setError(problem);
-      setSheetDraft((s) => { const rest = { ...s }; delete rest[p.id]; return rest; });
+      setSheetDraft((s) => { const rest = { ...s }; delete rest[key]; return rest; });
       return;
     }
-    update(p.id, { p_gr_sheet: draft });
+    update(p.id, { [set]: draft });
   }
 
   function commitCode(p: Profile) {
@@ -148,23 +159,23 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                  : null}
               </span>
 
-              {/* Таблицу General 3.0 подключает владелец: таблицы его и доступ к ним
+              {/* Таблицы General подключает владелец: таблицы его и доступ к ним
                   выдаёт он, баеру там нечего вводить. */}
-              {p.role === "buyer" && (
-                <div className="w-full flex items-center gap-2">
-                  <span className="text-[11px] text-zinc-600 whitespace-nowrap">General 3.0</span>
+              {p.role === "buyer" && (Object.keys(SHEET_FIELDS) as SheetField[]).map((which) => (
+                <div key={which} className="w-full flex items-center gap-2">
+                  <span className="text-[11px] text-zinc-600 whitespace-nowrap w-[72px]">{SHEET_FIELDS[which].label}</span>
                   <input
                     type="text"
                     placeholder="ключ таблицы"
-                    value={sheetDraft[p.id] ?? p.gr_spreadsheet_id ?? ""}
+                    value={sheetDraft[`${p.id}|${which}`] ?? p[SHEET_FIELDS[which].column] ?? ""}
                     disabled={busy === p.id}
-                    onChange={(e) => setSheetDraft((s) => ({ ...s, [p.id]: e.target.value }))}
-                    onBlur={() => commitSheet(p)}
+                    onChange={(e) => setSheetDraft((s) => ({ ...s, [`${p.id}|${which}`]: e.target.value }))}
+                    onBlur={() => commitSheet(p, which)}
                     onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                     className={`${field} flex-1 min-w-0 disabled:opacity-50`}
                   />
                 </div>
-              )}
+              ))}
             </div>
           );
         })}
@@ -173,7 +184,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
       <p className="text-[11px] text-zinc-600 leading-relaxed">
         Код баера — вида <code className="text-zinc-500">b5</code> или просто <code className="text-zinc-500">5</code>,
         пустое поле убирает код. Последнего владельца разжаловать нельзя, иначе администрировать станет некому.
-        Таблица General 3.0 проверяется при сохранении: если она не открыта на чтение сервисному аккаунту,
+        Таблицы General 3.0 и 4.0 проверяются при сохранении: если она не открыта на чтение сервисному аккаунту,
         сохранить её не получится.
       </p>
     </div>

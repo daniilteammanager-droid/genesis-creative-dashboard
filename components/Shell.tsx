@@ -20,6 +20,7 @@ const WORK_AREAS = [
   { href: "/check", label: "Checks" },
   { href: "/reports", label: "Reports" },
   { href: "/general-report", label: "General 3.0" },
+  { href: "/general-report-4", label: "General 4.0" },
 ];
 
 export default function Shell({ profile, children }: { profile: Profile | null; children: React.ReactNode }) {
@@ -88,7 +89,8 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
 
         <nav className="px-2.5 pb-2 md:pb-0 space-y-0.5 flex-1 md:overflow-y-auto">
           {WORK_AREAS.map((a) => {
-            const active = a.href === "/" ? pathname === "/" : pathname.startsWith(a.href);
+            // По границе сегмента: иначе «/general-report» подсвечивался бы и на «/general-report-4».
+            const active = a.href === "/" ? pathname === "/" : pathname === a.href || pathname.startsWith(`${a.href}/`);
             return (
               <Link
                 key={a.href}

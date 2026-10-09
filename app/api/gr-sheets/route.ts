@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const body = (await req.json()) as { name?: string; spreadsheetId?: string; kind?: string };
   const name = body.name?.trim();
   const spreadsheetId = body.spreadsheetId?.trim();
-  const kind = body.kind === "wa" ? "wa" : "country";
+  const kind = body.kind === "wa" || body.kind === "v4" ? body.kind : "country";
 
   if (!name) return NextResponse.json({ error: "Нужно имя таблицы" }, { status: 400 });
   if (!spreadsheetId) return NextResponse.json({ error: "Нужен ключ таблицы" }, { status: 400 });

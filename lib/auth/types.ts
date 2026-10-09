@@ -20,6 +20,8 @@ export interface Profile {
   // Таблица General 3.0. Живёт в профиле, а не в подключениях: её заводит и шарит
   // на сервисный аккаунт владелец, баеру там нечего вводить.
   gr_spreadsheet_id: string | null;
+  // Таблица баера General 4.0 — отдельно от 3.0, оба отчёта живут рядом.
+  gr4_spreadsheet_id: string | null;
   status: "active" | "disabled";
 }
 

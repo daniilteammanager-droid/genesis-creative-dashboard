@@ -109,3 +109,25 @@ export async function fetchSheetValues(
   });
   return result;
 }
+
+// То же одним batchGet, но по готовым A1-диапазонам — для GR 4.0, где листы и
+// колонки известны заранее. Ответ в порядке запрошенных диапазонов.
+export async function fetchRanges(spreadsheetId: string, ranges: string[]): Promise<unknown[][][]> {
+  const token = await getAccessToken();
+  const params = new URLSearchParams({
+    valueRenderOption: "UNFORMATTED_VALUE",
+    dateTimeRenderOption: "SERIAL_NUMBER",
+  });
+  for (const r of ranges) params.append("ranges", r);
+
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const json = (await res.json()) as {
+    valueRanges?: { values?: unknown[][] }[];
+    error?: { message: string };
+  };
+  if (json.error) throw new Error(`Sheets batchGet failed: ${json.error.message}`);
+  return ranges.map((_, i) => json.valueRanges?.[i]?.values ?? []);
+}

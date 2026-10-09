@@ -93,6 +93,8 @@ export async function collectSources(me: Profile): Promise<InternalSource[]> {
   const { data: sheets } = await supabase
     .from("gr_spreadsheets")
     .select("id, name, spreadsheet_id, kind, created_at")
+    // Таблицы 4.0 — другой формат; парсер 3.0 разобрал бы их молча и неверно.
+    .neq("kind", "v4")
     .order("sort", { ascending: true })
     .order("created_at", { ascending: true });
 
