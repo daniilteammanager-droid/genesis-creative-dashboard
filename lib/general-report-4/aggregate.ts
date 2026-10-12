@@ -1,5 +1,5 @@
 import { computeTotals, type Granularity } from "../general-report/aggregate";
-import type { Gr4Dim, Gr4Row, Gr4Totals } from "./types";
+import { QUAL_KEYS, type Gr4Dim, type Gr4Row, type Gr4Totals, type QualKey } from "./types";
 
 // Суммы и производные — общие с GR 3.0 (computeTotals), сверху только то,
 // чего в его итогах нет. Всё считается из сумм, а не из формул таблицы.
@@ -9,8 +9,14 @@ const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
 export function computeTotals4(rows: Gr4Row[]): Gr4Totals {
   const t = computeTotals(rows);
   const deps = t.depCountCpa + t.depCountIb;
+  const q = Object.fromEntries(QUAL_KEYS.map((k) => [k, rows.reduce((s, r) => s + r[k], 0)])) as Record<QualKey, number>;
+  const quals = QUAL_KEYS.reduce((s, k) => s + q[k], 0);
   return {
     ...t,
+    ...q,
+    quals,
+    unquals: t.dialogs - quals,
+    qualShare: Object.fromEntries(QUAL_KEYS.map((k) => [k, ratio(q[k], quals)])) as Record<QualKey, number | null>,
     romiCpa: ratio(t.revenueCpa - t.budget, t.budget),
     crTotal: ratio(t.registrations, t.adClicks),
     cacPayouts: ratio(t.budget, t.payoutsCpa + t.payoutsIb),

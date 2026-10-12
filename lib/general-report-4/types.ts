@@ -21,7 +21,11 @@ export const DIM_LABELS: Record<Gr4Dim, string> = {
   buyer: "Баер",
 };
 
-export interface Gr4Row extends GrDayRow {
+// Квалификация трафика из CRM: сегменты A–E.
+export const QUAL_KEYS = ["qualA", "qualB", "qualC", "qualD", "qualE"] as const;
+export type QualKey = (typeof QUAL_KEYS)[number];
+
+export interface Gr4Row extends GrDayRow, Record<QualKey, number> {
   face: string;
   lang: string;
   region: string;
@@ -36,6 +40,10 @@ export interface Gr4Totals extends GrTotals {
   crTotal: number | null;       // подписки / клики по объявлению — «Общая CR LP %»
   cacPayouts: number | null;    // бюджет / выплаты — так CAC считает таблица
   awDep: number | null;         // средний деп: сумма депов / их число
+  qualA: number; qualB: number; qualC: number; qualD: number; qualE: number;
+  quals: number;                // A+B+C+D+E
+  unquals: number;              // диалоги − квалы
+  qualShare: Record<QualKey, number | null>; // доля сегмента от всех квалов
 }
 
 // Пороги подсветки — лист «Настройки», колонка E. Их правят в таблице, поэтому

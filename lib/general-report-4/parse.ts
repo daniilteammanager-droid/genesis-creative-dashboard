@@ -1,11 +1,12 @@
-import type { Gr4Row, Gr4Targets } from "./types";
+import { QUAL_KEYS, type Gr4Row, type Gr4Targets } from "./types";
 
 // Разбор листов GR 4.0. Значения приходят из Sheets API как UNFORMATTED_VALUE +
 // SERIAL_NUMBER: числа — числами, даты — серийным номером дня.
 //
-// Раскладка колонок одна для всех листов: A дата, B лицо, C язык, D гео,
-// E источник, F воронка, G баер. Дальше у каждого листа свои цифры, а регион
-// подставлен формулой в отдельной колонке (см. build.py в «Новый формат таблиц»).
+// Колонки ищутся по ЗАГОЛОВКУ первой строки, а не по номеру: в таблицы вставляют
+// колонки (так пришли квалы A–E), и разбор по номерам ломался бы молча — читал бы
+// соседнюю колонку и показывал правдоподобную неверную цифру. Нет нужного заголовка —
+// ноль в этой метрике; нет обязательного (дата, разрезы) — ошибка с текстом.
 
 const SERIAL_EPOCH = Date.UTC(1899, 11, 30);
 
@@ -30,51 +31,82 @@ function blank(r: Partial<Gr4Row> & Pick<Gr4Row, "date">): Gr4Row {
     registrations: 0, dialogs: 0,
     depCountCpa: 0, depCountIb: 0, depAmountCpa: 0, depAmountIb: 0,
     payoutsCpa: 0, payoutsIb: 0, revenueCpa: 0, revenueIb: 0,
+    qualA: 0, qualB: 0, qualC: 0, qualD: 0, qualE: 0,
     ...r,
   };
 }
 
-function dims(row: unknown[], regionIdx: number) {
-  return {
-    face: str(row[1]), lang: str(row[2]), country: str(row[3]),
-    source: str(row[4]), funnel: str(row[5]), buyer: str(row[6]),
-    region: str(row[regionIdx]),
-  };
+// Лист = шапка + строки. Колонка по одному из имён; -1 — нет такой.
+function sheet(values: unknown[][], name: string, required: string[]) {
+  const head = (values[0] ?? []).map(str);
+  const at = (...names: string[]) => names.reduce((i, n) => (i >= 0 ? i : head.indexOf(n)), -1);
+  const missing = required.filter((n) => head.indexOf(n) < 0);
+  if (values.length > 1 && missing.length) throw new Error(`Лист «${name}»: нет колонок ${missing.join(", ")}`);
+  return { rows: values.slice(1), at };
 }
 
-const hasAny = (r: Gr4Row, keys: (keyof Gr4Row)[]) => keys.some((k) => r[k] !== 0);
-const TRAFFIC: (keyof Gr4Row)[] = ["budget", "impressions", "adClicks", "websiteClicks", "registrations", "dialogs"];
+const DIM_HEADERS = ["Дата", "Лицо", "Язык", "Гео", "Источник", "Воронка", "Баер"];
 
-// «Трафик»: A–G разрезы, H спенд, I показы, J клики, K клики на ленд,
-// L подписки, M диалоги, N регион.
-function parseTraffic(values: unknown[][]): Gr4Row[] {
+function dimsOf(at: (...n: string[]) => number) {
+  const [d, face, lang, geo, src, fun, buyer] = DIM_HEADERS.map((h) => at(h));
+  const region = at("Регион (авто)", "Регион");
+  return (row: unknown[]) => ({
+    date: isoDate(row[d]),
+    face: str(row[face]), lang: str(row[lang]), country: str(row[geo]),
+    source: str(row[src]), funnel: str(row[fun]), buyer: str(row[buyer]),
+    region: region >= 0 ? str(row[region]) : "",
+  });
+}
+
+const val = (row: unknown[], i: number) => (i >= 0 ? num(row[i]) : 0);
+const quals = (at: (...n: string[]) => number, prefix: string) =>
+  (["A", "B", "C", "D", "E"] as const).map((x) => at(`${prefix}${x}`, `${prefix}${x} CRM`));
+const qualFields = (row: unknown[], idx: number[]) =>
+  Object.fromEntries(QUAL_KEYS.map((k, i) => [k, val(row, idx[i])])) as Pick<Gr4Row, (typeof QUAL_KEYS)[number]>;
+
+const hasAny = (r: Gr4Row, keys: (keyof Gr4Row)[]) => keys.some((k) => r[k] !== 0);
+const TRAFFIC: (keyof Gr4Row)[] = ["budget", "impressions", "adClicks", "websiteClicks", "registrations", "dialogs", ...QUAL_KEYS];
+
+// «Трафик» (общая) и «Ввод»/«История» (баер) — одна раскладка: разрезы, трафик, квалы.
+// У баера ещё депы и доход из Torro; депы он не делит на CPA/IB — кладём в CPA, чтобы
+// CR в деп и CAC считались общими формулами.
+function parseTrafficLike(values: unknown[][], name: string): Gr4Row[] {
+  const { rows, at } = sheet(values, name, [...DIM_HEADERS, "Спенд"]);
+  const dims = dimsOf(at);
+  const [spend, impr, clicks, web, subs, dia] =
+    ["Спенд", "Показы", "Клики", "Клики на ленд", "Подписки", "Диалоги"].map((h) => at(h));
+  const q = quals(at, "Квал ");
+  const deps = at("Депы (Torro)"), revenue = at("Доход (Torro)");
   const out: Gr4Row[] = [];
-  for (const row of values) {
-    const date = isoDate(row[0]);
-    if (!date) continue;
+  for (const row of rows) {
+    const d = dims(row);
+    if (!d.date) continue;
     const r = blank({
-      date, ...dims(row, 13),
-      budget: num(row[7]), impressions: num(row[8]), adClicks: num(row[9]),
-      websiteClicks: num(row[10]), registrations: num(row[11]), dialogs: num(row[12]),
+      ...d, date: d.date,
+      budget: val(row, spend), impressions: val(row, impr), adClicks: val(row, clicks),
+      websiteClicks: val(row, web), registrations: val(row, subs), dialogs: val(row, dia),
+      ...qualFields(row, q),
+      depCountCpa: val(row, deps), revenue: val(row, revenue),
     });
-    if (hasAny(r, TRAFFIC)) out.push(r);
+    if (hasAny(r, [...TRAFFIC, "depCountCpa", "revenue"])) out.push(r);
   }
   return out;
 }
 
-// «Депы»: A–G разрезы, H тип CPA/IB, I кол-во деп, J сумма деп,
-// K кол-во выплат, L выплата, M регион. Доход = выплаты.
+// «Депы»: тип CPA/IB, кол-во и сумма депов, кол-во выплат, выплата. Доход = выплаты.
 function parseDeps(values: unknown[][]): Gr4Row[] {
+  const { rows, at } = sheet(values, "Депы", [...DIM_HEADERS, "Тип (CPA/IB)"]);
+  const dims = dimsOf(at);
+  const [type, cnt, sum, pays, pay] = ["Тип (CPA/IB)", "Кол-во деп", "Сумма деп", "Кол-во выплат", "Выплата"].map((h) => at(h));
   const out: Gr4Row[] = [];
-  for (const row of values) {
-    const date = isoDate(row[0]);
-    if (!date) continue;
-    const ib = str(row[7]).toUpperCase() === "IB";
-    const count = num(row[8]), amount = num(row[9]), payouts = num(row[10]), payout = num(row[11]);
+  for (const row of rows) {
+    const d = dims(row);
+    if (!d.date) continue;
+    const ib = str(row[type]).toUpperCase() === "IB";
+    const count = val(row, cnt), amount = val(row, sum), payouts = val(row, pays), payout = val(row, pay);
     if (!count && !amount && !payouts && !payout) continue;
     out.push(blank({
-      date, ...dims(row, 12),
-      revenue: payout,
+      ...d, date: d.date, revenue: payout,
       ...(ib
         ? { depCountIb: count, depAmountIb: amount, payoutsIb: payouts, revenueIb: payout }
         : { depCountCpa: count, depAmountCpa: amount, payoutsCpa: payouts, revenueCpa: payout }),
@@ -83,36 +115,20 @@ function parseDeps(values: unknown[][]): Gr4Row[] {
   return out;
 }
 
-// «CRM итоги»: A–F разрезы, G «добор CRM», H–K итоги и суммы баеров,
-// L добор подписок, M добор диалогов, N регион. Берём только сам добор:
-// сумма баеров уже пришла через «Трафик».
+// «CRM итоги»: берём только сам добор — сумма баеров уже пришла через «Трафик».
+// Пустая строка-заготовка (без даты или без добора) пропускается.
 function parseCrm(values: unknown[][]): Gr4Row[] {
+  const { rows, at } = sheet(values, "CRM итоги", DIM_HEADERS.slice(0, 6));
+  const dims = dimsOf(at);
+  const subs = at("Добор подписок"), dia = at("Добор диалогов");
+  const q = quals(at, "Добор ");
   const out: Gr4Row[] = [];
-  for (const row of values) {
-    const date = isoDate(row[0]);
-    if (!date) continue;
-    const subs = num(row[11]), dia = num(row[12]);
-    if (!subs && !dia) continue;
-    out.push(blank({ date, ...dims(row, 13), buyer: str(row[6]) || "добор CRM", registrations: subs, dialogs: dia }));
-  }
-  return out;
-}
-
-// Таблица баера, «Ввод» и «История»: A–G разрезы, H–M трафик как в «Трафике»,
-// N депы из Torro, O доход из Torro, W регион. Депы баер не делит на CPA/IB —
-// кладём их в CPA, чтобы CR в деп и CAC считались общими формулами.
-function parseBuyerSheet(values: unknown[][]): Gr4Row[] {
-  const out: Gr4Row[] = [];
-  for (const row of values) {
-    const date = isoDate(row[0]);
-    if (!date) continue;
-    const r = blank({
-      date, ...dims(row, 22),
-      budget: num(row[7]), impressions: num(row[8]), adClicks: num(row[9]),
-      websiteClicks: num(row[10]), registrations: num(row[11]), dialogs: num(row[12]),
-      depCountCpa: num(row[13]), revenue: num(row[14]),
-    });
-    if (hasAny(r, [...TRAFFIC, "depCountCpa", "revenue"])) out.push(r);
+  for (const row of rows) {
+    const d = dims(row);
+    if (!d.date) continue;
+    const r = blank({ ...d, date: d.date, buyer: d.buyer || "добор CRM",
+      registrations: val(row, subs), dialogs: val(row, dia), ...qualFields(row, q) });
+    if (hasAny(r, ["registrations", "dialogs", ...QUAL_KEYS])) out.push(r);
   }
   return out;
 }
@@ -125,25 +141,26 @@ function parseTargets(values: unknown[][] | undefined): Gr4Targets {
   return { costPerSub: at(0), costPerDialog: at(1), crToDialog: at(2), crDialogToDep: at(3) };
 }
 
-// Листы и диапазоны, которые нужны каждому виду таблицы. Регион — последняя колонка.
+// Диапазоны — с шапкой и до колонки AF: запас под будущие колонки, Sheets всё равно
+// отдаёт только заполненное.
 export const MAIN_RANGES = {
-  traffic: "'Трафик'!A2:N",
-  deps: "'Депы'!A2:M",
-  crm: "'CRM итоги'!A2:N",
+  traffic: "'Трафик'!A1:AF",
+  deps: "'Депы'!A1:AF",
+  crm: "'CRM итоги'!A1:AF",
   targets: "'Настройки'!E2:E5",
 } as const;
 
 export const BUYER_SHEETS = ["Ввод", "История"] as const;
-export const BUYER_RANGE = (sheet: string) => `'${sheet}'!A2:W`;
+export const BUYER_RANGE = (sheet: string) => `'${sheet}'!A1:AF`;
 export const BUYER_TARGETS = "'Настройки'!E2:E5";
 
 export function parseMain(v: { traffic: unknown[][]; deps: unknown[][]; crm?: unknown[][]; targets?: unknown[][] }) {
   return {
-    rows: [...parseTraffic(v.traffic), ...parseDeps(v.deps), ...parseCrm(v.crm ?? [])],
+    rows: [...parseTrafficLike(v.traffic, "Трафик"), ...parseDeps(v.deps), ...parseCrm(v.crm ?? [])],
     targets: parseTargets(v.targets),
   };
 }
 
 export function parseBuyer(sheets: unknown[][][], targets?: unknown[][]) {
-  return { rows: sheets.flatMap(parseBuyerSheet), targets: parseTargets(targets) };
+  return { rows: sheets.flatMap((s, i) => parseTrafficLike(s, BUYER_SHEETS[i] ?? "Ввод")), targets: parseTargets(targets) };
 }

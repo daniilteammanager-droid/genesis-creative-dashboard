@@ -7,17 +7,17 @@ import {
   SummaryCard, CARD_DEFS, CHART_DEFS,
 } from "@/components/general-report/shared";
 import { applyFilters, buildGroups, computeTotals4, distinctValues, type Filters, type Gr4Group, type Period } from "@/lib/general-report-4/aggregate";
-import { DIMENSIONS, DIM_LABELS, type Gr4Data, type Gr4Dim, type Gr4Kind, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
+import { DIMENSIONS, DIM_LABELS, QUAL_KEYS, type Gr4Data, type Gr4Dim, type Gr4Kind, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
 
 // ─── Колонки ──────────────────────────────────────────────────────────────────
 // Порядок и названия — как в General 3.0 и в новой Google-таблице: к ним привыкла
 // команда. Группа задаёт цвет полоски над заголовком (те же группы, что в таблице),
 // key — обведённые ключевые колонки.
 
-type Group = "money" | "traffic" | "cost" | "cr" | "deps";
+type Group = "money" | "traffic" | "cost" | "cr" | "deps" | "qual";
 const GROUP_BAR: Record<Group, string> = {
   money: "border-t-zinc-500", traffic: "border-t-sky-500/70", cost: "border-t-blue-500",
-  cr: "border-t-green-500", deps: "border-t-orange-400/70",
+  cr: "border-t-green-500", deps: "border-t-orange-400/70", qual: "border-t-violet-400",
 };
 
 interface Col {
@@ -86,6 +86,11 @@ const COLUMNS: Col[] = [
   { id: "cac", label: "CAC", group: "cost", key: true,
     cell: (t, k) => <span className="text-zinc-300 font-semibold">{fmtOptMoney(k === "main" ? t.cacPayouts : t.cac)}</span> },
   { id: "awDep", label: "AW DEP", group: "deps", only: "main", cell: (t) => usd(t.awDep) },
+  // Квалификация из CRM: после депов и дохода, как в таблице. Доли — от всех квалов.
+  { id: "quals", label: "Квалы", group: "qual", cell: (t) => n(t.quals), delta: (t) => t.quals },
+  { id: "unquals", label: "Неквалы", group: "qual", cell: (t) => n(t.unquals) },
+  ...QUAL_KEYS.map((k): Col => ({ id: k, label: `Квал ${k.at(-1)}`, group: "qual", cell: (t) => n(t[k]) })),
+  ...QUAL_KEYS.map((k): Col => ({ id: `${k}Share`, label: `% ${k.at(-1)}`, group: "qual", cell: (t) => pct(t.qualShare[k]) })),
 ];
 
 const PERIODS: { id: Period; label: string }[] = [
