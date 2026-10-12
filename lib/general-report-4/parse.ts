@@ -26,7 +26,7 @@ const str = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim
 
 function blank(r: Partial<Gr4Row> & Pick<Gr4Row, "date">): Gr4Row {
   return {
-    country: "", face: "", lang: "", region: "", source: "", funnel: "", buyer: "",
+    country: "", face: "", lang: "", region: "", source: "", platform: "", funnel: "", buyer: "",
     revenue: 0, budget: 0, adClicks: 0, websiteClicks: 0, impressions: 0,
     registrations: 0, dialogs: 0,
     depCountCpa: 0, depCountIb: 0, depAmountCpa: 0, depAmountIb: 0,
@@ -49,12 +49,13 @@ const DIM_HEADERS = ["Дата", "Лицо", "Язык", "Гео", "Источн
 
 function dimsOf(at: (...n: string[]) => number) {
   const [d, face, lang, geo, src, fun, buyer] = DIM_HEADERS.map((h) => at(h));
-  const region = at("Регион (авто)", "Регион");
+  const region = at("Регион (авто)", "Регион"), platform = at("Площадка");
   return (row: unknown[]) => ({
     date: isoDate(row[d]),
     face: str(row[face]), lang: str(row[lang]), country: str(row[geo]),
     source: str(row[src]), funnel: str(row[fun]), buyer: str(row[buyer]),
     region: region >= 0 ? str(row[region]) : "",
+    platform: platform >= 0 ? str(row[platform]) : "",
   });
 }
 

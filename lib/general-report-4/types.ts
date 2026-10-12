@@ -8,7 +8,7 @@ import type { GrDayRow, GrTotals } from "../general-report/types";
 
 export type Gr4Kind = "main" | "buyer";
 
-export const DIMENSIONS = ["face", "lang", "country", "region", "source", "funnel", "buyer"] as const;
+export const DIMENSIONS = ["face", "lang", "country", "region", "source", "platform", "funnel", "buyer"] as const;
 export type Gr4Dim = (typeof DIMENSIONS)[number];
 
 export const DIM_LABELS: Record<Gr4Dim, string> = {
@@ -17,6 +17,7 @@ export const DIM_LABELS: Record<Gr4Dim, string> = {
   country: "Гео",
   region: "Регион",
   source: "Источник",
+  platform: "Площадка",
   funnel: "Воронка",
   buyer: "Баер",
 };
@@ -30,6 +31,7 @@ export interface Gr4Row extends GrDayRow, Record<QualKey, number> {
   lang: string;
   region: string;
   source: string;
+  platform: string;      // второй слой под источником (УБТ → YouTube/TikTok/Instagram); пусто — нет
   funnel: string;
   buyer: string;
 }

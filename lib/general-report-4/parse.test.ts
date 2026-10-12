@@ -82,4 +82,11 @@ assert.equal(bt.cac, 150);                            // у баера CAC на 
 assert.equal(bt.qualB, 1);
 assert.equal(buyer.rows[0].region, "Испания");
 
+// Площадка — по заголовку; нет колонки — пусто. Фильтр по площадке режет только размеченные строки.
+const plat = parseBuyer([[[...DIMS, "Спенд", "Площадка"], [D, "Роман", "ES", "🇪🇸 ES", "УБТ", "TG", "Игорь", 30, "YouTube"],
+  [D, "Роман", "ES", "🇪🇸 ES", "УБТ", "TG", "Игорь", 20, ""]]]);
+assert.equal(plat.rows[0].platform, "YouTube");
+assert.equal(computeTotals4(applyFilters(plat.rows, { platform: ["YouTube"] }, null)).budget, 30);
+assert.equal(main.rows[0].platform, "");
+
 console.log("parse.test: ok");
