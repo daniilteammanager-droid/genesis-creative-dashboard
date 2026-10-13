@@ -192,7 +192,6 @@ export default function GeneralReport4Page() {
 
   const range = preset === "custom" ? (customFrom && customTo ? { from: customFrom, to: customTo } : null) : presetRange(preset);
   const filtered = useMemo(() => applyFilters(rows, filters, range), [rows, filters, range?.from, range?.to]); // eslint-disable-line react-hooks/exhaustive-deps
-  const allTime = useMemo(() => computeTotals4(applyFilters(rows, filters, null)), [rows, filters]);
   const total = useMemo(() => computeTotals4(filtered), [filtered]);
   const groups = useMemo(() => buildGroups(filtered, period, by), [filtered, period, by]);
 
@@ -275,10 +274,12 @@ export default function GeneralReport4Page() {
               <span>Обновлено: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString()}</span>{data.fetchedFrom === "cache" ? " (кэш, 5 мин)" : ""}</span>
             </div>
 
-            {/* Итоги за всё время — фильтры по разрезам учитывают, даты нет */}
+            {/* Итого за выбранный период — с теми же фильтрами и датами, что и таблица */}
             <div className="flex items-center gap-2 mb-3">
               <p className="text-xs text-zinc-500 uppercase tracking-wider">
-                За всё время{activeFilters.length ? " · с фильтрами" : ""}
+                Итого · {PRESETS.find((p) => p.id === preset)?.label}
+                {range && ` ${range.from.slice(8, 10)}.${range.from.slice(5, 7)}–${range.to.slice(8, 10)}.${range.to.slice(5, 7)}`}
+                {activeFilters.length ? " · с фильтрами" : ""}
               </p>
               <button onClick={() => setCardsOpen((v) => !v)} className={smallChip(cardsOpen)}>⚙ Настроить</button>
             </div>
@@ -294,7 +295,7 @@ export default function GeneralReport4Page() {
             )}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
               {cards.filter((c) => visibleCards.includes(c.id)).map((c) => (
-                <SummaryCard key={c.id} label={c.label} value={c.value(allTime)} tone={c.tone?.(allTime)} />
+                <SummaryCard key={c.id} label={c.label} value={c.value(total)} tone={c.tone?.(total)} />
               ))}
             </div>
 
