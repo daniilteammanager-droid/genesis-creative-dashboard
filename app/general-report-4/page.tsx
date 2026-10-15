@@ -185,7 +185,7 @@ export default function GeneralReport4Page() {
   const rows = useMemo(() => data?.rows ?? [], [data]);
 
   // У баера разрез «Баер» один-единственный — фильтр по нему бессмысленен.
-  const dims = DIMENSIONS.filter((d) => !(kind === "buyer" && d === "buyer"));
+  const dims = DIMENSIONS.filter((d) => !(kind === "buyer" && !data?.combined && d === "buyer"));
   const options = useMemo(() => Object.fromEntries(dims.map((d) => [d, distinctValues(rows, d)])) as Record<Gr4Dim, string[]>,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, kind]);
@@ -443,7 +443,7 @@ export default function GeneralReport4Page() {
             </div>
 
             <p className="text-zinc-700 text-xs mt-4 text-right">
-              General Report 4.0 · {kind === "main" ? "общая таблица" : "таблица баера"} · Sheets API, кэш 5 минут
+              General Report 4.0 · {kind === "main" ? "общая таблица" : data?.combined ? "сводная по таблицам баеров (доход — как внесли баеры)" : "таблица баера"} · Sheets API, кэш 5 минут
               {kind === "main" && " · депы и доход — от хэда, без баера: при фильтре по баеру дохода не будет"}
             </p>
           </>

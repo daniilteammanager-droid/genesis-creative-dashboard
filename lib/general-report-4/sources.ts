@@ -12,6 +12,8 @@ interface Source extends Gr4SourceInfo {
   spreadsheetId: string;
 }
 
+export const COMBINED_ID = "buyers";
+
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -46,6 +48,9 @@ export async function collectSources4(me: Profile): Promise<Source[]> {
     .not("gr4_spreadsheet_id", "is", null)
     .order("buyer_code", { ascending: true });
 
+  // «Сводная по баерам» — сразу после общей; своей таблицы нет, route собирает её из таблиц баеров
+  if ((buyers ?? []).length > 1) out.push({ id: COMBINED_ID, label: "Сводная по баерам", kind: "buyer", combined: true, spreadsheetId: "" });
+
   for (const b of buyers ?? []) {
     out.push({
       id: `buyer:${b.id}`,
@@ -58,4 +63,4 @@ export async function collectSources4(me: Profile): Promise<Source[]> {
 }
 
 // Наружу — без ключей таблиц.
-export const publicSources4 = (all: Source[]): Gr4SourceInfo[] => all.map(({ id, label, kind }) => ({ id, label, kind }));
+export const publicSources4 = (all: Source[]): Gr4SourceInfo[] => all.map(({ id, label, kind, combined }) => ({ id, label, kind, combined }));

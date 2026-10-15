@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { fetchRanges, listSheetTitles } from "@/lib/general-report/googleSheets";
 import { BUYER_RANGE, BUYER_SHEETS, BUYER_TARGETS, MAIN_RANGES, parseBuyer, parseMain } from "@/lib/general-report-4/parse";
-import { collectSources4, publicSources4 } from "@/lib/general-report-4/sources";
+import { COMBINED_ID, collectSources4, publicSources4 } from "@/lib/general-report-4/sources";
 import type { Gr4Kind, Gr4Row, Gr4SourceInfo, Gr4Targets } from "@/lib/general-report-4/types";
 
 // GR 4.0: одна общая таблица или таблица баера, плоский формат. Читается одним
@@ -34,6 +34,19 @@ async function load(spreadsheetId: string, kind: Gr4Kind) {
   return { ...entry, fromCache: false };
 }
 
+// Сводная по баерам: таблицы всех баеров (каждая — из своего кэша) одной выборкой.
+// Баер в строке — из колонки «Баер» его таблицы; пусто — имя из профиля.
+async function loadCombined(all: Awaited<ReturnType<typeof collectSources4>>) {
+  const buyers = all.filter((s) => s.kind === "buyer" && !s.combined);
+  const parts = await Promise.all(buyers.map(async (b) => ({ b, d: await load(b.spreadsheetId, "buyer") })));
+  return {
+    rows: parts.flatMap(({ b, d }) => d.rows.map((r) => (r.buyer ? r : { ...r, buyer: b.label }))),
+    targets: parts[0]?.d.targets ?? { costPerSub: null, costPerDialog: null, crToDialog: null, crDialogToDep: null },
+    at: Math.min(...parts.map(({ d }) => d.at)),
+    fromCache: parts.every(({ d }) => d.fromCache),
+  };
+}
+
 export async function GET(req: Request) {
   // Список источников уходит и в ответе с ошибкой: иначе со сломанной таблицы
   // нечем переключиться на рабочую.
@@ -51,12 +64,13 @@ export async function GET(req: Request) {
     // Источник — только из того, что положено этому человеку, а не из запроса.
     const requested = new URL(req.url).searchParams.get("source");
     const src = all.find((s) => s.id === requested) ?? all[0];
-    const data = await load(src.spreadsheetId, src.kind);
+    const data = src.id === COMBINED_ID ? await loadCombined(all) : await load(src.spreadsheetId, src.kind);
 
     return NextResponse.json({
       source: src.id,
       sources,
       kind: src.kind,
+      combined: src.combined ?? false,
       rows: data.rows,
       targets: data.targets,
       generatedAt: new Date(data.at).toISOString(),

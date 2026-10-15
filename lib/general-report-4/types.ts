@@ -61,12 +61,14 @@ export interface Gr4SourceInfo {
   id: string;       // "main" | "me" | "buyer:<uuid>"
   label: string;
   kind: Gr4Kind;
+  combined?: boolean; // «Сводная по баерам»: таблицы всех баеров вместе, разрез «Баер» остаётся
 }
 
 export interface Gr4Data {
   source: string;
   sources: Gr4SourceInfo[];
   kind: Gr4Kind;
+  combined?: boolean;
   rows: Gr4Row[];
   targets: Gr4Targets;
   generatedAt: string;
