@@ -101,6 +101,9 @@ const PERIODS: { id: Period; label: string }[] = [
 const DEFAULT_CARDS = ["spend", "revenue", "netProfit", "romi", "costPerSub", "costPerDialog"];
 const CARDS_KEY = "gr4.totalCards";
 const CHARTS_KEY = "gr4.visibleCharts";
+// Сворачиваемый блок колонок трафика: от «Ad Clicks» до «Подписки» включительно.
+const FOLD_KEY = "gr4.trafficFolded";
+const FOLD_FROM = "adClicks", FOLD_TO = "subs";
 
 // Изменение к прошлому периоду: ▲/▼ и процент. Зелёный — когда стало лучше.
 function Delta({ cur, prev, lowerIsBetter }: { cur: number | null; prev: number | null; lowerIsBetter?: boolean }) {
@@ -154,6 +157,8 @@ export default function GeneralReport4Page() {
   const [cardsOpen, setCardsOpen] = useState(false);
   const [visibleCharts, setVisibleCharts] = useState<string[]>(() =>
     stored(CHARTS_KEY, CHART_DEFS.map((d) => d.id), false) ?? ["spendRevenue"]);
+  const [folded, setFolded] = useState<boolean>(() => stored(FOLD_KEY, ["1"], false)?.length === 1);
+  const toggleFold = () => setFolded((f) => { save(FOLD_KEY, f ? [] : ["1"]); return !f; });
 
   const toggleIn = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   const save = (key: string, v: string[]) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* не критично */ } };
@@ -195,7 +200,12 @@ export default function GeneralReport4Page() {
   const total = useMemo(() => computeTotals4(filtered), [filtered]);
   const groups = useMemo(() => buildGroups(filtered, period, by), [filtered, period, by]);
 
-  const cols = COLUMNS.filter((c) => !c.only || c.only === kind);
+  const allCols = COLUMNS.filter((c) => !c.only || c.only === kind);
+  const fa = allCols.findIndex((c) => c.id === FOLD_FROM), fz = allCols.findIndex((c) => c.id === FOLD_TO);
+  // свёрнуто — вместо блока одна узкая колонка-кнопка
+  const cols = folded && fa >= 0 && fz >= fa
+    ? [...allCols.slice(0, fa), { id: "fold", label: `▸ +${fz - fa + 1}`, group: "traffic", cell: () => null } as Col, ...allCols.slice(fz + 1)]
+    : allCols;
   const targets: Gr4Targets = data?.targets ?? { costPerSub: null, costPerDialog: null, crToDialog: null, crDialogToDep: null };
 
   // CAC в карточке — так же, как в таблице: у общей на выплату.
@@ -386,7 +396,10 @@ export default function GeneralReport4Page() {
                       {cols.map((c) => (
                         <th key={c.id} className={`px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap border-t-4 ${GROUP_BAR[c.group]} ${
                           c.key ? "text-white bg-violet-950/40" : "text-zinc-500"}`}>
-                          {c.label}
+                          {c.id === "fold" || c.id === FOLD_FROM
+                            ? <button onClick={toggleFold} title={c.id === "fold" ? "Развернуть колонки трафика" : "Свернуть колонки Ad Clicks — Подписки"}
+                                className="uppercase tracking-wider hover:text-violet-300">{c.id === "fold" ? c.label : `◂ ${c.label}`}</button>
+                            : c.label}
                         </th>
                       ))}
                     </tr>
