@@ -4,6 +4,7 @@ import { mskDay } from "@/lib/day";
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/links";
 import { deliver } from "./deliver";
+import { actionButtons } from "@/lib/antireject/bot";
 
 // Антиотклон, часть первая: заметить отклонённое объявление и прислать причину.
 // Логика «что считать отклонённым» — из Genesis Manager Артёма: DISAPPROVED
@@ -193,10 +194,11 @@ export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor
     const alerts = fresh.slice(0, MAX_ALERTS).map((r) => ({
       accountId: r.accountId,
       text: rejectionText(r, nameOf.get(r.accountId) ?? null),
-      extra: { reply_markup: { inline_keyboard: [[{
-        text: "Открыть в Ads Manager",
-        url: `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${r.accountId}&selected_ad_ids=${r.adId}`,
-      }]] } },
+      extra: { reply_markup: { inline_keyboard: [
+        [{ text: "Открыть в Ads Manager", url: `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${r.accountId}&selected_ad_ids=${r.adId}` }],
+        // Кнопки антиотклона — только кабинетам на Meta: у Dolphin писать нечем (Decision 067).
+        ...(tokenFor.has(r.accountId) ? actionButtons(r.adId) : []),
+      ] } },
     }));
     // Остаток — одной сводкой на кабинет, чтобы не потерять ни одного.
     const rest = new Map<string, number>();

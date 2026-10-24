@@ -40,10 +40,13 @@ export async function listMetaKeys(userId: string): Promise<MetaKeyView[]> {
 }
 
 // Расшифрованные ключи — только серверному коду, который идёт в Meta.
-export async function metaTokensOf(userId: string): Promise<{ id: string; token: string }[]> {
-  const { data, error } = await warehouse().from("meta_keys").select("id, token_enc").eq("user_id", userId).order("created_at");
+export async function metaTokensOf(userId: string): Promise<{ id: string; token: string; canWrite: boolean }[]> {
+  const { data, error } = await warehouse().from("meta_keys").select("id, token_enc, scopes").eq("user_id", userId).order("created_at");
   if (error) throw new Error(error.message);
-  return (data ?? []).map((k) => ({ id: k.id as string, token: decryptSecret(k.token_enc as string) }));
+  return (data ?? []).map((k) => ({
+    id: k.id as string, token: decryptSecret(k.token_enc as string),
+    canWrite: ((k.scopes as string[] | null) ?? []).includes(WRITE_SCOPE),
+  }));
 }
 
 interface TokenInfo { appId: string | null; scopes: string[]; expiresAt: string | null }

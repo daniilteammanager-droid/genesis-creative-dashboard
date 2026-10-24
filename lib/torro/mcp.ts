@@ -35,20 +35,14 @@ interface Query {
   campaignName?: string[];
 }
 
-// fetch подменяется в самопроверке.
-export async function callStatistics(q: Query, doFetch: typeof fetch = fetch): Promise<TorroPayload> {
-  const args: Record<string, unknown> = {
-    buyer_ids: [q.buyerId], date_from: q.day, date_to: q.day, group_by: q.groupBy,
-  };
-  if (q.country) args.country = q.country;
-  if (q.campaignName) args.campaign_name = q.campaignName;
-
+// Любой инструмент Torro MCP: JSON-RPC tools/call, ответ — один текстовый блок с JSON.
+export async function callTool<T>(token: string, name: string, args: Record<string, unknown>, doFetch: typeof fetch = fetch): Promise<T> {
   let res: Response;
   try {
     res = await doFetch(MCP_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${q.token}`, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_statistics", arguments: args } }),
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
       signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
@@ -65,10 +59,27 @@ export async function callStatistics(q: Query, doFetch: typeof fetch = fetch): P
   if (env.result?.isError) throw new Error(`Torro: ${texts[0]?.text?.slice(0, 200) ?? "ошибка инструмента"}`);
   if (texts.length !== 1) throw new Error(`Torro: ожидался один ответ, пришло ${texts.length}`);
 
-  let payload: TorroPayload;
-  try { payload = JSON.parse(texts[0].text!); } catch { throw new Error("Torro: ответ не JSON"); }
+  try { return JSON.parse(texts[0].text!) as T; } catch { throw new Error("Torro: ответ не JSON"); }
+}
+
+// fetch подменяется в самопроверке.
+export async function callStatistics(q: Query, doFetch: typeof fetch = fetch): Promise<TorroPayload> {
+  const args: Record<string, unknown> = {
+    buyer_ids: [q.buyerId], date_from: q.day, date_to: q.day, group_by: q.groupBy,
+  };
+  if (q.country) args.country = q.country;
+  if (q.campaignName) args.campaign_name = q.campaignName;
+  const payload = await callTool<TorroPayload>(q.token, "get_statistics", args, doFetch);
   if (!Array.isArray(payload.rows) || !payload.summary) throw new Error("Torro: в ответе нет rows или summary");
   return payload;
+}
+
+export interface TorroLanding { id: number; name: string; url: string; theme?: string; spot?: string; domain?: string }
+
+export async function listLandings(token: string): Promise<TorroLanding[]> {
+  const rows = await callTool<TorroLanding[]>(token, "list_landings", {});
+  if (!Array.isArray(rows)) throw new Error("Torro: список лендингов не пришёл");
+  return rows;
 }
 
 function truncated(p: TorroPayload): boolean {

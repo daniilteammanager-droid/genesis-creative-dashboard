@@ -1,11 +1,13 @@
 import { botUsername, sendMessage, tg, escapeHtml } from "./api";
 import { consumeLinkCode, deleteLinksById, dropChat, linksInPlace, moveChat, type ChatPlace } from "./links";
+import { handleAntiReject, type CallbackQuery } from "@/lib/antireject/bot";
 
 // Что бот понимает:
 //   /start <код>  — привязать этот чат (личка, группа или тема) к профилю.
 //                   В группу код приезжает сам по ссылке ?startgroup=<код>.
 //   /link <код>   — то же самое руками, например в нужной теме форума.
 //   /stop         — отвязать этот чат или тему.
+//   кнопки ar:…   — антиотклон под алертом об отклонении (lib/antireject/bot.ts).
 // Остальное бот не слушает: он шлёт уведомления, а не болтает.
 
 export function parseCommand(text: string, bot: string): { cmd: string; arg: string } | null {
@@ -28,6 +30,7 @@ interface TgMessage {
 }
 export interface TgUpdate {
   message?: TgMessage;
+  callback_query?: CallbackQuery;
   my_chat_member?: { chat: TgChat; new_chat_member: { status: string } };
 }
 
@@ -58,6 +61,11 @@ async function isChatAdmin(chatId: number, userId: number): Promise<boolean> {
 }
 
 export async function handleUpdate(update: TgUpdate): Promise<void> {
+  if (update.callback_query) {
+    if (update.callback_query.data?.startsWith("ar:")) await handleAntiReject(update.callback_query);
+    return;
+  }
+
   // Бота убрали из группы или заблокировали в личке.
   const member = update.my_chat_member;
   if (member && ["left", "kicked"].includes(member.new_chat_member.status)) {
