@@ -1,6 +1,6 @@
 // Самопроверка расписания авточека. Запуск: npx tsx lib/alerts/autocheck.test.ts
 import assert from "node:assert/strict";
-import { dueSlot, parseCheckTimes } from "./autocheck";
+import { checkMessage, dueSlot, parseCheckTimes } from "./autocheck";
 
 // Разбор: разделители любые, ведущий ноль дописывается, дубли и порядок
 assert.deepEqual(parseCheckTimes("18:00, 9:00; 18:00 14:30"), ["09:00", "14:30", "18:00"]);
@@ -25,4 +25,22 @@ assert.equal(dueSlot(times, D, "10:30", null), null);
 // Два наступивших — берём последний
 assert.equal(dueSlot(["10:00", "10:15"], D, "10:15", `${D} 10:00`), `${D} 10:15`);
 
-console.log("autocheck: расписание разбирается, слоты не повторяются и не догоняются");
+// Сообщение: верх по расходу, остаток одной строкой, итог в конце
+const row = (i: number) => ({
+  key: `k${i}`, label: `CAB_${i}`, dailyBudget: 50, spend: 100 - i,
+  subscribers: null, dialogs: null, revenue: null, costPdp: null, costDia: null, romi: null,
+});
+const result = {
+  since: D, until: D, groupBy: "campaign" as const, live: true,
+  rows: Array.from({ length: 40 }, (_, i) => row(i)), totalBudget: 2000,
+  totals: { spend: 3220, revenue: 500, romi: -84.5 }, text: "", buyers: [], sources: [],
+  buyer: "all", isBuyer: false, generatedAt: "",
+};
+const msg = checkMessage(result, new Date("2026-10-24T07:00:00Z"));
+assert.ok(msg.includes("CAB_14") && !msg.includes("CAB_15\n"), "ровно 15 строк");
+// 85 + 84 + … + 61. Разделитель тысяч у ru-RU — неразрывный пробел.
+assert.match(msg, /…и ещё 25 кампаний на 1\s825,00\$/);
+assert.match(msg, /Итого: 3\s220,00\$ \/ доход 500,00\$ \/ ROMI -85%/);
+assert.match(checkMessage({ ...result, rows: [] }), /расхода пока нет/);
+
+console.log("autocheck: расписание разбирается, слоты не повторяются, чек укорачивается до верха");

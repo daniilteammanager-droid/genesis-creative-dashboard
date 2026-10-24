@@ -1,5 +1,5 @@
 import { warehouse } from "@/lib/warehouse/read";
-import { loadCheck, type CheckGroup, type CheckResult } from "@/lib/warehouse/check";
+import { buildCheckText, loadCheck, type CheckGroup, type CheckResult } from "@/lib/warehouse/check";
 import { escapeHtml, sendToLinks } from "@/lib/telegram/links";
 import { mskDay, mskTime } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
@@ -37,9 +37,30 @@ export function dueSlot(times: string[], day: string, now: string, sentSlot: str
   return slot === sentSlot ? null : slot;
 }
 
-export function checkMessage(r: CheckResult): string {
-  const body = r.rows.length ? r.text : `${r.text}\n\nСегодня расхода пока нет.`;
-  return [escapeHtml(body), r.warning ? `\n⚠️ ${escapeHtml(r.warning)}` : ""].join("");
+// В чат — только верх по расходу. Чек владельца по всей команде — сотня
+// кампаний по копейкам, и целиком он превращается в простыню на пять сообщений
+// (24.10.2026). Полный чек остаётся на странице Checks.
+// ponytail: порог константой; понадобится разный у разных чатов — переедет в привязку.
+export const TOP_ROWS = 15;
+
+const money = (v: number) => v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const UNIT: Record<CheckGroup, string> = { campaign: "кампаний", creative: "креативов", country: "стран" };
+
+export function checkMessage(r: CheckResult, at: Date = new Date()): string {
+  if (r.rows.length === 0) return escapeHtml(`${r.text}\n\nСегодня расхода пока нет.`);
+
+  // Строки уже отсортированы по расходу (loadCheck).
+  const top = r.rows.slice(0, TOP_ROWS);
+  const rest = r.rows.slice(TOP_ROWS);
+  const lines = [buildCheckText(top, r.totalBudget, at)];
+  if (rest.length) {
+    const spend = rest.reduce((s, x) => s + x.spend, 0);
+    lines.push(`…и ещё ${rest.length} ${UNIT[r.groupBy]} на ${money(spend)}$`);
+  }
+  const t = r.totals;
+  lines.push(`Итого: ${money(t.spend)}$ / доход ${t.revenue === null ? "—" : `${money(t.revenue)}$`} / ROMI ${t.romi === null ? "—" : `${t.romi.toFixed(0)}%`}`);
+
+  return [escapeHtml(lines.join("\n\n")), r.warning ? `\n\n⚠️ ${escapeHtml(r.warning)}` : ""].join("");
 }
 
 interface LinkRow {
