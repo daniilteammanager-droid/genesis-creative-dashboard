@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { CheckResult, CheckGroup } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 
@@ -27,11 +28,22 @@ const GROUPS: { id: CheckGroup; label: string; head: string }[] = [
 // вчерашний период, а сервер считал его «не сегодня» и лез бы в склад.
 const today = () => mskDay();
 
+// Фильтр можно передать ссылкой — так открывается чек из Telegram:
+// /check?since=2026-10-24&until=2026-10-24&group=country&buyer=<id>.
+// Кривое значение не ломает страницу, а заменяется обычным.
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export default function LiveCheck() {
-  const [since, setSince] = useState(today());
-  const [until, setUntil] = useState(today());
-  const [group, setGroup] = useState<CheckGroup>("campaign");
-  const [buyer, setBuyer] = useState("all");
+  const params = useSearchParams();
+  const fromUrl = (k: string) => {
+    const v = params.get(k);
+    return v && DAY_RE.test(v) ? v : today();
+  };
+  const [since, setSince] = useState(() => fromUrl("since"));
+  const [until, setUntil] = useState(() => fromUrl("until"));
+  const [group, setGroup] = useState<CheckGroup>(() =>
+    GROUPS.find((g) => g.id === params.get("group"))?.id ?? "campaign");
+  const [buyer, setBuyer] = useState(() => params.get("buyer") || "all");
   const [data, setData] = useState<CheckResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

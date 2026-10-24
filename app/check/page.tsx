@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, Suspense } from "react";
 import {
   parseFB, parseFBDetailed, parseMVP, aggregateFBItems, aggregateMVPItems,
   formatMoney, formatPlainNumber, formatBudget,
@@ -1004,7 +1004,8 @@ export default function CheckPage() {
           </div>
         </div>
 
-        {mode === "live" && <LiveCheck />}
+        {/* useSearchParams внутри живого чека требует границу Suspense. */}
+        {mode === "live" && <Suspense><LiveCheck /></Suspense>}
         <div className={mode === "manual" ? "" : "hidden"}><ManualCheck /></div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 // Самопроверка расписания авточека. Запуск: npx tsx lib/alerts/autocheck.test.ts
 import assert from "node:assert/strict";
-import { checkMessage, dueSlot, parseCheckTimes } from "./autocheck";
+import { checkMessage, dueSlot, openCheckButton, parseCheckTimes } from "./autocheck";
 
 // Разбор: разделители любые, ведущий ноль дописывается, дубли и порядок
 assert.deepEqual(parseCheckTimes("18:00, 9:00; 18:00 14:30"), ["09:00", "14:30", "18:00"]);
@@ -43,4 +43,13 @@ assert.match(msg, /…и ещё 25 кампаний на 1\s825,00\$/);
 assert.match(msg, /Итого: 3\s220,00\$ \/ доход 500,00\$ \/ ROMI -85%/);
 assert.match(checkMessage({ ...result, rows: [] }), /расхода пока нет/);
 
-console.log("autocheck: расписание разбирается, слоты не повторяются, чек укорачивается до верха");
+// Кнопка ведёт на тот же день и разрез; без адреса дашборда кнопки нет
+delete process.env.APP_URL;
+delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+assert.deepEqual(openCheckButton(D, "country"), {});
+process.env.VERCEL_PROJECT_PRODUCTION_URL = "genesis-creative-dashboard.vercel.app";
+const btn = openCheckButton(D, "country") as { reply_markup: { inline_keyboard: { url: string }[][] } };
+assert.equal(btn.reply_markup.inline_keyboard[0][0].url,
+  `https://genesis-creative-dashboard.vercel.app/check?since=${D}&until=${D}&group=country`);
+
+console.log("autocheck: расписание, повторы, укороченный чек и кнопка в дашборд — верно");

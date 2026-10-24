@@ -8,6 +8,8 @@ import { toPeriods } from "@/lib/reports-live/periods";
 import { parseCrmSheet } from "./parseCrm";
 import type { Profile } from "@/lib/auth/types";
 import { mskDay, mskStamp } from "@/lib/day";
+import { fetchDay, toCrm } from "@/lib/torro/mcp";
+import { uniqueIds } from "./torroIngest";
 
 // Чек — то, что копируют и отправляют в телегу.
 //
@@ -105,7 +107,8 @@ export function buildCheckText(rows: CheckRow[], totalBudget: number | null, now
 
 // ─── Выгрузки Torro за период ────────────────────────────────────────────────
 type CrmTotals = { subscribers: number | null; dialogs: number | null; revenue: number | null };
-type CrmForRange = { rows: Map<string, CrmTotals>; covered: boolean; nearest?: string };
+// byName — ключи строк это имена кампаний, а не id (Torro по API id не знает).
+type CrmForRange = { rows: Map<string, CrmTotals>; covered: boolean; nearest?: string; byName?: boolean };
 const NO_CRM: CrmForRange = { rows: new Map(), covered: false };
 
 // covered отвечает на вопрос «а была ли вообще выгрузка за этот период».
@@ -138,14 +141,35 @@ async function crmForRange(sheetId: string, since: string, until: string): Promi
   return { rows: merged, covered: true };
 }
 
+// Torro по API за один день — для живого чека (он всегда про сегодня).
+// Тот же клиент и тот же обход потолка в 100 строк, что и у склада (Decision 055).
+async function torroForDay(
+  torro: { token: string; buyerId: number }, day: string, groupBy: "campaign_name" | "ad_name"
+): Promise<CrmForRange> {
+  const rows = new Map<string, CrmTotals>();
+  for (const r of await fetchDay({ token: torro.token, buyerId: torro.buyerId, day }, groupBy)) {
+    const name = r.group.trim();
+    if (!name) continue;
+    const c = toCrm(r);
+    const cur = rows.get(name) ?? { subscribers: null, dialogs: null, revenue: null };
+    cur.subscribers = add(cur.subscribers, c.subscribers);
+    cur.dialogs = add(cur.dialogs, c.dialogs);
+    cur.revenue = add(cur.revenue, add(c.depSum, c.redepSum));
+    rows.set(name, cur);
+  }
+  return { rows, covered: true, byName: groupBy === "campaign_name" };
+}
+
 // Ключи, по которым собирается живой чек.
 //
 // Кабинеты у баеров разные, и одним ключом чужой расход не увидеть — поэтому
 // живой чек ходит в Meta столько раз, сколько подключений попало в область
 // видимости. Владелец пока льёт со своих кабинетов, а подключения у него нет:
 // его ключи лежат в переменных окружения, и они добавляются к общей картине.
-async function liveSources(me: Profile, scope: string[], buyerFilter?: string): Promise<ReportConfig[]> {
-  const list: ReportConfig[] = [];
+type LiveSource = ReportConfig & { torro?: { token: string; buyerId: number } };
+
+async function liveSources(me: Profile, scope: string[], buyerFilter?: string): Promise<LiveSource[]> {
+  const list: LiveSource[] = [];
   for (const id of scope) {
     const c = await getConnection(id);
     if (!c?.metaToken) continue;
@@ -155,6 +179,7 @@ async function liveSources(me: Profile, scope: string[], buyerFilter?: string): 
       accountScope: { includeBusinesses: false },
       campaignsSheetId: c.crmCampaignsSheetId ?? "",
       adsSheetId: c.crmAdsSheetId ?? "",
+      torro: c.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined,
     });
   }
 
@@ -306,7 +331,8 @@ export async function loadCheck(
         const [meta, campaignMeta, crm] = await Promise.all([
           fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
           fetchCampaignMeta(config.metaToken, config.accountScope),
-          config.campaignsSheetId ? crmForRange(config.campaignsSheetId, since, until) : NO_CRM,
+          config.torro ? torroForDay(config.torro, since, "campaign_name")
+            : config.campaignsSheetId ? crmForRange(config.campaignsSheetId, since, until) : NO_CRM,
         ]);
         return { meta, campaignMeta, crm };
       }));
@@ -323,8 +349,13 @@ export async function loadCheck(
         }
         // Кампании, которые есть только в выгрузке, в чек не попадают: имени у
         // них нет, а строка с голым id в телеге бесполезна.
-        for (const [id, c] of crm.rows) {
-          const row = rows.get(id);
+        // Torro отдаёт имена — id берём из расхода, и только у однозначного имени.
+        const idOf = crm.byName
+          ? uniqueIds(meta.items.map((c) => ({ id: c.campaignId, name: c.campaignName })))
+          : null;
+        for (const [key, c] of crm.rows) {
+          const id = idOf ? idOf.get(key) : key;
+          const row = id ? rows.get(id) : undefined;
           if (!row) continue;
           row.subscribers = add(row.subscribers, c.subscribers);
           row.dialogs = add(row.dialogs, c.dialogs);
@@ -338,7 +369,8 @@ export async function loadCheck(
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, crm] = await Promise.all([
           fetchAdInsights(config.metaToken, since, until, config.accountScope),
-          config.adsSheetId ? crmForRange(config.adsSheetId, since, until) : NO_CRM,
+          config.torro ? torroForDay(config.torro, since, "ad_name")
+            : config.adsSheetId ? crmForRange(config.adsSheetId, since, until) : NO_CRM,
         ]);
         return { meta, crm };
       }));

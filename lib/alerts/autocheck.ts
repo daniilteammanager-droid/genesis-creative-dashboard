@@ -63,6 +63,22 @@ export function checkMessage(r: CheckResult, at: Date = new Date()): string {
   return [escapeHtml(lines.join("\n\n")), r.warning ? `\n\n⚠️ ${escapeHtml(r.warning)}` : ""].join("");
 }
 
+// Адрес дашборда для кнопки. VERCEL_PROJECT_PRODUCTION_URL Vercel задаёт сам;
+// APP_URL — чтобы переопределить. Нет ни того ни другого (локально) — без
+// кнопки: Telegram не принимает ссылки на localhost.
+export function dashboardUrl(): string | null {
+  const raw = process.env.APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (!raw) return null;
+  return (raw.startsWith("http") ? raw : `https://${raw}`).replace(/\/$/, "");
+}
+
+export function openCheckButton(day: string, group: CheckGroup): Record<string, unknown> {
+  const base = dashboardUrl();
+  if (!base) return {};
+  const q = new URLSearchParams({ since: day, until: day, group });
+  return { reply_markup: { inline_keyboard: [[{ text: "Открыть в дашборде", url: `${base}/check?${q}` }]] } };
+}
+
 interface LinkRow {
   id: string; user_id: string; chat_id: number; thread_id: number | null;
   check_times: string[]; check_group: CheckGroup; check_sent_slot: string | null;
@@ -94,7 +110,7 @@ export async function runAutocheck(at: Date = new Date()): Promise<{ due: number
       const key = `${me.id}|${link.check_group}`;
       if (!checks.has(key)) checks.set(key, loadCheck(me, day, day, link.check_group));
       try {
-        sent += await sendToLinks([link], checkMessage(await checks.get(key)!));
+        sent += await sendToLinks([link], checkMessage(await checks.get(key)!), openCheckButton(day, link.check_group));
       } catch (e) {
         // Слот не отмечаем: следующий прогон в пределах получаса попробует снова.
         failed++;
