@@ -20,15 +20,15 @@ import { dolphinAdDays, dolphinCabinets } from "@/lib/dolphin/api";
 // Окно перечитывания: Meta правит цифры задним числом (замер 31.08.2026 — за
 // несколько часов расход закрытой недели изменился на $0.56).
 const WINDOW_DAYS = 14;
-// Догрузка истории кусками за прогон: Meta по две недели, Torro по неделе —
-// у Torro запрос на каждый день.
-const META_CHUNK_DAYS = 14;
-const TORRO_CHUNK_DAYS = 7;
+// Догрузка истории кусками за прогон — по неделе у всех источников: у Torro
+// запрос на каждый день, а расход и доход должны приходить одними и теми же
+// днями, иначе старые дни выглядят как «спенд есть, депов нет».
+const CHUNK_DAYS = 7;
 // Глубже Meta Insights не отдаёт: 37 месяцев.
 const MAX_HISTORY_DAYS = 37 * 30;
 const OWNER_STALE_MS = 2 * 24 * 3600_000;
-// Dolphin: шесть пустых кусков подряд (12 недель) — история кончилась.
-const DOLPHIN_EMPTY_CHUNKS = 6;
+// Dolphin: двенадцать пустых кусков подряд (12 недель) — история кончилась.
+const DOLPHIN_EMPTY_CHUNKS = 12;
 
 // Все кабинеты ключа — и выданные напрямую, и через Business Manager
 // (Decision 062): у Артёма только прямые, и часть кабинетов терялась. Чужое,
@@ -302,6 +302,10 @@ export async function ingestForUser(
   try {
     // ─── Расход: один источник (Decision 061) ──────────────────────────────
     let floor = shift(today, -MAX_HISTORY_DAYS);
+    // Расход не уходит в историю дальше Torro: пусть сначала доход догонит.
+    const spendAhead = Boolean(torro) && !progress?.torro_backfill_done &&
+      (progress?.spend_backfilled_from ?? since) < (progress?.torro_backfilled_from ?? since);
+    const spendBackfill = opts.backfill && !progress?.spend_backfill_done && !spendAhead;
     if (dolphin) {
       const seen = new Map((await dolphinCabinets(dolphin, today)).map((c) => [c.id, { name: c.name, created: null }]));
       const { allowed, conflicts } = await claimAccounts(userId, seen);
@@ -309,8 +313,8 @@ export async function ingestForUser(
       if (allowed.size) {
         const w = await writeDolphinSpend(userId, dolphin, since, until, allowed);
         Object.assign(result, w);
-        if (opts.backfill && !progress?.spend_backfill_done) {
-          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, META_CHUNK_DAYS);
+        if (spendBackfill) {
+          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, CHUNK_DAYS);
           let empty = progress?.spend_backfill_empty ?? 0;
           if (chunk) {
             const b = await writeDolphinSpend(userId, dolphin, chunk.since, chunk.until, allowed);
@@ -342,8 +346,8 @@ export async function ingestForUser(
         Object.assign(result, { adRows: w.adRows, campaignRows: w.campaignRows, failedAccounts: w.failedAccounts });
         result.adsetRows = await writeTargeting(kind, tokens, w.seenAdsets);
 
-        if (opts.backfill && !progress?.spend_backfill_done) {
-          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, META_CHUNK_DAYS);
+        if (spendBackfill) {
+          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, CHUNK_DAYS);
           if (chunk) {
             const b = await writeSpend(userId, tokens, chunk.since, chunk.until, allowed);
             result.adRows += b.adRows;
@@ -370,7 +374,7 @@ export async function ingestForUser(
         notes.push(`Torro без id в Meta — кампаний ${t.unmatchedCampaigns}, объявлений ${t.unmatchedAds}`);
       }
       if (opts.backfill && !progress?.torro_backfill_done) {
-        const chunk = nextChunk(progress?.torro_backfilled_from ?? since, floor, TORRO_CHUNK_DAYS);
+        const chunk = nextChunk(progress?.torro_backfilled_from ?? since, floor, CHUNK_DAYS);
         if (chunk) {
           const b = await ingestTorro(db(), userId, torro.token, torro.buyerId, chunk.since, chunk.until);
           result.crmRows += b.crmRows;
