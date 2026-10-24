@@ -11,6 +11,7 @@ import type { Profile } from "@/lib/auth/types";
 import { mskDay, mskStamp } from "@/lib/day";
 import { fetchDay, toCrm } from "@/lib/torro/mcp";
 import { uniqueIds } from "./torroIngest";
+import { parseName } from "@/lib/creatives/code";
 
 // Чек — то, что копируют и отправляют в телегу.
 //
@@ -20,12 +21,16 @@ import { uniqueIds } from "./torroIngest";
 //   другой период  — склад, там цифры уже собраны и точны.
 //
 // Гео берётся из настроек таргета адсета, а не из имени (Decision 045).
+//
+// Чек всегда делится по лицам (Decision 065): лицо — из имени кампании, внутри
+// лица — кампании, креативы или страны.
 
 export type CheckGroup = "campaign" | "creative" | "country";
 
 export interface CheckRow {
   key: string;
   label: string;
+  face: string;                 // лицо из имени кампании, NO_FACE / MANY_FACES — не узнали
   dailyBudget: number | null;   // только у живого чека по кампаниям
   spend: number;
   subscribers: number | null;
@@ -36,12 +41,22 @@ export interface CheckRow {
   romi: number | null;
 }
 
+// Итог лица — та же строка, плюс сколько в нём строк (для «…и ещё N» в телеге).
+export type FaceTotal = CheckRow & { count: number };
+
+export const NO_FACE = "Без лица";
+// Одно имя объявления в кампаниях разных лиц: доход Torro по имени не делится.
+export const MANY_FACES = "Несколько лиц";
+
+const faceOf = (campaignName: string | null | undefined) => parseName(campaignName ?? "").face ?? NO_FACE;
+
 export interface CheckResult {
   since: string;
   until: string;
   groupBy: CheckGroup;
   live: boolean;
-  rows: CheckRow[];
+  rows: CheckRow[];              // сгруппированы по лицам в порядке faces
+  faces: FaceTotal[];
   totalBudget: number | null;
   totals: { spend: number; revenue: number | null; romi: number | null };
   text: string;
@@ -90,20 +105,61 @@ const nf = (v: number, d = 2) =>
 // хотя на деле выгрузка за этот период просто не подошла.
 const nfOr = (v: number | null, d = 2) => (v === null ? "—" : nf(v, d));
 
-export function buildCheckText(rows: CheckRow[], totalBudget: number | null, now: Date): string {
+const numbers = (r: CheckRow) =>
+  [nf(r.spend), nfOr(r.costPdp), nfOr(r.costDia), nfOr(r.revenue), r.romi === null ? "—" : `${r.romi.toFixed(0)}%`].join(" / ");
+const budgetOf = (r: CheckRow) => (r.dailyBudget !== null ? ` - [${nf(r.dailyBudget, 0)}$]` : "");
+
+// Блок на лицо: строка лица с его итогом, под ней строки. rows может быть частью
+// строк лица (авточек шлёт верх) — тогда с unit остаток лица печатается одной строкой.
+export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget: number | null, now: Date, unit?: string): string {
   const head = `Отчет по трафу / ${mskStamp(now)}` + (totalBudget !== null ? ` / [${nf(totalBudget, 0)}$]` : "");
 
   const lines = [head, ""];
-  for (const r of rows) {
-    const budget = r.dailyBudget !== null ? ` - [${nf(r.dailyBudget, 0)}$]` : "";
-    lines.push(`${r.label}${budget}`);
-    lines.push(
-      [nf(r.spend), nfOr(r.costPdp), nfOr(r.costDia), nfOr(r.revenue),
-       r.romi === null ? "—" : `${r.romi.toFixed(0)}%`].join(" / ")
-    );
-    lines.push("");
+  for (const f of faces) {
+    const shown = rows.filter((r) => r.face === f.face);
+    if (!shown.length && !unit) continue;
+    lines.push(`👤 ${f.label}${budgetOf(f)}`, numbers(f), "");
+    for (const r of shown) lines.push(`${r.label}${budgetOf(r)}`, numbers(r), "");
+    const hidden = f.count - shown.length;
+    if (unit && hidden > 0) {
+      const spend = f.spend - shown.reduce((x, r) => x + r.spend, 0);
+      lines.push(`…и ещё ${hidden} ${unit} на ${nf(spend)}$`, "");
+    }
   }
   return lines.join("\n").trimEnd();
+}
+
+// Итоги по лицам из строк чека. Производные — из сумм (Decision 024). Порядок —
+// по расходу, неузнанные лица в конце.
+export function faceTotals(rows: CheckRow[]): FaceTotal[] {
+  const by = new Map<string, FaceTotal>();
+  for (const r of rows) {
+    const f = by.get(r.face) ?? {
+      key: r.face, label: r.face, face: r.face, dailyBudget: null, spend: 0,
+      subscribers: null, dialogs: null, revenue: null, costPdp: null, costDia: null, romi: null, count: 0,
+    };
+    f.spend += r.spend;
+    f.dailyBudget = add(f.dailyBudget, r.dailyBudget);
+    f.subscribers = add(f.subscribers, r.subscribers);
+    f.dialogs = add(f.dialogs, r.dialogs);
+    f.revenue = add(f.revenue, r.revenue);
+    f.count++;
+    by.set(r.face, f);
+  }
+  const unknown = (f: FaceTotal) => (f.face === NO_FACE || f.face === MANY_FACES ? 1 : 0);
+  return [...by.values()].map((f) => derive(f) as FaceTotal)
+    .sort((a, b) => unknown(a) - unknown(b) || b.spend - a.spend);
+}
+
+// Одно значение на имя объявления; у имени их несколько — many. Так делятся и
+// страны, и лица: доход Torro приходит по имени и между значениями не делится.
+function onePerName(pairs: { name: string; value: string }[], many: string): Map<string, string> {
+  const seen = new Map<string, Set<string>>();
+  for (const { name, value } of pairs) {
+    if (!name) continue;
+    seen.set(name, (seen.get(name) ?? new Set<string>()).add(value));
+  }
+  return new Map([...seen].map(([name, set]) => [name, set.size === 1 ? [...set][0] : many]));
 }
 
 // ─── Выгрузки Torro за период ────────────────────────────────────────────────
@@ -237,7 +293,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
+    faces: [], totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -249,8 +305,8 @@ export async function loadCheck(
   }
 
   const rows = new Map<string, CheckRow>();
-  const blank = (key: string, label: string): CheckRow => ({
-    key, label, dailyBudget: null, spend: 0,
+  const blank = (key: string, label: string, face: string): CheckRow => ({
+    key, label, face, dailyBudget: null, spend: 0,
     subscribers: null, dialogs: null, revenue: null,
     costPdp: null, costDia: null, romi: null,
   });
@@ -293,17 +349,20 @@ export async function loadCheck(
   // стран». Точно так же, как уже сделано для адсета, таргетящего несколько
   // стран: страновой разрез не имеет права угадывать.
   function countryByName(pairs: { name: string; adsetId: string }[]): Map<string, string> {
-    const seen = new Map<string, Set<string>>();
-    for (const { name, adsetId } of pairs) {
-      if (!name) continue;
-      const set = seen.get(name) ?? new Set<string>();
-      set.add(countryKey(adsetId));
-      seen.set(name, set);
-    }
-    return new Map([...seen].map(([name, set]) =>
-      [name, set.size === 1 ? [...set][0] : "несколько стран"]
-    ));
+    return onePerName(pairs.map((p) => ({ name: p.name, value: countryKey(p.adsetId) })), "несколько стран");
   }
+
+  // Лицо имени объявления — по тем же причинам, что и страна: доход Torro по имени.
+  function faceByName(pairs: { name: string; campaignName: string | null | undefined }[]): Map<string, string> {
+    return onePerName(pairs.map((p) => ({ name: p.name, value: faceOf(p.campaignName) })), MANY_FACES);
+  }
+  // Строка разреза по объявлениям: ключ — лицо плюс креатив или страна.
+  const adRow = (face: string, label: string) => {
+    const key = `${face}|${label}`;
+    const row = rows.get(key) ?? blank(key, label, face);
+    rows.set(key, row);
+    return row;
+  };
 
   // Кабинеты, которые ещё никому не отдали, баер не видит. Пустой список — это
   // не «расхода нет», а «кабинеты не распределены», и говорить об этом надо вслух.
@@ -357,7 +416,7 @@ export async function loadCheck(
         failedAccounts += meta.failedAccounts;
         const mine = meta.items.filter((c) => take(config, c.accountId));
         for (const c of mine) {
-          const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId);
+          const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId, faceOf(c.campaignName));
           row.spend += c.spend;
           row.dailyBudget = campaignMeta.dailyBudgets.get(c.campaignId) ?? null;
           rows.set(c.campaignId, row);
@@ -397,6 +456,7 @@ export async function loadCheck(
         // Расход и доход раскладываются по одному ключу — иначе строка страны
         // получила бы расход одного множества объявлений и доход другого.
         const country = countryByName(mine.map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId })));
+        const face = faceByName(mine.map((a) => ({ name: a.adName.trim(), campaignName: a.campaignName })));
 
         for (const a of mine) {
           const name = a.adName.trim();
@@ -404,17 +464,13 @@ export async function loadCheck(
           // такому взяться неоткуда, а в разрезе по странам оно всё равно
           // относится к своему адсету.
           if (!name && groupBy === "creative") continue;
-          const key = groupBy === "creative"
-            ? name
-            : country.get(name) ?? countryKey(a.adsetId);
-          const row = rows.get(key) ?? blank(key, key);
-          row.spend += a.spend;
-          rows.set(key, row);
+          const label = groupBy === "creative" ? name : country.get(name) ?? countryKey(a.adsetId);
+          adRow(face.get(name) ?? faceOf(a.campaignName), label).spend += a.spend;
         }
 
         for (const [name, c] of crm.rows) {
-          const key = groupBy === "creative" ? name : country.get(name);
-          const row = key ? rows.get(key) : undefined;
+          const label = groupBy === "creative" ? name : country.get(name);
+          const row = label ? rows.get(`${face.get(name)}|${label}`) : undefined;
           if (!row) continue;
           row.subscribers = add(row.subscribers, c.subscribers);
           row.dialogs = add(row.dialogs, c.dialogs);
@@ -459,7 +515,7 @@ export async function loadCheck(
         const dayKey = `${d.date}|${d.campaign_id}`;
         if (seenDay.has(dayKey)) continue;
         seenDay.add(dayKey);
-        const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id);
+        const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id, faceOf(d.campaign_name));
         row.spend += num(d.spend);
         rows.set(d.campaign_id, row);
       }
@@ -472,7 +528,7 @@ export async function loadCheck(
       );
       for (const c of crm) {
         if (!inside(c.period_start, c.period_end)) { partial++; continue; }
-        const row = rows.get(c.campaign_id) ?? blank(c.campaign_id, c.campaign_id);
+        const row = rows.get(c.campaign_id) ?? blank(c.campaign_id, c.campaign_id, NO_FACE);
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
         row.revenue = add(row.revenue, add(
@@ -482,8 +538,8 @@ export async function loadCheck(
         rows.set(c.campaign_id, row);
       }
     } else {
-      const daysRaw = await selectAll<{ ad_name: string; ad_id: string; adset_id: string | null; account_id: string | null; date: string; spend: number | string }>((from, to) => {
-        const q = db.from("wh_ad_days").select("ad_name, ad_id, adset_id, account_id, date, spend")
+      const daysRaw = await selectAll<{ ad_name: string; ad_id: string; adset_id: string | null; campaign_name: string | null; account_id: string | null; date: string; spend: number | string }>((from, to) => {
+        const q = db.from("wh_ad_days").select("ad_name, ad_id, adset_id, campaign_name, account_id, date, spend")
           .gte("date", since).lte("date", until);
         return (accountIds ? q.in("account_id", accountIds) : q)
           .order("user_id").order("date").order("ad_id")
@@ -499,16 +555,13 @@ export async function loadCheck(
       });
 
       const country = countryByName(days.map((d) => ({ name: (d.ad_name ?? "").trim(), adsetId: d.adset_id ?? "" })));
+      const face = faceByName(days.map((d) => ({ name: (d.ad_name ?? "").trim(), campaignName: d.campaign_name })));
 
       for (const d of days) {
         const name = (d.ad_name ?? "").trim();
         if (!name && groupBy === "creative") continue;
-        const key = groupBy === "creative"
-          ? name
-          : country.get(name) ?? countryKey(d.adset_id ?? "");
-        const row = rows.get(key) ?? blank(key, key);
-        row.spend += num(d.spend);
-        rows.set(key, row);
+        const label = groupBy === "creative" ? name : country.get(name) ?? countryKey(d.adset_id ?? "");
+        adRow(face.get(name) ?? faceOf(d.campaign_name), label).spend += num(d.spend);
       }
 
       const crm = await selectAll<{ ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
@@ -524,16 +577,16 @@ export async function loadCheck(
         // По креативам строка выгрузки создаёт свою строку даже без расхода:
         // объявление могли выключить, а депозиты по нему ещё доходят.
         // По странам так нельзя — страну выключенного объявления взять неоткуда.
-        const key = groupBy === "creative" ? name : country.get(name);
-        if (!key) continue;
-        const row = rows.get(key) ?? blank(key, key);
+        // Лица у такого имени тоже взять неоткуда, кроме расхода за период.
+        const label = groupBy === "creative" ? name : country.get(name);
+        if (!label) continue;
+        const row = adRow(face.get(name) ?? NO_FACE, label);
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
         row.revenue = add(row.revenue, add(
           c.dep_sum === null ? null : num(c.dep_sum),
           c.redep_sum === null ? null : num(c.redep_sum)
         ));
-        rows.set(key, row);
       }
     }
 
@@ -544,7 +597,11 @@ export async function loadCheck(
     }
   }
 
-  const list = [...rows.values()].map(derive).sort((a, b) => b.spend - a.spend);
+  const bySpend = [...rows.values()].map(derive).sort((a, b) => b.spend - a.spend);
+  const faces = faceTotals(bySpend);
+  // Строки — блоками по лицам, в порядке лиц; внутри лица — по расходу.
+  const order = new Map(faces.map((f, i) => [f.face, i]));
+  const list = [...bySpend].sort((a, b) => order.get(a.face)! - order.get(b.face)!);
   const spend = list.reduce((s, r) => s + r.spend, 0);
   // Складываем только известное. Если дохода не знает ни одна строка — итог тоже
   // неизвестен: иначе карточка показывала бы «Доход $0.00» и «ROMI −100%» там,
@@ -556,13 +613,14 @@ export async function loadCheck(
     ...base,
     sources: sourceLabels,
     rows: list,
+    faces,
     totalBudget,
     totals: {
       spend,
       revenue,
       romi: revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null,
     },
-    text: buildCheckText(list, totalBudget, new Date()),
+    text: buildCheckText(list, faces, totalBudget, new Date()),
     warning,
   };
 }

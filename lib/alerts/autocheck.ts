@@ -49,14 +49,10 @@ const UNIT: Record<CheckGroup, string> = { campaign: "кампаний", creativ
 export function checkMessage(r: CheckResult, at: Date = new Date()): string {
   if (r.rows.length === 0) return escapeHtml(`${r.text}\n\nСегодня расхода пока нет.`);
 
-  // Строки уже отсортированы по расходу (loadCheck).
-  const top = r.rows.slice(0, TOP_ROWS);
-  const rest = r.rows.slice(TOP_ROWS);
-  const lines = [buildCheckText(top, r.totalBudget, at)];
-  if (rest.length) {
-    const spend = rest.reduce((s, x) => s + x.spend, 0);
-    lines.push(`…и ещё ${rest.length} ${UNIT[r.groupBy]} на ${money(spend)}$`);
-  }
+  // Верх по расходу среди всех лиц, но каждое лицо остаётся в чеке со своим
+  // итогом: лицо без строк в верхе печатается одной строкой «…и ещё N».
+  const top = new Set([...r.rows].sort((a, b) => b.spend - a.spend).slice(0, TOP_ROWS));
+  const lines = [buildCheckText(r.rows.filter((x) => top.has(x)), r.faces, r.totalBudget, at, UNIT[r.groupBy])];
   const t = r.totals;
   lines.push(`Итого: ${money(t.spend)}$ / доход ${t.revenue === null ? "—" : `${money(t.revenue)}$`} / ROMI ${t.romi === null ? "—" : `${t.romi.toFixed(0)}%`}`);
 

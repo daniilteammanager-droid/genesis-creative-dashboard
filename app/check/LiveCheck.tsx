@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { CheckResult, CheckGroup } from "@/lib/warehouse/check";
+import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 
 const chip = (on: boolean) =>
@@ -200,21 +200,13 @@ export default function LiveCheck() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-violet-900/15">
-                  {data.rows.map((r) => (
-                    <tr key={r.key} className="hover:bg-violet-900/10 transition">
-                      <td className="px-3 py-2.5 text-zinc-200 max-w-[320px] truncate" title={r.label}>{r.label}</td>
-                      <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{r.dailyBudget === null ? "—" : `$${nf(r.dailyBudget, 0)}`}</td>
-                      <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">${nf(r.spend)}</td>
-                      <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{r.costPdp === null ? "—" : `$${nf(r.costPdp)}`}</td>
-                      <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{r.costDia === null ? "—" : `$${nf(r.costDia)}`}</td>
-                      <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">{r.revenue === null ? "—" : `$${nf(r.revenue)}`}</td>
-                      <td className={`px-3 py-2.5 whitespace-nowrap ${(r.romi ?? 0) > 0 ? "text-green-400" : "text-zinc-400"}`}>
-                        {r.romi === null ? "—" : `${r.romi.toFixed(0)}%`}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                {/* Блок на лицо: строка лица с итогом, под ней его строки (Decision 065) */}
+                {data.faces.map((f) => (
+                  <tbody key={f.face} className="divide-y divide-violet-900/15 border-t border-violet-900/30">
+                    <CheckLine r={f} face />
+                    {data.rows.filter((r) => r.face === f.face).map((r) => <CheckLine key={r.key} r={r} />)}
+                  </tbody>
+                ))}
               </table>
             </div>
           )}
@@ -228,5 +220,23 @@ export default function LiveCheck() {
         </div>
       )}
     </div>
+  );
+}
+
+function CheckLine({ r, face = false }: { r: CheckRow; face?: boolean }) {
+  const strong = face ? "text-white font-semibold" : "text-zinc-200";
+  const soft = face ? "text-zinc-200 font-semibold" : "text-zinc-400";
+  return (
+    <tr className={face ? "bg-violet-900/15" : "hover:bg-violet-900/10 transition"}>
+      <td className={`px-3 py-2.5 max-w-[320px] truncate ${face ? strong : `${strong} pl-6`}`} title={r.label}>{face ? `👤 ${r.label}` : r.label}</td>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.dailyBudget === null ? "—" : `$${nf(r.dailyBudget, 0)}`}</td>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${strong}`}>${nf(r.spend)}</td>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.costPdp === null ? "—" : `$${nf(r.costPdp)}`}</td>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.costDia === null ? "—" : `$${nf(r.costDia)}`}</td>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${strong}`}>{r.revenue === null ? "—" : `$${nf(r.revenue)}`}</td>
+      <td className={`px-3 py-2.5 whitespace-nowrap ${(r.romi ?? 0) > 0 ? "text-green-400" : soft}`}>
+        {r.romi === null ? "—" : `${r.romi.toFixed(0)}%`}
+      </td>
+    </tr>
   );
 }
