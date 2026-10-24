@@ -3,6 +3,7 @@ import { getProfile } from "@/lib/auth/server";
 import { getConnectionView } from "@/lib/connections/store";
 import ConnectionsForm from "./ConnectionsForm";
 import GrSheets, { type GrSheet } from "./GrSheets";
+import TelegramLinks from "./TelegramLinks";
 import { createClient } from "@/lib/auth/server";
 
 export default async function IntegrationsPage() {
@@ -44,6 +45,7 @@ export default async function IntegrationsPage() {
         grSheetId={profile.gr_spreadsheet_id ?? null}
         isMain={isMain}
       />
+      <TelegramLinks />
       {isMain && <GrSheets sheets={sheets} serviceAccount={serviceAccount} />}
     </div>
   );

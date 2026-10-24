@@ -10,7 +10,9 @@ import { NextResponse, type NextRequest } from "next/server";
 // /api/ingest сюда входит не потому, что он публичный, а потому что его дёргает
 // крон с VPS, у которого нет и не может быть сессии. Он закрыт общим секретом в
 // заголовке — проверка внутри самого роута.
-const PUBLIC_PATHS = ["/login", "/api/auth/register", "/api/ingest"];
+// /api/telegram/webhook зовёт Telegram, вход в нём закрыт своим секретом.
+// Именно webhook, а не весь /api/telegram: привязки рядом — под сессией.
+const PUBLIC_PATHS = ["/login", "/api/auth/register", "/api/ingest", "/api/telegram/webhook"];
 
 // Статус читается на каждой навигации, и это второй поход в Supabase поверх
 // getUser(). Пара сотен миллисекунд на каждый клик — заметно руками.
