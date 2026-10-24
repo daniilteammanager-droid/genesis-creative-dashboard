@@ -1,6 +1,7 @@
 import { fetchEdgePaged } from "@/lib/reports-live/metaApi";
 import { warehouse } from "@/lib/warehouse/read";
-import { notify, escapeHtml } from "@/lib/telegram/links";
+import { escapeHtml } from "@/lib/telegram/links";
+import { deliver } from "./deliver";
 
 // Алерты о состоянии рекламных кабинетов: заблокирован, пропал, grace period,
 // unsettled — и обратно. Идея и пороги взяты из Genesis Manager Артёма.
@@ -177,6 +178,7 @@ export interface CabinetCheckResult {
   sent: number;
   failedTokens: number;
   firstRun: boolean;
+  tokenFor: Map<string, string>;   // живой кабинет → ключ, который его видит
 }
 
 export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheckResult> {
@@ -188,6 +190,8 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
   ];
 
   const seen = new Map<string, CabinetState>();
+  // Каким ключом читать живой кабинет дальше — антиотклону.
+  const tokenFor = new Map<string, string>();
   let failedTokens = 0;
   // Последовательно: лимит приложения общий на все ключи (Decision 042).
   for (const t of tokens) {
@@ -198,6 +202,7 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
         // Один кабинет через два ключа: живой статус важнее, чем то, что видит
         // второй ключ с урезанными правами.
         if (!was || s.status === "ACTIVE") seen.set(s.accountId, s);
+        if (s.status === "ACTIVE" && !tokenFor.has(s.accountId)) tokenFor.set(s.accountId, t.token);
       }
     } catch (e) {
       failedTokens++;
@@ -235,36 +240,10 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
     if (e) throw new Error(`wh_cabinet_states: ${e.message}`);
   }
 
-  const sent = alerts.length ? await deliver(alerts) : 0;
-  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0 };
-}
-
-// Кому: владельцу кабинета (Decision 052) плюс всем владельцам дашборда и
-// тимлидам — они видят всю команду. Кабинет без владельца — только им.
-async function deliver(alerts: CabinetAlert[]): Promise<number> {
-  const db = warehouse();
-  const ids = alerts.map((a) => a.accountId);
-  const [{ data: owners }, { data: leads }] = await Promise.all([
-    db.from("wh_account_owners").select("account_id, owner_user_id").in("account_id", ids),
-    db.from("profiles").select("id").in("role", ["main", "teamlead"]).eq("status", "active"),
-  ]);
-  const ownerOf = new Map((owners ?? []).map((o) => [o.account_id as string, o.owner_user_id as string | null]));
-  const team = (leads ?? []).map((l) => l.id as string);
-
-  let sent = 0;
-  for (const a of alerts) {
-    const to = new Set(team);
-    const owner = ownerOf.get(a.accountId);
-    if (owner) to.add(owner);
-    const extra = a.payUrl ? { reply_markup: { inline_keyboard: [[{ text: "💳 Открыть оплату в Meta", url: a.payUrl }]] } } : {};
-    for (const userId of to) {
-      try {
-        sent += await notify(userId, "cabinet_status", a.text, extra);
-      } catch (e) {
-        // Один недоставленный алерт не должен останавливать остальные.
-        console.warn("cabinets: не доставлено:", e instanceof Error ? e.message : e);
-      }
-    }
-  }
-  return sent;
+  const sent = await deliver(alerts.map((a) => ({
+    accountId: a.accountId,
+    text: a.text,
+    extra: a.payUrl ? { reply_markup: { inline_keyboard: [[{ text: "💳 Открыть оплату в Meta", url: a.payUrl }]] } } : undefined,
+  })), "cabinet_status");
+  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0, tokenFor };
 }

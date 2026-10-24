@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ingestForUser, usersToIngest, type IngestKind } from "@/lib/warehouse/ingest";
 import { getMetaToken } from "@/lib/connections/store";
 import { checkCabinets } from "@/lib/alerts/cabinets";
+import { checkRejectedAds } from "@/lib/alerts/rejected";
 
 // Точка входа для крона. Дёргает её VPS, на которой уже крутится воркер: у
 // бесплатного тарифа Vercel крон запускается раз в сутки, а нам нужен час и чаще.
@@ -50,16 +51,25 @@ export async function POST(req: Request) {
     }
     // Состояние кабинетов — на частом прогоне, отдельный крон для этого не нужен.
     // Его сбой не должен портить ответ о складе: склад уже записан.
+    // Антиотклон — следом, по живым кабинетам из той же проверки.
     let cabinets: unknown = null;
+    let rejected: unknown = null;
     if (kind === "today") {
       try {
         const tokens = (await Promise.all(users.map((u) => getMetaToken(u)))).filter((t): t is string => Boolean(t));
-        cabinets = await checkCabinets(tokens);
+        // tokenFor — ключи Meta, в ответ роута им нельзя.
+        const { tokenFor, ...summary } = await checkCabinets(tokens);
+        cabinets = summary;
+        try {
+          rejected = await checkRejectedAds(tokenFor);
+        } catch (e) {
+          rejected = { error: e instanceof Error ? e.message : String(e) };
+        }
       } catch (e) {
         cabinets = { error: e instanceof Error ? e.message : String(e) };
       }
     }
-    return NextResponse.json({ kind, users: users.length, results, cabinets });
+    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
   }
