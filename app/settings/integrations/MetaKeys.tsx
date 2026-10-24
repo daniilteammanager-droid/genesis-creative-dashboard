@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { MetaKeyView } from "@/lib/connections/metaKeys";
 
 // Источник расхода — ровно один (Decision 061): Meta (ключей сколько угодно,
-// все работают одновременно) или Dolphin Cloud (Decision 063). FB Tool — следом.
+// все работают одновременно), Dolphin Cloud (Decision 063) или FB Tool (Decision 071).
 // Это источник Facebook; Telegram Ads — своей карточкой рядом (Decision 069).
 
 const field =
@@ -13,14 +13,15 @@ const field =
 const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
 const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
 
-interface State { keys: MetaKeyView[]; source: string | null; backfilledFrom: string | null; backfillDone: boolean; dolphinHint: string | null }
+interface State { keys: MetaKeyView[]; source: string | null; backfilledFrom: string | null; backfillDone: boolean; dolphinHint: string | null; fbtoolHint: string | null }
+type FbtoolAccount = { id: string; name: string; ok: boolean; problem: string | null };
 
 const SOURCES = [
   { id: "meta", label: "Meta API", ready: true },
-  { id: "fbtool", label: "FB Tool", ready: false },
+  { id: "fbtool", label: "FB Tool", ready: true },
   { id: "dolphin", label: "Dolphin Cloud", ready: true },
 ];
-type Source = "meta" | "dolphin";
+type Source = "meta" | "dolphin" | "fbtool";
 
 const date = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 
@@ -33,6 +34,8 @@ export default function MetaKeys() {
   // Какой источник смотрим, пока ни один не подключён. Подключён — только он.
   const [pick, setPick] = useState<Source>("meta");
   const [dolphinToken, setDolphinToken] = useState("");
+  const [fbtoolKey, setFbtoolKey] = useState("");
+  const [fbAccounts, setFbAccounts] = useState<FbtoolAccount[] | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -92,6 +95,37 @@ export default function MetaKeys() {
     reload();
   }
 
+  // Аккаунты FB Tool — отдельным запросом: FB Tool отвечает не мгновенно.
+  useEffect(() => {
+    if (state?.source !== "fbtool") return;
+    fetch("/api/fbtool").then((r) => r.json()).then((d) => setFbAccounts(d.accounts ?? null)).catch(() => undefined);
+  }, [state?.source]);
+
+  async function connectFbtool(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    const res = await fetch("/api/fbtool", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: fbtoolKey }),
+    }).catch(() => null);
+    const d = await res?.json().catch(() => null);
+    setBusy(false);
+    if (!res?.ok) { setMsg({ ok: false, text: d?.error ?? "Не получилось — попробуй ещё раз" }); return; }
+    setFbtoolKey("");
+    setFbAccounts(d.accounts ?? null);
+    const live = (d.accounts ?? []).filter((a: FbtoolAccount) => a.ok).length;
+    setMsg({ ok: true, text: `FB Tool подключён: живых аккаунтов ${live} из ${(d.accounts ?? []).length}. Кабинеты и сегодняшний расход подтянутся в течение пары минут` });
+    reload();
+  }
+
+  async function disconnectFbtool() {
+    await fetch("/api/fbtool", { method: "DELETE" });
+    setConfirm(null);
+    setFbAccounts(null);
+    setMsg({ ok: true, text: "FB Tool отключён. История в дашборде осталась" });
+    reload();
+  }
+
   async function disconnectDolphin() {
     await fetch("/api/dolphin", { method: "DELETE" });
     setConfirm(null);
@@ -119,6 +153,52 @@ export default function MetaKeys() {
           </button>
         ))}
       </div>
+
+      {shown === "fbtool" && (
+        <div className="mb-2">
+          {state?.fbtoolHint !== null && state?.fbtoolHint !== undefined ? (
+            <>
+              <div className="flex items-center gap-3 flex-wrap mb-3">
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">
+                  подключено {state.fbtoolHint}
+                </span>
+                <button type="button" disabled={busy}
+                        onClick={() => confirm === "fbtool" ? disconnectFbtool() : setConfirm("fbtool")}
+                        className={`${pill} border-red-800/40 text-red-300 hover:bg-red-900/20`}>
+                  {confirm === "fbtool" ? "точно отключить?" : "отключить"}
+                </button>
+              </div>
+              {fbAccounts && (
+                <div className="divide-y divide-violet-900/20 border border-violet-900/25 rounded-xl mb-3">
+                  {fbAccounts.map((a) => (
+                    <div key={a.id} className="px-4 py-2.5 flex items-start gap-3">
+                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${a.ok ? "bg-green-500" : "bg-red-500"}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm text-zinc-200 truncate">{a.name}</p>
+                        {!a.ok && <p className="text-[11px] text-red-300/90 mt-0.5">Разлогинен в FB Tool — данных по нему нет. {a.problem}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <form onSubmit={connectFbtool} className="space-y-2.5">
+              <input type="password" placeholder="Ключ API FB Tool" value={fbtoolKey} autoComplete="off"
+                     onChange={(e) => setFbtoolKey(e.target.value)} className={field} />
+              <button type="submit" disabled={busy || !fbtoolKey.trim()}
+                      className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                {busy ? "Проверяю…" : "Подключить FB Tool"}
+              </button>
+            </form>
+          )}
+          <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+            Ключ — в FB Tool, раздел API. Статистика идёт из FB Tool вживую, через твои аккаунты в нём: разлогиненный
+            аккаунт данных не отдаёт, пока его не перелогинишь в FB Tool. В Facebook напрямую дашборд не ходит.
+            Страна — из нейминга адсета или РК.
+          </p>
+        </div>
+      )}
 
       {shown === "dolphin" && (
         <div className="mb-2">

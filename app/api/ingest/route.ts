@@ -78,13 +78,14 @@ export async function POST(req: Request) {
     if (kind === "today") {
       try {
         const tokens = (await Promise.all(users.map((u) => metaTokensOf(u)))).flat().map((k) => k.token);
-        const dolphin = (await Promise.all(users.map((u) => getConnection(u).catch(() => null))))
-          .flatMap((c) => (c?.spendSource === "dolphin" && c.dolphinToken ? [c.dolphinToken] : []));
-        // tokenFor и dolphinFor — ключи, в ответ роута им нельзя.
-        const { tokenFor, dolphinFor, ...summary } = await checkCabinets(tokens, dolphin);
+        const conns = await Promise.all(users.map((u) => getConnection(u).catch(() => null)));
+        const dolphin = conns.flatMap((c) => (c?.spendSource === "dolphin" && c.dolphinToken ? [c.dolphinToken] : []));
+        const fbtool = conns.flatMap((c, i) => (c?.spendSource === "fbtool" && c.fbtoolKey ? [{ key: c.fbtoolKey, userId: users[i] }] : []));
+        // tokenFor, dolphinFor, fbtoolFor — ключи, в ответ роута им нельзя.
+        const { tokenFor, dolphinFor, fbtoolFor, ...summary } = await checkCabinets(tokens, dolphin, fbtool);
         cabinets = summary;
         try {
-          rejected = await checkRejectedAds(tokenFor, dolphinFor);
+          rejected = await checkRejectedAds(tokenFor, dolphinFor, fbtoolFor);
         } catch (e) {
           rejected = { error: e instanceof Error ? e.message : String(e) };
         }

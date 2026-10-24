@@ -4,6 +4,7 @@ import type { ReportConfig } from "@/lib/reports-live/config";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { dolphinAdDays, type DolphinAdDay } from "@/lib/dolphin/api";
 import { tgadsAdDays } from "@/lib/tgads/api";
+import { fbtoolAccounts, fbtoolAdDays } from "@/lib/fbtool/api";
 import { tgadsKeysOf } from "@/lib/connections/tgadsKeys";
 import type { MetaCampaignRow, MetaAdRow } from "@/lib/reports-live/types";
 import type { CampaignMeta } from "@/lib/reports-live/metaApi";
@@ -245,11 +246,15 @@ async function torroForDay(
 // TG Ads (Decision 068) — тем же путём: готовые строки по дням от источника.
 const dolphinDay = new Map<string, Promise<DolphinAdDay[]>>();
 function dolphinRows(config: LiveSource, day: string) {
-  const key = `${config.dolphin ?? `tg|${config.userId}`}|${day}`;
+  const key = `${config.dolphin ?? (config.fbtool ? `fbt|${config.userId}` : `tg|${config.userId}`)}|${day}`;
   if (!dolphinDay.has(key)) {
+    const fbtool = config.fbtool;
     const rows = config.tgads
       ? Promise.all(config.tgads.map((k) => tgadsAdDays(k, day, day))).then((x) => x.flat())
-      : dolphinAdDays(config.dolphin!, day, day);
+      : fbtool
+        // FB Tool (Decision 071): по запросу на живой аккаунт, разлогиненные пропускаем.
+        ? fbtoolAccounts(fbtool).then((acc) => Promise.all(acc.filter((a) => a.ok).map((a) => fbtoolAdDays(fbtool, a.id, day, day)))).then((x) => x.flat())
+        : dolphinAdDays(config.dolphin!, day, day);
     dolphinDay.set(key, rows.finally(() => setTimeout(() => dolphinDay.delete(key), 60_000)));
   }
   return dolphinDay.get(key)!;
@@ -290,12 +295,14 @@ type LiveSource = ReportConfig & {
   userId: string; owned: Set<string>; torro?: { token: string; buyerId: number };
   // Источник — Dolphin (Decision 063): metaToken тогда пустой, ходим в Dolphin.
   dolphin?: string;
+  // Источник — FB Tool (Decision 071): ключ API FB Tool, metaToken пустой.
+  fbtool?: string;
   // Источник — Telegram Ads (Decision 068): кабинеты баера, metaToken пустой.
   tgads?: Awaited<ReturnType<typeof tgadsKeysOf>>;
 };
 
 // Источник со своими строками по дням, а не Meta insights.
-const own = (c: LiveSource) => Boolean(c.dolphin || c.tgads);
+const own = (c: LiveSource) => Boolean(c.dolphin || c.tgads || c.fbtool);
 
 async function liveSources(scope: string[]): Promise<LiveSource[]> {
   const db = warehouse();
@@ -316,6 +323,13 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
       accountScope: {}, campaignsSheetId: "", adsSheetId: "", owned: ownedSet, torro,
     });
     // Источник Facebook у человека один: Dolphin — вместо ключей Meta, а не вместе с ними.
+    if (c?.spendSource === "fbtool" && c.fbtoolKey) {
+      list.push({
+        cacheKey: id, userId: id, metaToken: "", fbtool: c.fbtoolKey,
+        accountScope: {}, campaignsSheetId: "", adsSheetId: "", owned: ownedSet, torro,
+      });
+      continue;
+    }
     if (c?.spendSource === "dolphin" && c.dolphinToken) {
       list.push({
         cacheKey: id, userId: id, metaToken: "", dolphin: c.dolphinToken,
@@ -332,7 +346,7 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
     }));
   }
   // Один и тот же ключ дважды сложил бы расход сам с собой.
-  return [...new Map(list.map((c) => [c.dolphin ?? (c.tgads ? `tg|${c.userId}` : c.metaToken), c])).values()];
+  return [...new Map(list.map((c) => [c.dolphin ?? (c.fbtool ? `fbt|${c.userId}` : c.tgads ? `tg|${c.userId}` : c.metaToken), c])).values()];
 }
 
 export async function loadCheck(
@@ -467,7 +481,7 @@ export async function loadCheck(
     const sources = await liveSources(scope);
     sourceLabels = [...new Set(sources.map((c) => buyerLabel.get(c.userId) ?? c.userId))];
     if (sources.length === 0) {
-      return { ...base, text: "Ни у кого из выбранных нет источника расхода — подключи Meta, Dolphin или Telegram Ads в Настройках → Интеграции." };
+      return { ...base, text: "Ни у кого из выбранных нет источника расхода — подключи Meta, Dolphin, FB Tool или Telegram Ads в Настройках → Интеграции." };
     }
     // Кабинет — через ключ своего владельца и один раз на весь чек.
     const takenBy = new Map<string, LiveSource>();
@@ -488,7 +502,7 @@ export async function loadCheck(
     // «страна не определена» (замер 31.08.2026).
     if (groupBy === "country") {
       // Dolphin таргет не отдаёт — его страны приходят из нейминга вместе с расходом ниже.
-      const targeting = await Promise.all(sources.filter((c) => !c.dolphin && !c.tgads).map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
+      const targeting = await Promise.all(sources.filter((c) => !own(c)).map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
       for (const t of targeting) {
         failedAccounts += t.failedAccounts;
         for (const a of t.items) geoByAdset.set(a.adsetId, a.countries);

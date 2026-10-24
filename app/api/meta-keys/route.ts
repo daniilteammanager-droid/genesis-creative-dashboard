@@ -16,7 +16,7 @@ const fail = (e: unknown, status = 400) =>
 
 async function view(userId: string) {
   const { data } = await warehouse().from("buyer_connections")
-    .select("spend_source, spend_backfilled_from, spend_backfill_done, dolphin_token_hint").eq("user_id", userId).maybeSingle();
+    .select("spend_source, spend_backfilled_from, spend_backfill_done, dolphin_token_hint, fbtool_key_hint").eq("user_id", userId).maybeSingle();
   return {
     keys: await listMetaKeys(userId),
     source: data?.spend_source ?? null,
@@ -24,6 +24,7 @@ async function view(userId: string) {
     backfillDone: data?.spend_backfill_done ?? false,
     // Ключ Dolphin не отдаётся — только хвост, чтобы человек узнал свой.
     dolphinHint: data?.spend_source === "dolphin" ? data.dolphin_token_hint ?? "" : null,
+    fbtoolHint: data?.spend_source === "fbtool" ? data.fbtool_key_hint ?? "" : null,
   };
 }
 

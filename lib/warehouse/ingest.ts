@@ -8,6 +8,7 @@ import { ingestTorro } from "./torroIngest";
 import { dolphinAdDays, dolphinCabinets, type DolphinAdDay } from "@/lib/dolphin/api";
 import { oldestAdDay, tgadsAdDays } from "@/lib/tgads/api";
 import { markTgadsKey, tgadsKeysOf } from "@/lib/connections/tgadsKeys";
+import { fbtoolAccounts, fbtoolAdDays, fbtoolCabinets, type FbtoolAccount } from "@/lib/fbtool/api";
 
 // Сбор склада для одного человека (Decision 061).
 //
@@ -265,6 +266,38 @@ async function writeDays(userId: string, source: string, rows: DolphinAdDay[]) {
   return { adRows: ads.size, campaignRows: campaigns.size, adsetRows };
 }
 
+// FB Tool (Decision 071): расход живых аккаунтов, по запросу на аккаунт.
+async function writeFbtoolSpend(userId: string, key: string, live: FbtoolAccount[], since: string, until: string, allowed: Set<string>) {
+  const rows: DolphinAdDay[] = [];
+  let failedAccounts = 0;
+  for (const a of live) {
+    try {
+      rows.push(...(await fbtoolAdDays(key, a.id, since, until)).filter((r) => allowed.has(r.accountId)));
+    } catch (e) {
+      failedAccounts++;
+      console.warn("fbtool:", a.name, e instanceof Error ? e.message : e);
+    }
+  }
+  return { ...(await writeDays(userId, "fbtool", rows)), failedAccounts };
+}
+
+// Аккаунт FB Tool разлогинился или снова в строю — баеру, один раз на смену.
+// Первый прогон только запоминает.
+async function noteFbtoolAccounts(userId: string, accounts: FbtoolAccount[], prev: Record<string, string> | null) {
+  const now = Object.fromEntries(accounts.map((a) => [a.id, a.ok ? "ok" : a.problem ?? "недоступен"]));
+  if (prev) {
+    for (const a of accounts) {
+      const was = prev[a.id];
+      if (was === undefined || (was === "ok") === a.ok) continue;
+      const text = a.ok
+        ? `✅ <b>Аккаунт FB Tool снова отдаёт данные</b>\n${escapeHtml(a.name)}`
+        : `⚠️ <b>Аккаунт FB Tool разлогинен</b>\n${escapeHtml(a.name)}\nДанных по его кабинетам нет, пока его не перелогинить в FB Tool.\n<i>${escapeHtml((a.problem ?? "").slice(0, 200))}</i>`;
+      await notify(userId, "connection_broken", text).catch(() => 0);
+    }
+  }
+  await db().from("buyer_connections").update({ fbtool_accounts: now }).eq("user_id", userId);
+}
+
 // TG Ads (Decision 068): кабинет на ключ. Упавший ключ отмечается в «Интеграциях»
 // и не роняет остальные — как ключи Meta.
 async function writeTgadsSpend(userId: string, keys: Awaited<ReturnType<typeof tgadsKeysOf>>, since: string, until: string, allowed: Set<string>) {
@@ -313,12 +346,13 @@ export async function ingestForUser(
   const [conn, tokens] = await Promise.all([getConnection(userId), metaTokensOf(userId)]);
   const torro = conn?.torroToken && conn.torroBuyerId ? { token: conn.torroToken, buyerId: conn.torroBuyerId } : null;
   const dolphin = conn?.spendSource === "dolphin" ? conn.dolphinToken : null;
+  const fbtool = conn?.spendSource === "fbtool" ? conn.fbtoolKey : null;
   // TG Ads — параллельно Facebook, своя площадка и своя догрузка (Decision 069).
   const tgKeys = await tgadsKeysOf(userId);
-  if (tokens.length === 0 && !dolphin && !tgKeys.length && !torro) return { ...result, skipped: "нет подключений" };
+  if (tokens.length === 0 && !dolphin && !fbtool && !tgKeys.length && !torro) return { ...result, skipped: "нет подключений" };
 
   const { data: progress } = await db().from("buyer_connections")
-    .select("spend_backfilled_from, spend_backfill_done, spend_backfill_empty, torro_backfilled_from, torro_backfill_done, tgads_backfilled_from, tgads_backfill_done")
+    .select("spend_backfilled_from, spend_backfill_done, spend_backfill_empty, torro_backfilled_from, torro_backfill_done, tgads_backfilled_from, tgads_backfill_done, fbtool_accounts")
     .eq("user_id", userId).maybeSingle();
 
   const runId = crypto.randomUUID();
@@ -355,6 +389,41 @@ export async function ingestForUser(
             spend_backfill_empty: empty,
             spend_backfill_done: !chunk || chunk.since <= floor || empty >= DOLPHIN_EMPTY_CHUNKS,
           }).eq("user_id", userId);
+        }
+      }
+    } else if (fbtool) {
+      const accounts = await fbtoolAccounts(fbtool);
+      await noteFbtoolAccounts(userId, accounts, (progress?.fbtool_accounts as Record<string, string> | null) ?? null);
+      const live = accounts.filter((a) => a.ok);
+      const dead = accounts.filter((a) => !a.ok);
+      if (dead.length) notes.push(`FB Tool: разлогинено аккаунтов ${dead.length} из ${accounts.length}`);
+      const seen = new Map<string, SeenAccount>();
+      for (const a of live) {
+        for (const c of await fbtoolCabinets(fbtool, a.id).catch(() => [])) seen.set(c.id, { name: c.name, created: null });
+      }
+      const { allowed, conflicts } = await claimAccounts(userId, seen);
+      if (conflicts) { result.conflicts = conflicts; notes.push(`чужих кабинетов: ${conflicts}`); }
+      if (allowed.size) {
+        Object.assign(result, await writeFbtoolSpend(userId, fbtool, live, since, until, allowed));
+        if (spendBackfill) {
+          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, CHUNK_DAYS);
+          let empty = progress?.spend_backfill_empty ?? 0;
+          if (chunk) {
+            const b = await writeFbtoolSpend(userId, fbtool, live, chunk.since, chunk.until, allowed);
+            result.adRows += b.adRows;
+            result.campaignRows += b.campaignRows;
+            result.failedAccounts += b.failedAccounts;
+            result.backfill = `FB Tool ${chunk.since}…${chunk.until}`;
+            empty = b.adRows ? 0 : empty + 1;
+          }
+          // Даты создания у FB Tool нет — как у Dolphin: история кончилась, когда кусков подряд пусто.
+          if (!chunk || result.failedAccounts === 0) {
+            await db().from("buyer_connections").update({
+              spend_backfilled_from: chunk?.since ?? progress?.spend_backfilled_from ?? since,
+              spend_backfill_empty: empty,
+              spend_backfill_done: !chunk || chunk.since <= floor || empty >= DOLPHIN_EMPTY_CHUNKS,
+            }).eq("user_id", userId);
+          }
         }
       }
     } else if (tokens.length) {
@@ -471,7 +540,7 @@ export async function ingestForUser(
 export async function usersToIngest(): Promise<string[]> {
   const [{ data: keys, error: e1 }, { data: torro, error: e2 }, { data: tg, error: e3 }] = await Promise.all([
     db().from("meta_keys").select("user_id"),
-    db().from("buyer_connections").select("user_id").or("torro_token_enc.not.is.null,dolphin_token_enc.not.is.null"),
+    db().from("buyer_connections").select("user_id").or("torro_token_enc.not.is.null,dolphin_token_enc.not.is.null,fbtool_key_enc.not.is.null"),
     db().from("tgads_keys").select("user_id"),
   ]);
   if (e1) throw new Error(e1.message);

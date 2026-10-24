@@ -19,7 +19,7 @@ export const EVENTS: TelegramEvent[] = [
   { key: "autocheck", label: "Чек по расписанию", hint: "живой чек за сегодня в выбранное время", ready: true },
   { key: "daily_summary", label: "Сводка за вчера", hint: "в 10:00 МСК: расход, доход и ROMI по баерам, блокировки и отклонения — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
   { key: "autoupload", label: "Автозалив", hint: "ход и итог заливки", ready: false },
-  { key: "connection_broken", label: "Слетевшие подключения", hint: "ключ Meta или Torro перестал работать", ready: false },
+  { key: "connection_broken", label: "Слетевшие подключения", hint: "аккаунт FB Tool разлогинился или снова в строю", ready: true },
 ];
 
 export const EVENT_KEYS = EVENTS.map((e) => e.key);

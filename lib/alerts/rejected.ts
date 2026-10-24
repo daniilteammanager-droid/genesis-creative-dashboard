@@ -1,5 +1,6 @@
 import { fetchEdgePaged } from "@/lib/reports-live/metaApi";
 import { dolphinProblemAds, type DolphinAdStatus } from "@/lib/dolphin/api";
+import { fbtoolProblemAds } from "@/lib/fbtool/api";
 import { mskDay } from "@/lib/day";
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/links";
@@ -125,7 +126,7 @@ export interface RejectedCheckResult {
   firstRun: boolean;
 }
 
-export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor: Map<string, string> = new Map()): Promise<RejectedCheckResult> {
+export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor: Map<string, string> = new Map(), fbtoolFor: Map<string, { key: string; account: string }> = new Map()): Promise<RejectedCheckResult> {
   const db = warehouse();
   const current: RejectedAd[] = [];
   const checked = new Set<string>();
@@ -157,6 +158,28 @@ export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor
     } catch (e) {
       failedAccounts += accounts.size;
       console.warn("rejected: Dolphin не прочитался:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // FB Tool (Decision 071): один запрос на аккаунт, сразу с фильтром отклонённых.
+  // Причины FB Tool не отдаёт — алерт придёт со статусом, без причины.
+  const byFbtool = new Map<string, { key: string; account: string; cabinets: Set<string> }>();
+  for (const [accountId, f] of fbtoolFor) {
+    const k = `${f.key}|${f.account}`;
+    const cur = byFbtool.get(k) ?? { ...f, cabinets: new Set<string>() };
+    cur.cabinets.add(accountId);
+    byFbtool.set(k, cur);
+  }
+  for (const f of byFbtool.values()) {
+    try {
+      for (const a of await fbtoolProblemAds(f.key, f.account, mskDay())) {
+        const ad = fromDolphin(a);
+        if (f.cabinets.has(a.accountId) && isRejected(ad)) current.push(toRejected(ad, a.accountId));
+      }
+      for (const id of f.cabinets) checked.add(id);
+    } catch (e) {
+      failedAccounts += f.cabinets.size;
+      console.warn("rejected: FB Tool не прочитался:", e instanceof Error ? e.message : e);
     }
   }
 
@@ -213,5 +236,5 @@ export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor
     sent = await deliver(alerts, "ad_rejected");
   }
 
-  return { accounts: tokenFor.size + dolphinFor.size, failedAccounts, rejected: current.length, fresh: fresh.length, sent, firstRun };
+  return { accounts: tokenFor.size + dolphinFor.size + fbtoolFor.size, failedAccounts, rejected: current.length, fresh: fresh.length, sent, firstRun };
 }

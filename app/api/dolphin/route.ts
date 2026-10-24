@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
-import { setDolphinToken } from "@/lib/connections/store";
+import { getConnection, setDolphinToken } from "@/lib/connections/store";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
 import { verifyDolphin } from "@/lib/dolphin/api";
 import { ingestSoon } from "@/lib/warehouse/kick";
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
     if ((await listMetaKeys(me.id)).length > 0) {
       return fail("Подключён источник Meta. Чтобы перейти на Dolphin, сначала удали ключи Meta");
     }
+    if ((await getConnection(me.id))?.spendSource === "fbtool") return fail("Подключён FB Tool. Чтобы перейти на Dolphin, сначала отключи его");
     const checked = await verifyDolphin(token.trim());
     if (typeof checked === "string") return fail(checked);
     await setDolphinToken(me.id, token);

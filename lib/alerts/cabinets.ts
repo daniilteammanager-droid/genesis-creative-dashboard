@@ -1,5 +1,6 @@
 import { fetchEdgePaged } from "@/lib/reports-live/metaApi";
 import { dolphinCabinets } from "@/lib/dolphin/api";
+import { fbtoolAccounts, fbtoolCabinets } from "@/lib/fbtool/api";
 import { mskDay } from "@/lib/day";
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/links";
@@ -185,9 +186,10 @@ export interface CabinetCheckResult {
   firstRun: boolean;
   tokenFor: Map<string, string>;   // живой кабинет → ключ, который его видит
   dolphinFor: Map<string, string>; // живой кабинет без ключа Meta → ключ Dolphin
+  fbtoolFor: Map<string, { key: string; account: string }>; // живой кабинет → ключ и аккаунт FB Tool
 }
 
-export async function checkCabinets(buyerTokens: string[], dolphinTokens: string[] = []): Promise<CabinetCheckResult> {
+export async function checkCabinets(buyerTokens: string[], dolphinTokens: string[] = [], fbtool: { key: string; userId: string }[] = []): Promise<CabinetCheckResult> {
   const db = warehouse();
   const tokens: { token: string; withBusinesses: boolean }[] = [
     ...(process.env.META_ACCESS_TOKEN ? [{ token: process.env.META_ACCESS_TOKEN, withBusinesses: true }] : []),
@@ -199,6 +201,7 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
   // Каким ключом читать живой кабинет дальше — антиотклону.
   const tokenFor = new Map<string, string>();
   const dolphinFor = new Map<string, string>();
+  const fbtoolFor = new Map<string, { key: string; account: string }>();
   let failedTokens = 0;
   // Последовательно: лимит приложения общий на все ключи (Decision 042).
   for (const t of tokens) {
@@ -233,7 +236,34 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
       console.warn("cabinets: Dolphin не прочитался:", e instanceof Error ? e.message : e);
     }
   }
-  const sources = tokens.length + dolphinTokens.length;
+  // FB Tool (Decision 071): кабинеты живых аккаунтов. Разлогиненный аккаунт — не
+  // «кабинеты пропали»: про него баеру уходит свой алерт, а его кабинеты держат
+  // прошлое состояние (ниже). Иначе у Андрея, у которого разлогинены 7 аккаунтов
+  // из 8, все их кабинеты каждый раз «пропадали» бы.
+  const keepOwners = new Set<string>();
+  for (const { key, userId } of fbtool) {
+    try {
+      const accounts = await fbtoolAccounts(key);
+      if (accounts.some((a) => !a.ok)) keepOwners.add(userId);
+      for (const a of accounts.filter((x) => x.ok)) {
+        for (const c of await fbtoolCabinets(key, a.id)) {
+          const s: CabinetState = {
+            ...toState({ id: c.id, name: c.name, account_status: c.status, disable_reason: c.disableReason ?? undefined, currency: c.currency }),
+            balance: null, prepay: null,
+          };
+          const was = seen.get(s.accountId);
+          if (!was || (s.status === "ACTIVE" && was.status !== "ACTIVE")) seen.set(s.accountId, s);
+          if (s.status === "ACTIVE" && !tokenFor.has(s.accountId) && !dolphinFor.has(s.accountId) && !fbtoolFor.has(s.accountId)) {
+            fbtoolFor.set(s.accountId, { key, account: a.id });
+          }
+        }
+      }
+    } catch (e) {
+      failedTokens++;
+      console.warn("cabinets: FB Tool не прочитался:", e instanceof Error ? e.message : e);
+    }
+  }
+  const sources = tokens.length + dolphinTokens.length + fbtool.length;
   if (sources > 0 && failedTokens === sources) throw new Error("Ни один источник не прочитался — состояние кабинетов не обновлено");
 
   const { data: prevRows, error } = await db.from("wh_cabinet_states").select("*");
@@ -242,6 +272,14 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
     accountId: r.account_id, name: r.name, status: r.status, disableReason: r.disable_reason,
     currency: r.currency, balance: r.balance === null ? null : Number(r.balance), prepay: r.prepay,
   }]));
+
+  if (keepOwners.size) {
+    const { data: kept } = await db.from("wh_account_owners").select("account_id").in("owner_user_id", [...keepOwners]);
+    for (const k of kept ?? []) {
+      const p = prev.get(k.account_id as string);
+      if (p && !seen.has(p.accountId)) seen.set(p.accountId, p);
+    }
+  }
 
   const now = new Date();
   const { states, alerts } = diffCabinets(prev, [...seen.values()], failedTokens === 0, now);
@@ -274,5 +312,5 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
     text: a.text,
     extra: a.payUrl ? { reply_markup: { inline_keyboard: [[{ text: "💳 Открыть оплату в Meta", url: a.payUrl }]] } } : undefined,
   })), "cabinet_status");
-  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0, tokenFor, dolphinFor };
+  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0, tokenFor, dolphinFor, fbtoolFor };
 }

@@ -1,4 +1,5 @@
 import { mskDay } from "@/lib/day";
+import { usdRate } from "@/lib/fx";
 import type { DolphinAdDay } from "@/lib/dolphin/api";
 
 // Telegram Ads как источник расхода (Decision 068).
@@ -65,23 +66,8 @@ export async function listAds(token: string): Promise<TgAd[]> {
   return out;
 }
 
-// ─── Курс ───────────────────────────────────────────────────────────────────
-// Свой день — свой курс: Coinbase отдаёт и исторический (?date=). Сегодня — текущий.
-const rates = new Map<string, Promise<number>>();
-export function tonUsd(day: string): Promise<number> {
-  const key = day === mskDay() ? `now|${Math.floor(Date.now() / 600_000)}` : day;   // текущий — на 10 минут
-  if (!rates.has(key)) {
-    rates.set(key, (async () => {
-      const q = day === mskDay() ? "" : `?date=${day}`;
-      const res = await fetch(`https://api.coinbase.com/v2/prices/TON-USD/spot${q}`, { headers: { "User-Agent": "curl/8.5.0" }, signal: AbortSignal.timeout(20_000) });
-      const d = ((await res.json().catch(() => null)) as { data?: { base?: string; currency?: string; amount?: string } } | null)?.data;
-      const v = Number(d?.amount);
-      if (d?.base !== "TON" || d?.currency !== "USD" || !(v > 0)) throw new Error(`Курс TON/USD за ${day} не получен`);
-      return v;
-    })().catch((e) => { rates.delete(key); throw e; }));
-  }
-  return rates.get(key)!;
-}
+// Курс — общий (lib/fx.ts): свой день — свой курс.
+export const tonUsd = (day: string) => usdRate("TON", day);
 
 // ─── Имя объявления ─────────────────────────────────────────────────────────
 // Слова стран — как в боте; PR у Павла — опечатка Перу (Daniil 21.10.2026).

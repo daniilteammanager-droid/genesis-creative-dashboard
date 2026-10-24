@@ -66,10 +66,11 @@ export async function getConnection(userId: string): Promise<{
   torroBuyerId: number | null;
   spendSource: "meta" | "fbtool" | "dolphin" | null;
   dolphinToken: string | null;
+  fbtoolKey: string | null;
 } | null> {
   const { data, error } = await admin()
     .from("buyer_connections")
-    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id, torro_token_enc, torro_buyer_id, spend_source, dolphin_token_enc")
+    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id, torro_token_enc, torro_buyer_id, spend_source, dolphin_token_enc, fbtool_key_enc")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -84,6 +85,7 @@ export async function getConnection(userId: string): Promise<{
     torroBuyerId: data.torro_buyer_id ?? null,
     spendSource: data.spend_source ?? null,
     dolphinToken: data.dolphin_token_enc ? decryptSecret(data.dolphin_token_enc) : null,
+    fbtoolKey: data.fbtool_key_enc ? decryptSecret(data.fbtool_key_enc) : null,
   };
 }
 
@@ -98,6 +100,22 @@ export async function setDolphinToken(userId: string, token: string | null): Pro
     dolphin_set_at: t ? new Date().toISOString() : null,
     spend_source: t ? "dolphin" : null,
     // Новый источник — догрузка истории заново: те же строки перезапишутся.
+    spend_backfilled_from: null, spend_backfill_done: false, spend_backfill_empty: 0,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
+}
+
+// FB Tool источником расхода Facebook или снять его (key = null) — как Dolphin (Decision 071).
+export async function setFbtoolKey(userId: string, key: string | null): Promise<void> {
+  const k = key?.trim() || null;
+  const { error } = await admin().from("buyer_connections").upsert({
+    user_id: userId,
+    fbtool_key_enc: k ? encryptSecret(k) : null,
+    fbtool_key_hint: k ? secretHint(k) : null,
+    fbtool_set_at: k ? new Date().toISOString() : null,
+    fbtool_accounts: null,
+    spend_source: k ? "fbtool" : null,
     spend_backfilled_from: null, spend_backfill_done: false, spend_backfill_empty: 0,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
