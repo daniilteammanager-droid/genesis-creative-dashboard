@@ -1,7 +1,7 @@
 // Самопроверка парсера кода и индекса медиа. Без фреймворков:
 //   npx tsx lib/creatives/code.test.ts
 import assert from "node:assert/strict";
-import { parseCreativeCode, geoOf, approachOf, buyerOf, shootKey, stripDuplicateTail, parseCampaignName, parseAdSetName } from "./code";
+import { parseCreativeCode, geoOf, approachOf, buyerOf, shootKey, stripDuplicateTail, parseName } from "./code";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "./media";
 
 // ─── Новая схема ──────────────────────────────────────────────────────────────
@@ -55,18 +55,27 @@ for (const almost of ["vid-storytell-t31-v1-es-ar", "vid-storytell-31-1-2-es-ar"
 
 // ─── Имена РК и адсетов ───────────────────────────────────────────────────────
 
-assert.deepEqual(parseCampaignName("T2A0317_24.08_TG_EXP_ARG_TGR_ROMAN"), {
-  account: "T2A0317", day: "24.08", funnel: "TG", marker: "EXP",
-  geo: "ARG", land: "TGR", face: "ROMAN", tag: undefined,
+// Шаблон из вики
+assert.deepEqual(parseName("T2A0317_24.08_TG_EXP_ARG_TGR_ROMAN"), {
+  day: "24.08", funnel: "TG", marker: "EXP", geo: "AR", land: "TGR", face: "ROMAN",
 });
-
-// Старый формат кабинета живёт рядом с новым — переименовывать РК не будут.
-assert.equal(parseCampaignName("T2A/63_24.08_WA_NEW_LATAM_ART1_RICKY")?.account, "T2A/63");
-assert.equal(parseCampaignName("T2A0317_24.08_TG_MIX_ESP_VSL2_ROMAN_test3")?.tag, "test3");
-assert.equal(parseCampaignName("что-то не по формату"), null);
-
-assert.deepEqual(parseAdSetName("ARG_BROAD_TEST1"), { geo: "ARG", target: "BROAD", testTag: "TEST1" });
-assert.deepEqual(parseAdSetName("ESP_INT"), { geo: "ESP", target: "INT", testTag: undefined });
+assert.equal(parseName("T2A/63_24.08_WA_NEW_LATAM_ART1_RICKY").geo, "LATAM");
+// Как пишут на самом деле (живые имена 24.10.2026)
+assert.deepEqual(parseName("20.10_TESSERR252_TG_EXP_AR_MTG_ROMAN_1"), {
+  day: "20.10", funnel: "TG", marker: "EXP", geo: "AR", land: "MTG", face: "ROMAN",
+});
+assert.equal(parseName("1818_FB_102_08.10 _TG_EXP_MEX_MTG_ROMAN_2").geo, "MX");
+assert.deepEqual(parseName("Filorida Statin_2026-10-21_TG_MIX_ESP_MTG_ROMAN"), {
+  day: "21.10", funnel: "TG", marker: "MIX", geo: "ES", land: "MTG", face: "ROMAN",
+});
+assert.equal(parseName("07.10 (1818_FB_102) ES 2").geo, "ES");
+assert.equal(parseName("CAB5805_23.10_TG_EXP_MEX_MTG_ROMAN_7").face, "ROMAN");
+// Адсет, в том числе с номером от Dolphin
+assert.deepEqual(parseName("ARG_BROAD_TEST1"), { geo: "AR", target: "BROAD" });
+assert.deepEqual(parseName("ESP_BROAD 1778"), { geo: "ES", target: "BROAD" });
+// Мусор — пусто, без догадок
+assert.deepEqual(parseName("New Traffic Campaign"), {});
+assert.deepEqual(parseName("Новая кампания с целью \"Трафик\""), {});
 
 // ─── Индекс медиа ─────────────────────────────────────────────────────────────
 

@@ -115,56 +115,57 @@ export function shootKey(code: string): string | undefined {
 
 // ─── Имена РК и адсетов ───────────────────────────────────────────────────────
 //
-//   РК:    Кабинет_ДД.ММ_Воронка_Маркер_Гео_Ленд_Лицо[_Метка]
-//          T2A0317_24.08_TG_EXP_ARG_TGR_ROMAN
-//   Адсет: Гео_Таргет[_МеткаТеста]  ->  ARG_BROAD_TEST1
+// Шаблон (вики баера, «Имена РК и адсета»):
+//   РК:    Кабинет_ДД.ММ_Воронка_Маркер_Гео_Ленд_Лицо[_Метка]  ->  T2A0317_24.08_TG_EXP_ARG_TGR_ROMAN
+//   Адсет: Гео_Таргет[_МеткаТеста]                             ->  ARG_BROAD_TEST1
 //
-// Гео здесь трёхбуквенное (ARG), а в коде креатива двухбуквенное (ar) — это разные
-// справочники, сводить их напрямую нельзя. Регион LATAM бывает только в имени РК.
+// На практике позиции гуляют (замер 24.10.2026 по 299 РК и 126 адсетам): кабинет
+// то первым, то после даты (20.10_TESSERR252_…, 1818_FB_102_08.10 _…), гео то в
+// три буквы, то в две (MEX / MX), дата ДД.ММ и ГГГГ-ММ-ДД, адсет часто назван как
+// РК, а у Dolphin к адсету дописан номер (ESP_BROAD 1778). Разбор по позициям
+// понимал 24 адсета из 126. Поэтому читаем по словарю: ищем известные значения,
+// где бы они ни стояли. Неизвестное — просто не заполняется, без догадок.
 
-export interface ParsedCampaignName {
-  account: string;   // T2A0317 — провайдер + последние 4 цифры id
-  day: string;       // ДД.ММ
-  funnel: string;    // TG | WA
-  marker: string;    // NEW | EXP | MIX
-  geo: string;       // ARG, ESP, LATAM…
-  land: string;      // TGR, MTG, VSL1, ART1…
-  face: string;      // ROMAN | RICKY
-  tag?: string;
+// Гео имени → двухбуквенный код страны, как в коде креатива и таргете Meta.
+// LATAM — регион, страны за ним нет: бывает только в имени РК.
+const NAME_GEO: Record<string, string> = {
+  ESP: "ES", ES: "ES", ARG: "AR", AR: "AR", MEX: "MX", MX: "MX", CHL: "CL", CL: "CL",
+  PER: "PE", PE: "PE", PRY: "PY", PAR: "PY", PY: "PY", URY: "UY", URU: "UY", UY: "UY",
+  ECU: "EC", EC: "EC", PAN: "PA", PA: "PA", COL: "CO", CO: "CO", LATAM: "LATAM",
+};
+const FUNNELS = new Set(["TG", "WA"]);
+const MARKERS = new Set(["NEW", "EXP", "MIX"]);
+const LANDS = new Set(["TGR", "MTG", "VSL1", "VSL2", "KAL1", "KAL2", "ART1", "ART2", "ART3"]);
+const FACES = new Set(["ROMAN", "RICKY"]);
+const TARGETS = new Set(["BROAD", "INT", "RETARGET"]);
+
+export interface ParsedName {
+  face?: string;     // ROMAN | RICKY — лицо, по сути проект
+  geo?: string;      // ES, AR, … или LATAM
+  funnel?: string;   // TG | WA
+  marker?: string;   // NEW | EXP | MIX
+  land?: string;     // TGR, MTG, VSL1, ART1…
+  target?: string;   // BROAD | INT | RETARGET — у адсета
+  day?: string;      // ДД.ММ, как пишут в имени
 }
 
-const CAMPAIGN_RE = /^([^_]+)_(\d{2}\.\d{2})_([^_]+)_([^_]+)_([^_]+)_([^_]+)_([^_]+)(?:_(.+))?$/;
-
-// Формат кабинета сменился 27.08 (T2A/63 -> T2A0317) и старые РК не переименовываются,
-// так что обе формы какое-то время живут в статистике рядом. Оба варианта проходят —
-// кабинет читается как есть, без попытки его нормализовать.
-export function parseCampaignName(name: string): ParsedCampaignName | null {
-  const m = CAMPAIGN_RE.exec(name.trim());
-  if (!m) return null;
-  return {
-    account: m[1],
-    day: m[2],
-    funnel: m[3].toUpperCase(),
-    marker: m[4].toUpperCase(),
-    geo: m[5].toUpperCase(),
-    land: m[6].toUpperCase(),
-    face: m[7].toUpperCase(),
-    tag: m[8],
-  };
-}
-
-export interface ParsedAdSetName {
-  geo: string;     // ARG
-  target: string;  // BROAD | INT | RETARGET
-  testTag?: string;
-}
-
-export function parseAdSetName(name: string): ParsedAdSetName | null {
-  const parts = name.trim().split("_");
-  if (parts.length < 2) return null;
-  return {
-    geo: parts[0].toUpperCase(),
-    target: parts[1].toUpperCase(),
-    testTag: parts.length > 2 ? parts.slice(2).join("_") : undefined,
-  };
+export function parseName(name: string): ParsedName {
+  const out: ParsedName = {};
+  // Разделители — подчёркивание, пробел, скобки: «07.10 (1818_FB_102) ES 2».
+  for (const raw of name.toUpperCase().split(/[_\s()]+/).filter(Boolean)) {
+    if (!out.day) {
+      const iso = /^\d{4}-(\d{2})-(\d{2})$/.exec(raw);
+      if (iso) { out.day = `${iso[2]}.${iso[1]}`; continue; }
+      if (/^\d{2}\.\d{2}$/.test(raw)) { out.day = raw; continue; }
+    }
+    if (!out.face && FACES.has(raw)) out.face = raw;
+    else if (!out.funnel && FUNNELS.has(raw)) out.funnel = raw;
+    else if (!out.marker && MARKERS.has(raw)) out.marker = raw;
+    else if (!out.land && LANDS.has(raw)) out.land = raw;
+    else if (!out.target && TARGETS.has(raw)) out.target = raw;
+    else if (!out.geo && raw in NAME_GEO) out.geo = NAME_GEO[raw];
+  }
+  // Одно узнанное слово — совпадение, а не нейминг: «New Traffic Campaign» дало
+  // бы маркер NEW. У нашего имени узнаётся минимум два куска (у адсета гео и таргет).
+  return Object.keys(out).length >= 2 ? out : {};
 }
