@@ -438,16 +438,32 @@ export async function ingestForUser(
         notes.push(`Torro без id в Meta — кампаний ${t.unmatchedCampaigns}, объявлений ${t.unmatchedAds}`);
       }
       if (opts.backfill && !progress?.torro_backfill_done) {
-        const chunk = nextChunk(progress?.torro_backfilled_from ?? since, floor, CHUNK_DAYS);
+        const next = nextChunk(progress?.torro_backfilled_from ?? since, floor, CHUNK_DAYS);
+        // Torro не уходит в историю дальше расхода: id кампаний и объявлений
+        // берутся из расхода, без него день Torro записался бы без кампаний — и
+        // назад к нему догрузка уже не вернётся (Артём 24.10.2026: Torro подключён
+        // раньше ключа Meta, кампании за 17–23.10 пропали). Расход этого прогона
+        // уже записан выше, поэтому прогресс читаем заново.
+        const { data: now } = await db().from("buyer_connections")
+          .select("spend_backfilled_from, spend_backfill_done, tgads_backfilled_from, tgads_backfill_done").eq("user_id", userId).maybeSingle();
+        const spendFrom = [
+          ...(dolphin || tokens.length) && !now?.spend_backfill_done ? [now?.spend_backfilled_from ?? since] : [],
+          ...tgKeys.length && !now?.tgads_backfill_done ? [now?.tgads_backfilled_from ?? since] : [],
+        ].sort().pop();
+        const waiting = Boolean(next && spendFrom && next.since < spendFrom);
+        const chunk = waiting ? null : next;
         if (chunk) {
           const b = await ingestTorro(db(), userId, torro.token, torro.buyerId, chunk.since, chunk.until);
           result.crmRows += b.crmRows;
           result.backfill = [result.backfill, `Torro ${chunk.since}…${chunk.until}`].filter(Boolean).join(", ");
         }
-        await db().from("buyer_connections").update({
-          torro_backfilled_from: chunk?.since ?? progress?.torro_backfilled_from ?? since,
-          torro_backfill_done: !chunk || chunk.since <= floor,
-        }).eq("user_id", userId);
+        // Ждём расход — прогресс не трогаем; иначе — как обычно.
+        if (!waiting) {
+          await db().from("buyer_connections").update({
+            torro_backfilled_from: chunk?.since ?? progress?.torro_backfilled_from ?? since,
+            torro_backfill_done: !chunk || chunk.since <= floor,
+          }).eq("user_id", userId);
+        }
       }
     }
 
