@@ -48,7 +48,7 @@ interface AdAccount {
 // Meta hands back an `after` cursor even on the final page — only `paging.next` says there
 // really is one. Stopping on the cursor alone cost one extra empty round-trip per edge per
 // account, which is pure waste against the app-wide call limit.
-async function fetchEdgePaged<T>(token: string, parentId: string, edge: string, fields: string, limit = 200): Promise<T[]> {
+export async function fetchEdgePaged<T>(token: string, parentId: string, edge: string, fields: string, limit = 200): Promise<T[]> {
   const out: T[] = [];
   let after: string | undefined;
   for (;;) {

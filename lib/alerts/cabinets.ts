@@ -1,0 +1,268 @@
+import { fetchEdgePaged } from "@/lib/reports-live/metaApi";
+import { warehouse } from "@/lib/warehouse/read";
+import { notify, escapeHtml } from "@/lib/telegram/links";
+
+// Алерты о состоянии рекламных кабинетов: заблокирован, пропал, grace period,
+// unsettled — и обратно. Идея и пороги взяты из Genesis Manager Артёма.
+//
+// Кабинеты собираются всеми ключами сразу — командным и баерскими: кабинет,
+// который видит хоть один ключ, жив. «Пропал» — это когда его не видит никто,
+// и решается это только по полному прогону: упал хоть один ключ — пропажу не
+// объявляем, иначе каждый сбой Meta рассылал бы «кабинет пропал» пачкой.
+
+const STATUS: Record<number, string> = {
+  1: "ACTIVE", 2: "DISABLED", 3: "UNSETTLED", 7: "PENDING_RISK_REVIEW", 8: "PENDING_SETTLEMENT",
+  9: "IN_GRACE_PERIOD", 100: "PENDING_CLOSURE", 101: "CLOSED",
+};
+
+const PROBLEM: Record<string, string> = {
+  DISABLED: "⛔ Кабинет заблокирован",
+  MISSING: "🔎 Кабинет пропал",
+  IN_GRACE_PERIOD: "⚠️ Кабинет в grace period",
+  UNSETTLED: "💳 Кабинет в unsettled",
+  PENDING_RISK_REVIEW: "🕵️ Кабинет на проверке риска",
+};
+
+// Платёжные проблемы — к ним кнопка оплаты в Meta.
+const PAYMENT = new Set(["UNSETTLED", "IN_GRACE_PERIOD"]);
+
+// disable_reason из Graph API. Неизвестный код показывается числом.
+const DISABLE_REASON: Record<number, string> = {
+  1: "нарушение правил рекламы", 2: "проверка IP", 3: "риск по платежам", 4: "серый аккаунт закрыт",
+  5: "проверка AFC", 6: "целостность бизнеса", 7: "закрыт навсегда", 8: "неиспользуемый реселлер", 9: "неиспользуемый кабинет",
+};
+
+export interface CabinetState {
+  accountId: string;
+  name: string | null;
+  status: string;
+  disableReason: number | null;
+  currency: string | null;
+  balance: number | null;
+  prepay: boolean | null;
+}
+
+export interface CabinetAlert {
+  accountId: string;
+  text: string;           // HTML
+  payUrl: string | null;
+}
+
+interface MetaAccount {
+  id: string;
+  name?: string;
+  account_status: number;
+  disable_reason?: number;
+  currency?: string;
+  balance?: string;
+  is_prepay_account?: boolean;
+}
+
+// Meta отдаёт баланс в минимальных единицах валюты: центах, но у иены их нет.
+// Сколько знаков после запятой у валюты, знает Intl — свой справочник не нужен.
+export function fromMinor(raw: string | undefined, currency: string | undefined): number | null {
+  if (raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  let digits = 2;
+  try {
+    digits = new Intl.NumberFormat("en", { style: "currency", currency: currency || "USD" }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch { /* неизвестная валюта — считаем центами */ }
+  return n / 10 ** digits;
+}
+
+export function toState(a: MetaAccount): CabinetState {
+  return {
+    accountId: a.id.replace(/^act_/, ""),
+    name: a.name ?? null,
+    status: STATUS[a.account_status] ?? `STATUS_${a.account_status}`,
+    disableReason: a.disable_reason ?? null,
+    currency: a.currency ?? null,
+    balance: fromMinor(a.balance, a.currency),
+    prepay: a.is_prepay_account ?? null,
+  };
+}
+
+const label = (s: { accountId: string; name: string | null }) =>
+  `CAB${s.accountId.slice(-4)} · ${escapeHtml(s.name || s.accountId)}`;
+
+function money(value: number, currency: string | null): string {
+  try {
+    return new Intl.NumberFormat("ru-RU", { style: "currency", currency: currency || "USD" }).format(value);
+  } catch {
+    return `${value} ${currency ?? ""}`.trim();
+  }
+}
+
+function alertText(next: CabinetState, prev: CabinetState, at: Date): string {
+  const heading = PROBLEM[next.status] ?? (prev.status === "MISSING" ? "✅ Кабинет снова доступен" : "✅ Проблема кабинета снята");
+  const when = at.toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const reason = next.status === "DISABLED" && next.disableReason
+    ? `Причина Meta: ${DISABLE_REASON[next.disableReason] ?? `код ${next.disableReason}`}`
+    : null;
+  const balance = PAYMENT.has(next.status) && next.balance !== null
+    ? `${next.prepay ? "Остаток предоплаты" : "К оплате"}: ${money(next.balance, next.currency)}`
+    : null;
+  const missing = next.status === "MISSING"
+    ? "Его не видит ни один подключённый ключ Meta. История в дашборде остаётся."
+    : null;
+  return [
+    `<b>${heading}</b>`,
+    label(next),
+    `ID: <code>${next.accountId}</code>`,
+    `Статус: ${next.status} (было ${prev.status})`,
+    reason, balance, missing,
+    `Обнаружено: ${when} МСК`,
+  ].filter(Boolean).join("\n");
+}
+
+// Чистая функция: что записать и о чём сообщить. Алерт — только на смену статуса,
+// и только если новый статус — проблема или выход из проблемы в ACTIVE.
+export function diffCabinets(
+  prev: Map<string, CabinetState>,
+  seen: CabinetState[],
+  complete: boolean,
+  at: Date = new Date()
+): { states: CabinetState[]; alerts: CabinetAlert[] } {
+  const states = new Map<string, CabinetState>();
+  for (const s of seen) states.set(s.accountId, s);
+  // Пропавшие объявляем только по полному прогону (см. шапку файла).
+  if (complete) {
+    for (const [id, p] of prev) {
+      if (!states.has(id) && p.status !== "MISSING") states.set(id, { ...p, status: "MISSING" });
+    }
+  }
+
+  const alerts: CabinetAlert[] = [];
+  // Пустое прошлое — первый прогон: только запоминаем.
+  if (prev.size > 0) {
+    for (const next of states.values()) {
+      const p = prev.get(next.accountId);
+      if (!p || p.status === next.status) continue;
+      const problem = next.status in PROBLEM;
+      const recovered = next.status === "ACTIVE" && p.status in PROBLEM;
+      if (!problem && !recovered) continue;
+      alerts.push({
+        accountId: next.accountId,
+        text: alertText(next, p, at),
+        payUrl: PAYMENT.has(next.status)
+          ? `https://business.facebook.com/billing_hub/payment_settings?asset_id=${next.accountId}`
+          : null,
+      });
+    }
+  }
+  return { states: [...states.values()], alerts };
+}
+
+const FIELDS = "id,name,account_status,disable_reason,currency,balance,is_prepay_account";
+
+// Все кабинеты, которые видит ключ: напрямую и через Business Manager. Статусы
+// любые — в отличие от отчётов, тут нужны именно неактивные.
+async function accountsOf(token: string, withBusinesses: boolean): Promise<MetaAccount[]> {
+  const direct = await fetchEdgePaged<MetaAccount>(token, "me", "adaccounts", FIELDS);
+  if (!withBusinesses) return direct;
+  const businesses = await fetchEdgePaged<{ id: string }>(token, "me", "businesses", "id");
+  const nested = await Promise.all(businesses.flatMap((b) => [
+    fetchEdgePaged<MetaAccount>(token, b.id, "owned_ad_accounts", FIELDS),
+    fetchEdgePaged<MetaAccount>(token, b.id, "client_ad_accounts", FIELDS),
+  ]));
+  return [...direct, ...nested.flat()];
+}
+
+export interface CabinetCheckResult {
+  cabinets: number;
+  alerts: number;
+  sent: number;
+  failedTokens: number;
+  firstRun: boolean;
+}
+
+export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheckResult> {
+  const db = warehouse();
+  const tokens: { token: string; withBusinesses: boolean }[] = [
+    ...(process.env.META_ACCESS_TOKEN ? [{ token: process.env.META_ACCESS_TOKEN, withBusinesses: true }] : []),
+    // Баерские ключи — как в складе, только прямые кабинеты (Decision 050).
+    ...buyerTokens.map((token) => ({ token, withBusinesses: false })),
+  ];
+
+  const seen = new Map<string, CabinetState>();
+  let failedTokens = 0;
+  // Последовательно: лимит приложения общий на все ключи (Decision 042).
+  for (const t of tokens) {
+    try {
+      for (const a of await accountsOf(t.token, t.withBusinesses)) {
+        const s = toState(a);
+        const was = seen.get(s.accountId);
+        // Один кабинет через два ключа: живой статус важнее, чем то, что видит
+        // второй ключ с урезанными правами.
+        if (!was || s.status === "ACTIVE") seen.set(s.accountId, s);
+      }
+    } catch (e) {
+      failedTokens++;
+      console.warn("cabinets: ключ не прочитался:", e instanceof Error ? e.message : e);
+    }
+  }
+  if (tokens.length > 0 && failedTokens === tokens.length) throw new Error("Ни один ключ Meta не прочитался — состояние кабинетов не обновлено");
+
+  const { data: prevRows, error } = await db.from("wh_cabinet_states").select("*");
+  if (error) throw new Error(`wh_cabinet_states: ${error.message}`);
+  const prev = new Map<string, CabinetState>((prevRows ?? []).map((r) => [r.account_id, {
+    accountId: r.account_id, name: r.name, status: r.status, disableReason: r.disable_reason,
+    currency: r.currency, balance: r.balance === null ? null : Number(r.balance), prepay: r.prepay,
+  }]));
+
+  const now = new Date();
+  const { states, alerts } = diffCabinets(prev, [...seen.values()], failedTokens === 0, now);
+
+  // Прошлые отметки времени передаются явно: в пакетном upsert пропущенное поле
+  // становится значением по умолчанию, и changed_at сбрасывался бы каждый прогон.
+  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at }]));
+  const rows = states.map((s) => {
+    const p = prev.get(s.accountId);
+    const was = stamps.get(s.accountId);
+    return {
+      account_id: s.accountId, name: s.name, status: s.status, disable_reason: s.disableReason,
+      currency: s.currency, balance: s.balance, prepay: s.prepay,
+      // seen_at двигается, только если кабинет правда видели.
+      seen_at: seen.has(s.accountId) || !was ? now.toISOString() : was.seen,
+      changed_at: !p || p.status !== s.status || !was ? now.toISOString() : was.changed,
+    };
+  });
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error: e } = await db.from("wh_cabinet_states").upsert(rows.slice(i, i + 500), { onConflict: "account_id" });
+    if (e) throw new Error(`wh_cabinet_states: ${e.message}`);
+  }
+
+  const sent = alerts.length ? await deliver(alerts) : 0;
+  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0 };
+}
+
+// Кому: владельцу кабинета (Decision 052) плюс всем владельцам дашборда и
+// тимлидам — они видят всю команду. Кабинет без владельца — только им.
+async function deliver(alerts: CabinetAlert[]): Promise<number> {
+  const db = warehouse();
+  const ids = alerts.map((a) => a.accountId);
+  const [{ data: owners }, { data: leads }] = await Promise.all([
+    db.from("wh_account_owners").select("account_id, owner_user_id").in("account_id", ids),
+    db.from("profiles").select("id").in("role", ["main", "teamlead"]).eq("status", "active"),
+  ]);
+  const ownerOf = new Map((owners ?? []).map((o) => [o.account_id as string, o.owner_user_id as string | null]));
+  const team = (leads ?? []).map((l) => l.id as string);
+
+  let sent = 0;
+  for (const a of alerts) {
+    const to = new Set(team);
+    const owner = ownerOf.get(a.accountId);
+    if (owner) to.add(owner);
+    const extra = a.payUrl ? { reply_markup: { inline_keyboard: [[{ text: "💳 Открыть оплату в Meta", url: a.payUrl }]] } } : {};
+    for (const userId of to) {
+      try {
+        sent += await notify(userId, "cabinet_status", a.text, extra);
+      } catch (e) {
+        // Один недоставленный алерт не должен останавливать остальные.
+        console.warn("cabinets: не доставлено:", e instanceof Error ? e.message : e);
+      }
+    }
+  }
+  return sent;
+}

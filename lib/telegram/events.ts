@@ -12,7 +12,7 @@ export interface TelegramEvent {
 }
 
 export const EVENTS: TelegramEvent[] = [
-  { key: "cabinet_status", label: "Статус кабинетов", hint: "заблокирован, пропал, grace period, unsettled и обратно", ready: false },
+  { key: "cabinet_status", label: "Статус кабинетов", hint: "заблокирован, пропал, grace period, unsettled и обратно", ready: true },
   { key: "cabinet_balance", label: "Баланс и оплата", hint: "баланс кабинета и ссылка на оплату в Meta", ready: false },
   { key: "ad_rejected", label: "Отклонённые объявления", hint: "причина отклонения и кнопки действий", ready: false },
   { key: "autocheck", label: "Чек по расписанию", hint: "живой чек в выбранное время", ready: false },
