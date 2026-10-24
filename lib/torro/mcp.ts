@@ -41,14 +41,16 @@ interface Query {
 // Torro режет частоту: ручной прогон и крон подряд дали «Torro: rate_limited» и
 // упавший прогон (24.10.2026). На это — пауза и повтор, а не ошибка сразу.
 const RATE_WAITS_MS = [5_000, 15_000, 30_000];
-const rateLimited = (e: unknown) => e instanceof Error && /rate.?limit|HTTP 429/i.test(e.message);
+export const rateLimited = (e: unknown) => e instanceof Error && /rate.?limit|HTTP 429/i.test(e.message);
 
-export async function callTool<T>(token: string, name: string, args: Record<string, unknown>, doFetch: typeof fetch = fetch): Promise<T> {
+// patient = false — без повторов на лимите: фоновая работа (связки) уступает
+// основной загрузке и просто ждёт следующего запуска.
+export async function callTool<T>(token: string, name: string, args: Record<string, unknown>, doFetch: typeof fetch = fetch, patient = true): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await callToolOnce<T>(token, name, args, doFetch);
     } catch (e) {
-      if (!rateLimited(e) || attempt >= RATE_WAITS_MS.length) throw e;
+      if (!rateLimited(e) || !patient || attempt >= RATE_WAITS_MS.length) throw e;
       await new Promise((r) => setTimeout(r, RATE_WAITS_MS[attempt]));
     }
   }
@@ -81,14 +83,14 @@ async function callToolOnce<T>(token: string, name: string, args: Record<string,
 }
 
 // fetch подменяется в самопроверке.
-export async function callStatistics(q: Query, doFetch: typeof fetch = fetch): Promise<TorroPayload> {
+export async function callStatistics(q: Query, doFetch: typeof fetch = fetch, patient = true): Promise<TorroPayload> {
   const args: Record<string, unknown> = {
     buyer_ids: [q.buyerId], date_from: q.day, date_to: q.day, group_by: q.groupBy,
   };
   if (q.country) args.country = q.country;
   if (q.campaignName) args.campaign_name = q.campaignName;
   if (q.adName) args.ad_name = q.adName;
-  const payload = await callTool<TorroPayload>(q.token, "get_statistics", args, doFetch);
+  const payload = await callTool<TorroPayload>(q.token, "get_statistics", args, doFetch, patient);
   if (!Array.isArray(payload.rows) || !payload.summary) throw new Error("Torro: в ответе нет rows или summary");
   return payload;
 }

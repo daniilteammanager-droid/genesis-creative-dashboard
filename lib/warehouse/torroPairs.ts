@@ -1,5 +1,5 @@
 import { warehouse } from "./read";
-import { callStatistics, fetchDay, type TorroRow } from "@/lib/torro/mcp";
+import { callStatistics, fetchDay, rateLimited, type TorroRow } from "@/lib/torro/mcp";
 import { getConnection } from "@/lib/connections/store";
 import { crmColumns, quals } from "./torroIngest";
 import { mskDay, mskDaysAgo } from "@/lib/day";
@@ -18,6 +18,14 @@ import { mskDay, mskDaysAgo } from "@/lib/day";
 // конец отведённого времени.
 
 const TODAY_EVERY_MS = 3600_000;
+// Связки — фоновая работа и не должны съедать лимит Torro основной загрузки:
+// 24.10.2026 сплошной сбор у Артёма (~1 запрос/с) выбил ему rate_limited, и час
+// не приходили свежие цифры. Поэтому — потолок запросов на баера за запуск
+// (4 запуска в час), без повторов на лимите, и пауза, если основная загрузка
+// баера сама недавно упёрлась в лимит.
+const REQUESTS_PER_RUN = 60;
+
+class Budget { left = REQUESTS_PER_RUN; take() { return this.left-- > 0; } }
 
 interface Cursor {
   day?: string;          // день в работе
@@ -31,15 +39,23 @@ const active = (r: TorroRow) =>
   ["click", "sub", "unsub", "chat", "reg", "dep_count", "redep_count"].some((k) => Number(r[k] ?? 0) > 0);
 
 // Один проход по дню. Возвращает, докуда дошёл; done — день разложен целиком.
-async function pairsForDay(userId: string, torro: { token: string; buyerId: number }, day: string, c: Cursor, deadline: number) {
+async function pairsForDay(userId: string, torro: { token: string; buyerId: number }, day: string, c: Cursor, deadline: number, budget: Budget) {
   const db = warehouse();
   const started = c.day === day && c.started ? c.started : new Date().toISOString();
+  if (!budget.take()) return { done: false, cursor: c, rows: 0 };
   const ads = (await fetchDay({ ...torro, day }, "ad_name")).filter(active).map((r) => r.group.trim()).filter(Boolean).sort();
   const todo = c.day === day && c.after ? ads.filter((a) => a > c.after!) : ads;
   let rows = 0;
   for (const ad of todo) {
-    if (Date.now() > deadline) return { done: false, cursor: { ...c, day, after: ads[ads.indexOf(ad) - 1], started }, rows };
-    const p = await callStatistics({ ...torro, day, groupBy: "campaign_name", adName: [ad] });
+    const stop = { done: false, cursor: { ...c, day, after: ads[ads.indexOf(ad) - 1], started }, rows };
+    if (Date.now() > deadline || !budget.take()) return stop;
+    let p;
+    try {
+      p = await callStatistics({ ...torro, day, groupBy: "campaign_name", adName: [ad] }, fetch, false);
+    } catch (e) {
+      if (rateLimited(e)) return stop;   // лимит — до следующего запуска, с этого же места
+      throw e;
+    }
     if (p.truncated || (p.rows_total ?? p.rows.length) > p.rows.length) throw new Error(`Torro: у объявления «${ad}» за ${day} больше 100 кампаний`);
     const now = new Date().toISOString();
     const out = p.rows.filter((r) => r.group.trim()).map((r) => ({
@@ -77,8 +93,14 @@ async function pairsForUser(userId: string, deadline: number): Promise<PairsRun[
   const { data: oldest } = await db.from("wh_crm_ad_periods").select("period_start").eq("user_id", userId).order("period_start").limit(1);
   const floor = (oldest?.[0]?.period_start as string | undefined) ?? today;
 
+  // Основная загрузка баера сама упёрлась в лимит Torro за последние полчаса — уступаем.
+  const { data: limited } = await db.from("wh_ingest_runs").select("id").eq("user_id", userId)
+    .ilike("error", "%rate_limited%").gte("started_at", new Date(Date.now() - 1800_000).toISOString()).limit(1);
+  if (limited?.length) return [{ userId, rows: 0, error: "Torro: основная загрузка недавно упёрлась в лимит — связки ждут" }];
+
+  const budget = new Budget();
   const runs: PairsRun[] = [];
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && budget.left > 0) {
     let day: string | null = c.day ?? null;
     if (!day && (!c.todayAt || Date.now() - Date.parse(c.todayAt) > TODAY_EVERY_MS || mskDay(new Date(c.todayAt)) !== today)) day = today;
     if (!day && c.finalized !== yesterday) day = yesterday;
@@ -89,7 +111,7 @@ async function pairsForUser(userId: string, deadline: number): Promise<PairsRun[
     }
     if (!day) break;
 
-    const r = await pairsForDay(userId, torro, day, c, deadline);
+    const r = await pairsForDay(userId, torro, day, c, deadline, budget);
     runs.push({ userId, day, rows: r.rows, done: r.done });
     c = r.cursor;
     if (r.done) {
