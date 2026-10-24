@@ -17,7 +17,7 @@ export async function GET() {
   try {
     // Бот не настроен — это состояние, а не ошибка страницы.
     const bot = process.env.TELEGRAM_BOT_TOKEN ? await botUsername().catch(() => null) : null;
-    return NextResponse.json({ bot, events: EVENTS, links: await listLinks(me.id) });
+    return NextResponse.json({ bot, events: EVENTS.filter((e) => !e.roles || e.roles.includes(me.role)), links: await listLinks(me.id) });
   } catch (e) {
     return fail(e);
   }

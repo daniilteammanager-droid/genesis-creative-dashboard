@@ -172,8 +172,10 @@ export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor
     const insert = fresh.map((r) => ({
       ad_id: r.adId, account_id: r.accountId, ad_name: r.adName, campaign_name: r.campaignName,
       adset_name: r.adsetName, status: r.status, reason: r.reason,
+      // Первый прогон только запоминает — это не алерт, и в сводку он не идёт.
+      alerted_at: firstRun ? null : new Date().toISOString(),
     }));
-    if (firstRun) insert.push({ ad_id: SENTINEL, account_id: "", ad_name: null, campaign_name: null, adset_name: null, status: "-", reason: null });
+    if (firstRun) insert.push({ ad_id: SENTINEL, account_id: "", ad_name: null, campaign_name: null, adset_name: null, status: "-", reason: null, alerted_at: null });
     const { error: e } = await db.from("wh_rejected_ads").upsert(insert, { onConflict: "ad_id" });
     if (e) throw new Error(`wh_rejected_ads: ${e.message}`);
   }

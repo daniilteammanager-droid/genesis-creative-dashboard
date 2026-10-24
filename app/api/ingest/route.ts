@@ -5,6 +5,7 @@ import { getConnection } from "@/lib/connections/store";
 import { checkCabinets } from "@/lib/alerts/cabinets";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { runAutocheck } from "@/lib/alerts/autocheck";
+import { runDailySummary } from "@/lib/alerts/summary";
 
 // Точка входа для крона. Дёргает её VPS, на которой уже крутится воркер: у
 // бесплатного тарифа Vercel крон запускается раз в сутки, а нам нужен час и чаще.
@@ -88,7 +89,16 @@ export async function POST(req: Request) {
         autocheck = { error: e instanceof Error ? e.message : String(e) };
       }
     }
-    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected, autocheck });
+    // Утренняя сводка владельцу и тимлиду — тоже с прогоном, в свой слот (Decision 066).
+    let summary: unknown = null;
+    if (kind === "today") {
+      try {
+        summary = await runDailySummary();
+      } catch (e) {
+        summary = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected, autocheck, summary });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
   }

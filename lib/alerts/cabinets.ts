@@ -248,7 +248,10 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
 
   // Прошлые отметки времени передаются явно: в пакетном upsert пропущенное поле
   // становится значением по умолчанию, и changed_at сбрасывался бы каждый прогон.
-  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at }]));
+  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at, alerted: r.alerted_at }]));
+  // Алерт о проблеме — отметка для утренней сводки (Decision 066).
+  const statusOf = new Map(states.map((s) => [s.accountId, s.status]));
+  const problemAlert = new Set(alerts.filter((a) => (statusOf.get(a.accountId) ?? "") in PROBLEM).map((a) => a.accountId));
   const rows = states.map((s) => {
     const p = prev.get(s.accountId);
     const was = stamps.get(s.accountId);
@@ -258,6 +261,7 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
       // seen_at двигается, только если кабинет правда видели.
       seen_at: seen.has(s.accountId) || !was ? now.toISOString() : was.seen,
       changed_at: !p || p.status !== s.status || !was ? now.toISOString() : was.changed,
+      alerted_at: problemAlert.has(s.accountId) ? now.toISOString() : was?.alerted ?? null,
     };
   });
   for (let i = 0; i < rows.length; i += 500) {

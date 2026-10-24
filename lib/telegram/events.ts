@@ -9,6 +9,7 @@ export interface TelegramEvent {
   label: string;
   hint: string;
   ready: boolean;
+  roles?: string[];   // кому показывать; нет — всем
 }
 
 export const EVENTS: TelegramEvent[] = [
@@ -16,6 +17,7 @@ export const EVENTS: TelegramEvent[] = [
   { key: "cabinet_balance", label: "Баланс и оплата", hint: "баланс кабинета и ссылка на оплату в Meta", ready: false },
   { key: "ad_rejected", label: "Отклонённые объявления", hint: "причина отклонения и ссылка на объявление", ready: true },
   { key: "autocheck", label: "Чек по расписанию", hint: "живой чек за сегодня в выбранное время", ready: true },
+  { key: "daily_summary", label: "Сводка за вчера", hint: "в 10:00 МСК: расход, доход и ROMI по баерам, блокировки и отклонения — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
   { key: "autoupload", label: "Автозалив", hint: "ход и итог заливки", ready: false },
   { key: "connection_broken", label: "Слетевшие подключения", hint: "ключ Meta или Torro перестал работать", ready: false },
 ];
