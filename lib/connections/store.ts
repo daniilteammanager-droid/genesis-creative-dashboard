@@ -9,6 +9,8 @@ export interface ConnectionInput {
   crmCampaignsSheetId?: string | null;
   crmAdsSheetId?: string | null;
   crmAdsByIdSheetId?: string | null;
+  torroToken?: string | null;     // null — отключить, undefined — не трогать
+  torroBuyerId?: number | null;
 }
 
 // То, что можно показать в интерфейсе. Самого токена здесь нет и быть не может:
@@ -20,6 +22,9 @@ export interface ConnectionView {
   crmCampaignsSheetId: string | null;
   crmAdsSheetId: string | null;
   crmAdsByIdSheetId: string | null;
+  torroConnected: boolean;
+  torroHint: string | null;
+  torroBuyerId: number | null;
 }
 
 function admin() {
@@ -32,7 +37,7 @@ function admin() {
 export async function getConnectionView(userId: string): Promise<ConnectionView> {
   const { data, error } = await admin()
     .from("buyer_connections")
-    .select("meta_token_enc, meta_token_hint, meta_token_set_at, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id")
+    .select("meta_token_enc, meta_token_hint, meta_token_set_at, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id, torro_token_enc, torro_token_hint, torro_buyer_id")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -44,6 +49,9 @@ export async function getConnectionView(userId: string): Promise<ConnectionView>
     crmCampaignsSheetId: data?.crm_campaigns_sheet_id ?? null,
     crmAdsSheetId: data?.crm_ads_sheet_id ?? null,
     crmAdsByIdSheetId: data?.crm_ads_by_id_sheet_id ?? null,
+    torroConnected: Boolean(data?.torro_token_enc),
+    torroHint: data?.torro_token_hint ?? null,
+    torroBuyerId: data?.torro_buyer_id ?? null,
   };
 }
 
@@ -54,10 +62,12 @@ export async function getConnection(userId: string): Promise<{
   crmCampaignsSheetId: string | null;
   crmAdsSheetId: string | null;
   crmAdsByIdSheetId: string | null;
+  torroToken: string | null;
+  torroBuyerId: number | null;
 } | null> {
   const { data, error } = await admin()
     .from("buyer_connections")
-    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id")
+    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id, torro_token_enc, torro_buyer_id")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -68,7 +78,19 @@ export async function getConnection(userId: string): Promise<{
     crmCampaignsSheetId: data.crm_campaigns_sheet_id ?? null,
     crmAdsSheetId: data.crm_ads_sheet_id ?? null,
     crmAdsByIdSheetId: data.crm_ads_by_id_sheet_id ?? null,
+    torroToken: data.torro_token_enc ? decryptSecret(data.torro_token_enc) : null,
+    torroBuyerId: data.torro_buyer_id ?? null,
   };
+}
+
+// Занят ли id баера Torro кем-то ещё. Уникальный индекс в базе это тоже ловит,
+// но его ошибка ничего не говорит человеку.
+export async function torroBuyerTakenBy(userId: string, buyerId: number): Promise<boolean> {
+  const { data, error } = await admin()
+    .from("buyer_connections").select("user_id")
+    .eq("torro_buyer_id", buyerId).neq("user_id", userId).limit(1);
+  if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
 }
 
 // Расшифрованный токен — только для серверного кода, который идёт в Meta.
@@ -164,6 +186,13 @@ export async function saveConnection(userId: string, input: ConnectionInput): Pr
   if (input.crmCampaignsSheetId !== undefined) patch.crm_campaigns_sheet_id = input.crmCampaignsSheetId?.trim() || null;
   if (input.crmAdsSheetId !== undefined) patch.crm_ads_sheet_id = input.crmAdsSheetId?.trim() || null;
   if (input.crmAdsByIdSheetId !== undefined) patch.crm_ads_by_id_sheet_id = input.crmAdsByIdSheetId?.trim() || null;
+  if (input.torroToken !== undefined) {
+    const t = input.torroToken?.trim() || null;
+    patch.torro_token_enc = t ? encryptSecret(t) : null;
+    patch.torro_token_hint = t ? secretHint(t) : null;
+    patch.torro_token_set_at = t ? new Date().toISOString() : null;
+  }
+  if (input.torroBuyerId !== undefined) patch.torro_buyer_id = input.torroBuyerId;
 
   const { error } = await admin().from("buyer_connections").upsert(patch, { onConflict: "user_id" });
   if (error) throw new Error(error.message);

@@ -45,6 +45,9 @@ export default function ConnectionsForm({
   const [campaigns, setCampaigns] = useState(initial?.crmCampaignsSheetId ?? "");
   const [ads, setAds] = useState(initial?.crmAdsSheetId ?? "");
   const [adsById, setAdsById] = useState(initial?.crmAdsByIdSheetId ?? "");
+  const [torroToken, setTorroToken] = useState("");
+  const [torroBuyer, setTorroBuyer] = useState(initial?.torroBuyerId ? String(initial.torroBuyerId) : "");
+  const [confirmTorroDelete, setConfirmTorroDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Удаление в два клика: ключ обратно не читается, восстановить его из дашборда
@@ -65,6 +68,9 @@ export default function ConnectionsForm({
         // Пустое поле ключа — «не трогать», а не «удалить»: прочитать его назад
         // нельзя, поэтому оно всегда пустое при открытии страницы.
         ...(metaToken.trim() ? { metaToken: metaToken.trim() } : {}),
+        ...(torroToken.trim() ? { torroToken: torroToken.trim() } : {}),
+        ...(torroBuyer.trim() && torroBuyer.trim() !== String(initial?.torroBuyerId ?? "")
+          ? { torroBuyerId: torroBuyer.trim() } : {}),
         ...(campaigns.trim() !== (initial?.crmCampaignsSheetId ?? "")
           ? { crmCampaignsSheetId: campaigns.trim() || null } : {}),
         ...(ads.trim() !== (initial?.crmAdsSheetId ?? "")
@@ -86,16 +92,17 @@ export default function ConnectionsForm({
     }
     setView(data);
     setMetaToken("");
+    setTorroToken("");
     setMsg({ ok: true, text: "Проверено и сохранено" });
   }
 
-  async function disconnectMeta() {
+  async function disconnect(field: "metaToken" | "torroToken") {
     setBusy(true);
     setMsg(null);
     const res = await fetch("/api/connections", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metaToken: null }),
+      body: JSON.stringify({ [field]: null }),
     });
     let data: (ConnectionView & { error?: string }) | null = null;
     try { data = (await res.json()) as ConnectionView & { error?: string }; } catch { /* не JSON */ }
@@ -106,6 +113,8 @@ export default function ConnectionsForm({
     }
     setView(data);
     setConfirmDelete(false);
+    setConfirmTorroDelete(false);
+    if (field === "torroToken") setTorroBuyer("");
     setMsg({ ok: true, text: "Ключ удалён" });
   }
 
@@ -144,7 +153,7 @@ export default function ConnectionsForm({
         <div className="flex items-center gap-3 mt-3 flex-wrap">
           {view?.metaConnected && (
             <button type="button" disabled={busy}
-                    onClick={() => (confirmDelete ? disconnectMeta() : setConfirmDelete(true))}
+                    onClick={() => (confirmDelete ? disconnect("metaToken") : setConfirmDelete(true))}
                     className="text-[11px] px-2.5 py-1 rounded-full border border-red-800/40 text-red-300 hover:bg-red-900/20 transition disabled:opacity-50">
               {confirmDelete ? "точно удалить? вернуть будет нельзя" : "удалить ключ"}
             </button>
@@ -161,9 +170,45 @@ export default function ConnectionsForm({
       </div>
 
       <div className={card}>
-        <h2 className="text-lg font-semibold text-white mb-2">Выгрузки Torro CRM</h2>
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
+          <h2 className="text-lg font-semibold text-white">Torro CRM</h2>
+          {view?.torroConnected && (
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">
+              подключено {view.torroHint}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-zinc-400 leading-relaxed mb-4">
+          Подписки, диалоги и депозиты напрямую из Torro, по дням. Ключ MCP и свой id
+          баера берутся в Torro. С ними выгрузки в таблицы ниже не нужны.
+        </p>
+
+        <input
+          type="password"
+          placeholder={view?.torroConnected ? "Вставь новый ключ, чтобы заменить" : "Ключ Torro MCP"}
+          value={torroToken}
+          onChange={(e) => setTorroToken(e.target.value)}
+          autoComplete="off"
+          className={`${field} mb-3`}
+        />
+        <label className="block text-[11px] text-zinc-600 mb-1">id баера в Torro</label>
+        <input type="text" inputMode="numeric" placeholder="5183" value={torroBuyer}
+               onChange={(e) => setTorroBuyer(e.target.value)} className={field} />
+
+        {view?.torroConnected && (
+          <button type="button" disabled={busy}
+                  onClick={() => (confirmTorroDelete ? disconnect("torroToken") : setConfirmTorroDelete(true))}
+                  className="mt-3 text-[11px] px-2.5 py-1 rounded-full border border-red-800/40 text-red-300 hover:bg-red-900/20 transition disabled:opacity-50">
+            {confirmTorroDelete ? "точно удалить? вернуть будет нельзя" : "удалить ключ"}
+          </button>
+        )}
+      </div>
+
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-white mb-2">Выгрузки Torro в таблицы</h2>
         <p className="text-sm text-zinc-400 leading-relaxed mb-1">
-          Депозиты и доходы. Две выгрузки: по кампаниям и по объявлениям.
+          Запасной путь, если ключа Torro нет. Подключён ключ — склад берёт цифры из него,
+          а таблицы не читает.
         </p>
         <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
           Как их настроить —{" "}

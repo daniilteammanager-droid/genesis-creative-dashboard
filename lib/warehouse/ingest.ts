@@ -4,6 +4,8 @@ import { listSheetTitles, fetchSheetValues } from "@/lib/general-report/googleSh
 import { toPeriods, type Period } from "@/lib/reports-live/periods";
 import { getConnection } from "@/lib/connections/store";
 import { parseCrmSheet, type CrmRow } from "./parseCrm";
+import { ingestTorro } from "./torroIngest";
+import { mskDay } from "@/lib/day";
 
 // Сбор склада для одного человека.
 //
@@ -37,6 +39,7 @@ export interface IngestResult {
   adsetRows: number;
   failedAccounts: number;
   skipped?: string;
+  note?: string;
 }
 
 async function upsertAdsets(
@@ -102,12 +105,128 @@ function coveredDays(periods: Period[]): { since: string; until: string } | null
   return { since: all[0], until: all[all.length - 1] };
 }
 
+// Расход, клики и показы Meta за окна дней, плюс страны таргета адсетов.
+// Общий для обоих путей Torro: и для API, и для выгрузок в таблицы.
+async function ingestMeta(
+  db: ReturnType<typeof admin>, userId: string, token: string, kind: IngestKind,
+  adWindow: { since: string; until: string } | null,
+  campaignWindow: { since: string; until: string } | null
+): Promise<{ adRows: number; campaignRows: number; adsetRows: number; failedAccounts: number }> {
+  let adRows = 0, campaignRows = 0, failedAccounts = 0;
+  // Адсеты, встреченные в расходе: по ним добираем страну, если её ещё нет.
+  const seenAdsets = new Set<string>();
+
+  if (adWindow) {
+    const { items, failedAccounts: f } = await fetchAdDays(token, adWindow.since, adWindow.until, DIRECT_ONLY);
+    failedAccounts += f;
+    for (const r of items) if (r.adsetId) seenAdsets.add(r.adsetId);
+    const rows = items.map((r) => ({
+      user_id: userId, date: r.date, ad_id: r.adId, ad_name: r.adName,
+      adset_id: r.adsetId || null, adset_name: r.adsetName || null,
+      campaign_id: r.campaignId || null, campaign_name: r.campaignName || null,
+      account_id: r.accountId, account_name: r.accountName,
+      spend: r.spend, clicks: r.clicks, impressions: r.impressions,
+      updated_at: new Date().toISOString(),
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await db.from("wh_ad_days").upsert(rows.slice(i, i + 500), { onConflict: "user_id,date,ad_id" });
+      if (error) throw new Error(`wh_ad_days: ${error.message}`);
+    }
+    adRows = rows.length;
+  }
+
+  if (campaignWindow) {
+    const { items, failedAccounts: f } = await fetchCampaignDays(token, campaignWindow.since, campaignWindow.until, DIRECT_ONLY);
+    failedAccounts += f;
+    const rows = items.map((r) => ({
+      user_id: userId, date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
+      account_id: r.accountId, spend: r.spend, clicks: r.clicks, impressions: r.impressions,
+      updated_at: new Date().toISOString(),
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await db.from("wh_campaign_days").upsert(rows.slice(i, i + 500), { onConflict: "user_id,date,campaign_id" });
+      if (error) throw new Error(`wh_campaign_days: ${error.message}`);
+    }
+    campaignRows = rows.length;
+  }
+
+  // ─── Страны таргета ──────────────────────────────────────────────────────
+  // Таргет — состояние «сейчас», а не история, поэтому полный обход всех
+  // адсетов идёт редко, полным прогоном: он стоит вызова на кабинет.
+  //
+  // Но новый адсет появляется СРАЗУ с расходом, и до следующего полного
+  // обхода его крео оставались без страны. Замер 04.09.2026: у Андрея так
+  // потерялись все восемь LATAM-адсетов, $305 расхода — в разделе он выглядел
+  // как заливающий только в Испанию.
+  //
+  // Поэтому каждый прогон, даже частый, добирает таргет ровно тех адсетов,
+  // которые встретились в расходе и которых ещё нет в складе. Это запрос по
+  // списку id, а не обход кабинета: пачками по 50 и только для новых.
+  let adsetRows = 0;
+
+  if (kind === "window") {
+    const { items, failedAccounts: f } = await fetchAdSetTargeting(token, DIRECT_ONLY);
+    failedAccounts += f;
+    adsetRows = await upsertAdsets(db, items);
+  } else if (seenAdsets.size > 0) {
+    const ids = [...seenAdsets];
+    const { data: known } = await db.from("wh_adsets").select("adset_id").in("adset_id", ids);
+    const have = new Set((known ?? []).map((k) => k.adset_id as string));
+    const missing = ids.filter((id) => !have.has(id));
+    if (missing.length > 0) {
+      adsetRows = await upsertAdsets(db, await fetchAdSetTargetingByIds(token, missing));
+    }
+  }
+
+  return { adRows, campaignRows, adsetRows, failedAccounts };
+}
+
+// Путь через Torro API. Опорная дата — московское сегодня: API отвечает за любой
+// день, листа-периода, на который опирались выгрузки, тут нет.
+//
+// Порядок обратный выгрузкам: сначала Meta, потом Torro. У API нет id кампаний
+// и объявлений, только имена, и id берутся из уже записанного расхода.
+async function ingestViaTorroApi(
+  db: ReturnType<typeof admin>, userId: string, kind: IngestKind,
+  metaToken: string, torroToken: string, torroBuyerId: number,
+  empty: IngestResult
+): Promise<IngestResult> {
+  const { since, until } = windowFrom(mskDay(), kind);
+  const runId = crypto.randomUUID();
+  await db.from("wh_ingest_runs").insert({ id: runId, user_id: userId, kind, since, until });
+
+  try {
+    const meta = await ingestMeta(db, userId, metaToken, kind, { since, until }, { since, until });
+    const torro = await ingestTorro(db, userId, torroToken, torroBuyerId, since, until);
+    // Несопоставленные имена — не ошибка прогона, но и не тишина: без журнала
+    // «депозиты есть в Torro, а в отчёте по кампаниям нет» не объяснить.
+    const note = torro.unmatchedCampaigns || torro.unmatchedAds
+      ? `Torro: без id в Meta — кампаний ${torro.unmatchedCampaigns}, объявлений ${torro.unmatchedAds}`
+      : null;
+    await db.from("wh_ingest_runs").update({
+      finished_at: new Date().toISOString(),
+      ad_rows: meta.adRows, campaign_rows: meta.campaignRows, crm_rows: torro.crmRows,
+      failed_accounts: meta.failedAccounts, note,
+    }).eq("id", runId);
+    return { ...empty, since, until, ...meta, crmRows: torro.crmRows, ...(note ? { note } : {}) };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await db.from("wh_ingest_runs").update({ finished_at: new Date().toISOString(), error: message }).eq("id", runId);
+    throw e;
+  }
+}
+
 export async function ingestForUser(userId: string, kind: IngestKind): Promise<IngestResult> {
   const db = admin();
   const empty = { userId, kind, since: "", until: "", adRows: 0, campaignRows: 0, crmRows: 0, adsetRows: 0, failedAccounts: 0 };
 
   const conn = await getConnection(userId);
   if (!conn?.metaToken) return { ...empty, skipped: "нет ключа Meta" };
+
+  // Ключ Torro подключён — таблицы не читаются вовсе (016_torro_api.sql).
+  if (conn.torroToken && conn.torroBuyerId) {
+    return ingestViaTorroApi(db, userId, kind, conn.metaToken, conn.torroToken, conn.torroBuyerId, empty);
+  }
 
   const sheets = [conn.crmCampaignsSheetId, conn.crmAdsSheetId, conn.crmAdsByIdSheetId]
     .filter((v): v is string => Boolean(v));
@@ -166,72 +285,8 @@ export async function ingestForUser(userId: string, kind: IngestKind): Promise<I
     // ─── Meta, только за дни, покрытые выгрузками ────────────────────────────
     const adWindow = coveredDays(adsByName?.periods ?? adsById?.periods ?? []);
     const campaignWindow = coveredDays(campaigns?.periods ?? []);
-
-    let adRows = 0, campaignRows = 0, failedAccounts = 0;
-    // Адсеты, встреченные в расходе: по ним добираем страну, если её ещё нет.
-    const seenAdsets = new Set<string>();
-
-    if (adWindow) {
-      const { items, failedAccounts: f } = await fetchAdDays(conn.metaToken, adWindow.since, adWindow.until, DIRECT_ONLY);
-      failedAccounts += f;
-      for (const r of items) if (r.adsetId) seenAdsets.add(r.adsetId);
-      const rows = items.map((r) => ({
-        user_id: userId, date: r.date, ad_id: r.adId, ad_name: r.adName,
-        adset_id: r.adsetId || null, adset_name: r.adsetName || null,
-        campaign_id: r.campaignId || null, campaign_name: r.campaignName || null,
-        account_id: r.accountId, account_name: r.accountName,
-        spend: r.spend, clicks: r.clicks, impressions: r.impressions,
-        updated_at: new Date().toISOString(),
-      }));
-      for (let i = 0; i < rows.length; i += 500) {
-        const { error } = await db.from("wh_ad_days").upsert(rows.slice(i, i + 500), { onConflict: "user_id,date,ad_id" });
-        if (error) throw new Error(`wh_ad_days: ${error.message}`);
-      }
-      adRows = rows.length;
-    }
-
-    if (campaignWindow) {
-      const { items, failedAccounts: f } = await fetchCampaignDays(conn.metaToken, campaignWindow.since, campaignWindow.until, DIRECT_ONLY);
-      failedAccounts += f;
-      const rows = items.map((r) => ({
-        user_id: userId, date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
-        account_id: r.accountId, spend: r.spend, clicks: r.clicks, impressions: r.impressions,
-        updated_at: new Date().toISOString(),
-      }));
-      for (let i = 0; i < rows.length; i += 500) {
-        const { error } = await db.from("wh_campaign_days").upsert(rows.slice(i, i + 500), { onConflict: "user_id,date,campaign_id" });
-        if (error) throw new Error(`wh_campaign_days: ${error.message}`);
-      }
-      campaignRows = rows.length;
-    }
-
-    // ─── Страны таргета ──────────────────────────────────────────────────────
-    // Таргет — состояние «сейчас», а не история, поэтому полный обход всех
-    // адсетов идёт редко, полным прогоном: он стоит вызова на кабинет.
-    //
-    // Но новый адсет появляется СРАЗУ с расходом, и до следующего полного
-    // обхода его крео оставались без страны. Замер 04.09.2026: у Андрея так
-    // потерялись все восемь LATAM-адсетов, $305 расхода — в разделе он выглядел
-    // как заливающий только в Испанию.
-    //
-    // Поэтому каждый прогон, даже частый, добирает таргет ровно тех адсетов,
-    // которые встретились в расходе и которых ещё нет в складе. Это запрос по
-    // списку id, а не обход кабинета: пачками по 50 и только для новых.
-    let adsetRows = 0;
-
-    if (kind === "window") {
-      const { items, failedAccounts: f } = await fetchAdSetTargeting(conn.metaToken, DIRECT_ONLY);
-      failedAccounts += f;
-      adsetRows = await upsertAdsets(db, items);
-    } else if (seenAdsets.size > 0) {
-      const ids = [...seenAdsets];
-      const { data: known } = await db.from("wh_adsets").select("adset_id").in("adset_id", ids);
-      const have = new Set((known ?? []).map((k) => k.adset_id as string));
-      const missing = ids.filter((id) => !have.has(id));
-      if (missing.length > 0) {
-        adsetRows = await upsertAdsets(db, await fetchAdSetTargetingByIds(conn.metaToken, missing));
-      }
-    }
+    const { adRows, campaignRows, adsetRows, failedAccounts } =
+      await ingestMeta(db, userId, conn.metaToken, kind, adWindow, campaignWindow);
 
     const result = { ...base, adRows, campaignRows, crmRows, adsetRows, failedAccounts };
     await db.from("wh_ingest_runs").update({
