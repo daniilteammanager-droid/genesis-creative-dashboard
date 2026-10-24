@@ -3,6 +3,8 @@ import { NO_CABINETS, resolveScope } from "./accounts";
 import type { ReportConfig } from "@/lib/reports-live/config";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { dolphinAdDays, type DolphinAdDay } from "@/lib/dolphin/api";
+import { tgadsAdDays } from "@/lib/tgads/api";
+import { tgadsKeysOf } from "@/lib/connections/tgadsKeys";
 import type { MetaCampaignRow, MetaAdRow } from "@/lib/reports-live/types";
 import type { CampaignMeta } from "@/lib/reports-live/metaApi";
 import { getConnection } from "@/lib/connections/store";
@@ -190,16 +192,20 @@ async function torroForDay(
 // ─── Dolphin в форме Meta (Decision 063) ────────────────────────────────────
 // Живой чек всегда за один день. Dolphin отдаёт объявления с кампаниями и
 // бюджетами одним списком — один запрос на день, а не три, кэш на вызов чека.
+// TG Ads (Decision 068) — тем же путём: готовые строки по дням от источника.
 const dolphinDay = new Map<string, Promise<DolphinAdDay[]>>();
-function dolphinRows(token: string, day: string) {
-  const key = `${token}|${day}`;
+function dolphinRows(config: LiveSource, day: string) {
+  const key = `${config.dolphin ?? `tg|${config.userId}`}|${day}`;
   if (!dolphinDay.has(key)) {
-    dolphinDay.set(key, dolphinAdDays(token, day, day).finally(() => setTimeout(() => dolphinDay.delete(key), 60_000)));
+    const rows = config.tgads
+      ? Promise.all(config.tgads.map((k) => tgadsAdDays(k, day, day))).then((x) => x.flat())
+      : dolphinAdDays(config.dolphin!, day, day);
+    dolphinDay.set(key, rows.finally(() => setTimeout(() => dolphinDay.delete(key), 60_000)));
   }
   return dolphinDay.get(key)!;
 }
 
-async function dolphinCampaigns(token: string, day: string) {
+async function dolphinCampaigns(token: LiveSource, day: string) {
   const byId = new Map<string, MetaCampaignRow>();
   for (const r of await dolphinRows(token, day)) {
     const c = byId.get(r.campaignId) ?? { campaignId: r.campaignId, campaignName: r.campaignName, accountId: r.accountId, accountName: r.accountName, spend: 0, clicks: 0, impressions: 0 };
@@ -209,13 +215,13 @@ async function dolphinCampaigns(token: string, day: string) {
   return { items: [...byId.values()], failedAccounts: 0 };
 }
 
-async function dolphinBudgets(token: string, day: string): Promise<CampaignMeta> {
+async function dolphinBudgets(token: LiveSource, day: string): Promise<CampaignMeta> {
   const dailyBudgets = new Map<string, number>();
   for (const r of await dolphinRows(token, day)) if (r.campaignDailyBudget) dailyBudgets.set(r.campaignId, r.campaignDailyBudget);
   return { statuses: new Map(), dailyBudgets };
 }
 
-async function dolphinAds(token: string, day: string, geo: Map<string, string[]>) {
+async function dolphinAds(token: LiveSource, day: string, geo: Map<string, string[]>) {
   const rows = await dolphinRows(token, day);
   for (const r of rows) if (r.adsetId && r.countries.length) geo.set(r.adsetId, r.countries);
   return { items: rows as MetaAdRow[], failedAccounts: 0 };
@@ -234,7 +240,12 @@ type LiveSource = ReportConfig & {
   userId: string; owned: Set<string>; torro?: { token: string; buyerId: number };
   // Источник — Dolphin (Decision 063): metaToken тогда пустой, ходим в Dolphin.
   dolphin?: string;
+  // Источник — Telegram Ads (Decision 068): кабинеты баера, metaToken пустой.
+  tgads?: Awaited<ReturnType<typeof tgadsKeysOf>>;
 };
+
+// Источник со своими строками по дням, а не Meta insights.
+const own = (c: LiveSource) => Boolean(c.dolphin || c.tgads);
 
 async function liveSources(scope: string[]): Promise<LiveSource[]> {
   const db = warehouse();
@@ -248,6 +259,14 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
     const ownedSet = new Set((owned ?? []).map((o) => o.account_id as string));
     const torro = c?.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined;
     // Источник у человека один: Dolphin — вместо ключей Meta, а не вместе с ними.
+    if (c?.spendSource === "tgads") {
+      const tgads = await tgadsKeysOf(id);
+      if (tgads.length) list.push({
+        cacheKey: id, userId: id, metaToken: "", tgads,
+        accountScope: {}, campaignsSheetId: "", adsSheetId: "", owned: ownedSet, torro,
+      });
+      continue;
+    }
     if (c?.spendSource === "dolphin" && c.dolphinToken) {
       list.push({
         cacheKey: id, userId: id, metaToken: "", dolphin: c.dolphinToken,
@@ -264,7 +283,7 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
     }));
   }
   // Один и тот же ключ дважды сложил бы расход сам с собой.
-  return [...new Map(list.map((c) => [c.dolphin ?? c.metaToken, c])).values()];
+  return [...new Map(list.map((c) => [c.dolphin ?? (c.tgads ? `tg|${c.userId}` : c.metaToken), c])).values()];
 }
 
 export async function loadCheck(
@@ -373,7 +392,7 @@ export async function loadCheck(
     const sources = await liveSources(scope);
     sourceLabels = [...new Set(sources.map((c) => buyerLabel.get(c.userId) ?? c.userId))];
     if (sources.length === 0) {
-      return { ...base, text: "Ни у кого из выбранных нет источника расхода — подключи Meta или Dolphin в Настройках → Интеграции." };
+      return { ...base, text: "Ни у кого из выбранных нет источника расхода — подключи Meta, Dolphin или Telegram Ads в Настройках → Интеграции." };
     }
     // Кабинет — через ключ своего владельца и один раз на весь чек.
     const takenBy = new Map<string, LiveSource>();
@@ -394,7 +413,7 @@ export async function loadCheck(
     // «страна не определена» (замер 31.08.2026).
     if (groupBy === "country") {
       // Dolphin таргет не отдаёт — его страны приходят из нейминга вместе с расходом ниже.
-      const targeting = await Promise.all(sources.filter((c) => !c.dolphin).map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
+      const targeting = await Promise.all(sources.filter((c) => !c.dolphin && !c.tgads).map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
       for (const t of targeting) {
         failedAccounts += t.failedAccounts;
         for (const a of t.items) geoByAdset.set(a.adsetId, a.countries);
@@ -404,8 +423,8 @@ export async function loadCheck(
     if (groupBy === "campaign") {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, campaignMeta, crm] = await Promise.all([
-          config.dolphin ? dolphinCampaigns(config.dolphin, since) : fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
-          config.dolphin ? dolphinBudgets(config.dolphin, since) : fetchCampaignMeta(config.metaToken, config.accountScope),
+          own(config) ? dolphinCampaigns(config, since) : fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
+          own(config) ? dolphinBudgets(config, since) : fetchCampaignMeta(config.metaToken, config.accountScope),
           config.torro ? torroForDay(config.torro, since, "campaign_name") : NO_CRM,
         ]);
         return { meta, campaignMeta, crm };
@@ -442,8 +461,10 @@ export async function loadCheck(
     } else {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, crm] = await Promise.all([
-          config.dolphin ? dolphinAds(config.dolphin, since, geoByAdset) : fetchAdInsights(config.metaToken, since, until, config.accountScope),
-          config.torro ? torroForDay(config.torro, since, "ad_name") : NO_CRM,
+          own(config) ? dolphinAds(config, since, geoByAdset) : fetchAdInsights(config.metaToken, since, until, config.accountScope),
+          // TG Ads: доход в Torro — по кампании, а кампания там и есть объявление со
+          // страной («Static 2 Mexico»), как в боте-авточекере (Decision 068).
+          config.torro ? torroForDay(config.torro, since, config.tgads ? "campaign_name" : "ad_name") : NO_CRM,
         ]);
         return { meta, crm };
       }));
@@ -452,14 +473,16 @@ export async function loadCheck(
         const config = sources[i];
         failedAccounts += meta.failedAccounts;
         const mine = meta.items.filter((a) => take(config, a.accountId));
+        // Имя, по которому клеится доход: у TG Ads — кампания (= объявление со страной).
+        const nameOf = (a: MetaAdRow) => (config.tgads ? a.campaignName : a.adName).trim();
 
         // Расход и доход раскладываются по одному ключу — иначе строка страны
         // получила бы расход одного множества объявлений и доход другого.
-        const country = countryByName(mine.map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId })));
-        const face = faceByName(mine.map((a) => ({ name: a.adName.trim(), campaignName: a.campaignName })));
+        const country = countryByName(mine.map((a) => ({ name: nameOf(a), adsetId: a.adsetId })));
+        const face = faceByName(mine.map((a) => ({ name: nameOf(a), campaignName: a.campaignName })));
 
         for (const a of mine) {
-          const name = a.adName.trim();
+          const name = nameOf(a);
           // Расход не теряем даже у безымянного объявления: в разрезе по крео
           // такому взяться неоткуда, а в разрезе по странам оно всё равно
           // относится к своему адсету.
@@ -538,8 +561,8 @@ export async function loadCheck(
         rows.set(c.campaign_id, row);
       }
     } else {
-      const daysRaw = await selectAll<{ ad_name: string; ad_id: string; adset_id: string | null; campaign_name: string | null; account_id: string | null; date: string; spend: number | string }>((from, to) => {
-        const q = db.from("wh_ad_days").select("ad_name, ad_id, adset_id, campaign_name, account_id, date, spend")
+      const daysRaw = await selectAll<{ ad_name: string; ad_id: string; adset_id: string | null; campaign_name: string | null; account_id: string | null; date: string; spend: number | string; source: string }>((from, to) => {
+        const q = db.from("wh_ad_days").select("ad_name, ad_id, adset_id, campaign_name, account_id, date, spend, source")
           .gte("date", since).lte("date", until);
         return (accountIds ? q.in("account_id", accountIds) : q)
           .order("user_id").order("date").order("ad_id")
@@ -554,22 +577,39 @@ export async function loadCheck(
         return true;
       });
 
-      const country = countryByName(days.map((d) => ({ name: (d.ad_name ?? "").trim(), adsetId: d.adset_id ?? "" })));
-      const face = faceByName(days.map((d) => ({ name: (d.ad_name ?? "").trim(), campaignName: d.campaign_name })));
+      // У TG Ads доход клеится по кампании (= объявление со страной), см. живой чек.
+      const nameOf = (d: (typeof days)[number]) => ((d.source === "tgads" ? d.campaign_name : d.ad_name) ?? "").trim();
+      const country = countryByName(days.map((d) => ({ name: nameOf(d), adsetId: d.adset_id ?? "" })));
+      const face = faceByName(days.map((d) => ({ name: nameOf(d), campaignName: d.campaign_name })));
 
       for (const d of days) {
-        const name = (d.ad_name ?? "").trim();
+        const name = nameOf(d);
         if (!name && groupBy === "creative") continue;
         const label = groupBy === "creative" ? name : country.get(name) ?? countryKey(d.adset_id ?? "");
         adRow(face.get(name) ?? faceOf(d.campaign_name), label).spend += num(d.spend);
       }
 
-      const crm = await selectAll<{ ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
-        db.from("wh_crm_ad_periods").select("ad_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
-          .in("user_id", scope).lte("period_start", until).gte("period_end", since)
-          .order("user_id").order("period_start").order("ad_name")
-          .range(from, to)
-      );
+      const { data: tgRows } = scope.length
+        ? await db.from("buyer_connections").select("user_id").eq("spend_source", "tgads").in("user_id", scope)
+        : { data: [] as { user_id: string }[] };
+      const tgUsers = (tgRows ?? []).map((r) => r.user_id as string);
+      const adUsers = scope.filter((u) => !tgUsers.includes(u));
+      type CrmRow = { ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
+      const crm: CrmRow[] = [
+        ...(adUsers.length ? await selectAll<CrmRow>((from, to) =>
+          db.from("wh_crm_ad_periods").select("ad_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
+            .in("user_id", adUsers).lte("period_start", until).gte("period_end", since)
+            .order("user_id").order("period_start").order("ad_name")
+            .range(from, to)
+        ) : []),
+        // TG Ads — кампании Torro под именем объявления: ad_name здесь — имя кампании.
+        ...(tgUsers.length ? await selectAll<CrmRow>((from, to) =>
+          db.from("wh_crm_campaign_periods").select("ad_name:campaign_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
+            .in("user_id", tgUsers).lte("period_start", until).gte("period_end", since)
+            .order("user_id").order("period_start").order("campaign_id")
+            .range(from, to)
+        ) : []),
+      ];
       for (const c of crm) {
         if (!inside(c.period_start, c.period_end)) { partial++; continue; }
         const name = (c.ad_name ?? "").trim();

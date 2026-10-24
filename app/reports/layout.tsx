@@ -13,11 +13,12 @@ export default async function ReportsLayout({ children }: { children: React.Reac
     // Сбой чтения ключей не должен класть раздел — дальше ответит роут и
     // объяснит причину текстом.
     const [keys, conn] = await Promise.all([listMetaKeys(me.id).catch(() => null), getConnection(me.id).catch(() => null)]);
-    if (keys && keys.length === 0 && conn?.spendSource !== "dolphin") {
+    // Dolphin и TG Ads — источники без ключей Meta (Decision 063, 068).
+    if (keys && keys.length === 0 && !conn?.spendSource) {
       return (
         <NoConnections
           title="Reports"
-          what="Отчёт собирается по твоим интеграциям. Подключи источник расхода (Meta или Dolphin) в Настройках → Интеграции — история догрузится сама."
+          what="Отчёт собирается по твоим интеграциям. Подключи источник расхода (Meta, Dolphin или Telegram Ads) в Настройках → Интеграции — история догрузится сама."
         />
       );
     }

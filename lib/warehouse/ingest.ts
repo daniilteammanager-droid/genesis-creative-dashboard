@@ -5,7 +5,9 @@ import { notify, escapeHtml } from "@/lib/telegram/links";
 import { mskDay } from "@/lib/day";
 import { warehouse } from "./read";
 import { ingestTorro } from "./torroIngest";
-import { dolphinAdDays, dolphinCabinets } from "@/lib/dolphin/api";
+import { dolphinAdDays, dolphinCabinets, type DolphinAdDay } from "@/lib/dolphin/api";
+import { oldestAdDay, tgadsAdDays } from "@/lib/tgads/api";
+import { markTgadsKey, tgadsKeysOf } from "@/lib/connections/tgadsKeys";
 
 // Сбор склада для одного человека (Decision 061).
 //
@@ -226,14 +228,19 @@ async function upsertAdsets(items: { adsetId: string; adsetName: string; account
 // настоящие. Кампании — сумма объявлений за день, отдельного запроса не нужно.
 // Страны таргета Dolphin не отдаёт — адсету пишется страна из нейминга.
 async function writeDolphinSpend(userId: string, token: string, since: string, until: string, allowed: Set<string>) {
+  return writeDays(userId, "dolphin", (await dolphinAdDays(token, since, until)).filter((r) => allowed.has(r.accountId)));
+}
+
+// Готовые строки по дням от источника без своих insights (Dolphin, TG Ads):
+// объявления, кампании из них и страны адсетов.
+async function writeDays(userId: string, source: string, rows: DolphinAdDay[]) {
   const now = new Date().toISOString();
-  const rows = (await dolphinAdDays(token, since, until)).filter((r) => allowed.has(r.accountId));
   const ads = new Map<string, Record<string, unknown>>();
   const campaigns = new Map<string, Record<string, unknown> & { spend: number; clicks: number; impressions: number }>();
   const adsets = new Map<string, { adsetId: string; adsetName: string; accountId: string; countries: string[] }>();
   for (const r of rows) {
     ads.set(`${r.date}|${r.adId}`, {
-      user_id: userId, source: "dolphin", date: r.date, ad_id: r.adId, ad_name: r.adName,
+      user_id: userId, source, date: r.date, ad_id: r.adId, ad_name: r.adName,
       adset_id: r.adsetId || null, adset_name: r.adsetName || null,
       campaign_id: r.campaignId || null, campaign_name: r.campaignName || null,
       account_id: r.accountId, account_name: r.accountName,
@@ -242,7 +249,7 @@ async function writeDolphinSpend(userId: string, token: string, since: string, u
     if (r.campaignId) {
       const key = `${r.date}|${r.campaignId}`;
       const c = campaigns.get(key) ?? {
-        user_id: userId, source: "dolphin", date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
+        user_id: userId, source, date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
         account_id: r.accountId, spend: 0, clicks: 0, impressions: 0, updated_at: now,
       };
       c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions;
@@ -256,6 +263,23 @@ async function writeDolphinSpend(userId: string, token: string, since: string, u
   await put("wh_campaign_days", "date,campaign_id", [...campaigns.values()]);
   const adsetRows = adsets.size ? await upsertAdsets([...adsets.values()]) : 0;
   return { adRows: ads.size, campaignRows: campaigns.size, adsetRows };
+}
+
+// TG Ads (Decision 068): кабинет на ключ. Упавший ключ отмечается в «Интеграциях»
+// и не роняет остальные — как ключи Meta.
+async function writeTgadsSpend(userId: string, keys: Awaited<ReturnType<typeof tgadsKeysOf>>, since: string, until: string, allowed: Set<string>) {
+  const out = { adRows: 0, campaignRows: 0, adsetRows: 0, failedAccounts: 0 };
+  for (const k of keys.filter((k) => allowed.has(k.accountId))) {
+    try {
+      const w = await writeDays(userId, "tgads", await tgadsAdDays(k, since, until));
+      out.adRows += w.adRows; out.campaignRows += w.campaignRows; out.adsetRows += w.adsetRows;
+      await markTgadsKey(k.id, null);
+    } catch (e) {
+      out.failedAccounts++;
+      await markTgadsKey(k.id, e instanceof Error ? e.message : String(e));
+    }
+  }
+  return out;
 }
 
 // Страны таргета: полный обход на окне, на частом прогоне — только новые адсеты
@@ -289,7 +313,8 @@ export async function ingestForUser(
   const [conn, tokens] = await Promise.all([getConnection(userId), metaTokensOf(userId)]);
   const torro = conn?.torroToken && conn.torroBuyerId ? { token: conn.torroToken, buyerId: conn.torroBuyerId } : null;
   const dolphin = conn?.spendSource === "dolphin" ? conn.dolphinToken : null;
-  if (tokens.length === 0 && !dolphin && !torro) return { ...result, skipped: "нет подключений" };
+  const tgKeys = conn?.spendSource === "tgads" ? await tgadsKeysOf(userId) : [];
+  if (tokens.length === 0 && !dolphin && !tgKeys.length && !torro) return { ...result, skipped: "нет подключений" };
 
   const { data: progress } = await db().from("buyer_connections")
     .select("spend_backfilled_from, spend_backfill_done, spend_backfill_empty, torro_backfilled_from, torro_backfill_done")
@@ -329,6 +354,31 @@ export async function ingestForUser(
             spend_backfill_empty: empty,
             spend_backfill_done: !chunk || chunk.since <= floor || empty >= DOLPHIN_EMPTY_CHUNKS,
           }).eq("user_id", userId);
+        }
+      }
+    } else if (tgKeys.length) {
+      const seen = new Map(tgKeys.map((k) => [k.accountId, { name: k.accountTitle, created: null }]));
+      const { allowed, conflicts } = await claimAccounts(userId, seen);
+      if (conflicts) { result.conflicts = conflicts; notes.push(`чужих кабинетов: ${conflicts}`); }
+      if (allowed.size) {
+        Object.assign(result, await writeTgadsSpend(userId, tgKeys, since, until, allowed));
+        if (spendBackfill) {
+          // Раньше самого старого объявления истории нет.
+          const oldest = (await Promise.all(tgKeys.filter((k) => allowed.has(k.accountId)).map((k) => oldestAdDay(k.token).catch(() => null))))
+            .filter((d): d is string => Boolean(d)).sort()[0];
+          if (oldest && oldest > floor) floor = oldest;
+          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, CHUNK_DAYS);
+          if (chunk) {
+            const b = await writeTgadsSpend(userId, tgKeys, chunk.since, chunk.until, allowed);
+            result.adRows += b.adRows; result.campaignRows += b.campaignRows; result.failedAccounts += b.failedAccounts;
+            result.backfill = `TG Ads ${chunk.since}…${chunk.until}`;
+          }
+          if (!chunk || result.failedAccounts === 0) {
+            await db().from("buyer_connections").update({
+              spend_backfilled_from: chunk?.since ?? progress?.spend_backfilled_from ?? since,
+              spend_backfill_done: !chunk || chunk.since <= floor,
+            }).eq("user_id", userId);
+          }
         }
       }
     } else if (tokens.length) {
@@ -405,11 +455,13 @@ export async function ingestForUser(
 
 // Все, у кого есть хоть одно подключение: ключ Meta, Dolphin или Torro.
 export async function usersToIngest(): Promise<string[]> {
-  const [{ data: keys, error: e1 }, { data: torro, error: e2 }] = await Promise.all([
+  const [{ data: keys, error: e1 }, { data: torro, error: e2 }, { data: tg, error: e3 }] = await Promise.all([
     db().from("meta_keys").select("user_id"),
     db().from("buyer_connections").select("user_id").or("torro_token_enc.not.is.null,dolphin_token_enc.not.is.null"),
+    db().from("tgads_keys").select("user_id"),
   ]);
   if (e1) throw new Error(e1.message);
   if (e2) throw new Error(e2.message);
-  return [...new Set([...(keys ?? []), ...(torro ?? [])].map((r) => r.user_id as string))];
+  if (e3) throw new Error(e3.message);
+  return [...new Set([...(keys ?? []), ...(torro ?? []), ...(tg ?? [])].map((r) => r.user_id as string))];
 }

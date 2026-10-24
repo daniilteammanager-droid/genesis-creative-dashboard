@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { MetaKeyView } from "@/lib/connections/metaKeys";
+import TgadsKeys from "./TgadsKeys";
 
 // Источник расхода — ровно один (Decision 061): Meta (ключей сколько угодно,
-// все работают одновременно) или Dolphin Cloud (Decision 063). FB Tool — следом.
+// все работают одновременно), Dolphin Cloud (Decision 063) или Telegram Ads
+// (Decision 068, кабинетов тоже несколько). FB Tool — следом.
 
 const field =
   "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
@@ -18,7 +20,9 @@ const SOURCES = [
   { id: "meta", label: "Meta API", ready: true },
   { id: "fbtool", label: "FB Tool", ready: false },
   { id: "dolphin", label: "Dolphin Cloud", ready: true },
+  { id: "tgads", label: "Telegram Ads", ready: true },
 ];
+type Source = "meta" | "dolphin" | "tgads";
 
 const date = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 
@@ -29,7 +33,7 @@ export default function MetaKeys() {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
   // Какой источник смотрим, пока ни один не подключён. Подключён — только он.
-  const [pick, setPick] = useState<"meta" | "dolphin">("meta");
+  const [pick, setPick] = useState<Source>("meta");
   const [dolphinToken, setDolphinToken] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -70,7 +74,7 @@ export default function MetaKeys() {
 
   const keys = state?.keys ?? [];
   const readOnly = keys.filter((k) => !k.canWrite).length;
-  const shown = (state?.source as "meta" | "dolphin" | null) ?? pick;
+  const shown = (state?.source as Source | null) ?? pick;
 
   // После Dolphin перечитываем общий вид: источник и прогресс догрузки.
   async function reload() {
@@ -108,7 +112,7 @@ export default function MetaKeys() {
         {SOURCES.map((s) => (
           <button key={s.id} type="button"
                   disabled={!s.ready || Boolean(state?.source && state.source !== s.id)}
-                  onClick={() => setPick(s.id as "meta" | "dolphin")}
+                  onClick={() => setPick(s.id as Source)}
                   className={`text-[12px] px-3 py-1.5 rounded-lg border transition disabled:cursor-not-allowed ${
             shown === s.id
               ? "border-violet-600/50 text-violet-200 bg-violet-900/20"
@@ -117,6 +121,8 @@ export default function MetaKeys() {
           </button>
         ))}
       </div>
+
+      {shown === "tgads" && <TgadsKeys onChange={reload} />}
 
       {shown === "dolphin" && (
         <div className="mb-2">
