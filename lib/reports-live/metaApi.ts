@@ -521,38 +521,20 @@ export interface AdSetTargeting {
 // оставались без страны — у Андрея так пропали все LATAM-заливы (замер
 // 04.09.2026: 8 адсетов из 14, весь Латам, $305 расхода).
 //
-// Meta отдаёт объекты пачкой через ?ids=, до 50 за раз.
+// По одному адсету: пачку через ?ids= Meta убрала в v26.0 («The ids query
+// parameter is deprecated») — и она молча отдавала ноль стран (замер 24.10.2026:
+// у Артёма таргет был у 57 адсетов из 219). Удалённый адсет — просто пропуск.
 export async function fetchAdSetTargetingByIds(token: string, ids: string[]): Promise<AdSetTargeting[]> {
-  const out: AdSetTargeting[] = [];
-  const CHUNK = 50;
-
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const batch = ids.slice(i, i + CHUNK);
-    const url = `${BASE}/?ids=${batch.join(",")}&fields=id,name,account_id,targeting{geo_locations}`
-      + `&access_token=${encodeURIComponent(token)}`;
+  type AdSetNode = { id?: string; name?: string; account_id?: string; targeting?: { geo_locations?: { countries?: string[] } } };
+  const found = await mapWithConcurrency(ids, CONCURRENCY, async (id) => {
     try {
-      const res = await fetch(url);
-      type AdSetNode = {
-        id?: string; name?: string; account_id?: string;
-        targeting?: { geo_locations?: { countries?: string[] } };
-      };
-      const body = (await res.json()) as Record<string, unknown>;
-      if (body.error) continue;
-      for (const [id, raw] of Object.entries(body)) {
-        if (id === "error" || !raw || typeof raw !== "object") continue;
-        const v = raw as AdSetNode;
-        out.push({
-          adsetId: v.id ?? id,
-          adsetName: v.name ?? "",
-          accountId: v.account_id ?? "",
-          countries: v.targeting?.geo_locations?.countries ?? [],
-        });
-      }
+      const v = await graphGet<AdSetNode>(token, `/${id}`, { fields: "id,name,account_id,targeting{geo_locations}" });
+      return { adsetId: v.id ?? id, adsetName: v.name ?? "", accountId: v.account_id ?? "", countries: v.targeting?.geo_locations?.countries ?? [] };
     } catch {
-      // Пачка не ответила — не роняем прогон: страна подтянется следующим.
+      return null;
     }
-  }
-  return out;
+  });
+  return found.filter((x): x is AdSetTargeting => x !== null);
 }
 
 export async function fetchAdSetTargeting(token: string, scope?: AccountScope): Promise<{ items: AdSetTargeting[]; failedAccounts: number }> {

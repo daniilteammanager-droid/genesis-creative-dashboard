@@ -4,15 +4,16 @@ import { useEffect, useState } from "react";
 import type { TgadsKeyView } from "@/lib/connections/tgadsKeys";
 
 // Кабинеты Telegram Ads (Decision 068): строка на кабинет — название и ключ API.
-// Источник расхода у человека один — эта панель видна, когда выбран TG Ads.
+// Своя карточка, параллельно источнику Facebook: площадки не пересекаются (Decision 069).
 
 const field =
   "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
   "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm";
+const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
 const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
 const date = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 
-export default function TgadsKeys({ onChange }: { onChange: () => void }) {
+export default function TgadsKeys() {
   const [keys, setKeys] = useState<TgadsKeyView[]>([]);
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
@@ -33,7 +34,6 @@ export default function TgadsKeys({ onChange }: { onChange: () => void }) {
       if (!res.ok || !d?.keys) throw new Error(d?.error ?? "Не получилось — попробуй ещё раз");
       setKeys(d.keys);
       setMsg({ ok: true, text: ok });
-      onChange();
       return true;
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "Сеть не ответила" });
@@ -51,7 +51,12 @@ export default function TgadsKeys({ onChange }: { onChange: () => void }) {
   }
 
   return (
-    <div className="mb-2">
+    <div className={card}>
+      <h2 className="text-lg font-semibold text-white mb-2">Telegram Ads</h2>
+      <p className="text-sm text-zinc-400 leading-relaxed mb-4">
+        Расход TG Ads — отдельно от Facebook и вместе с ним: можно лить и туда и туда. Кабинет — строкой:
+        название и ключ API. В название впиши лицо (ROMAN, RICKY) — по нему чек разложит кабинет.
+      </p>
       {keys.length > 0 && (
         <div className="divide-y divide-violet-900/20 border border-violet-900/25 rounded-xl mb-4">
           {keys.map((k) => (
@@ -76,7 +81,7 @@ export default function TgadsKeys({ onChange }: { onChange: () => void }) {
       )}
 
       <form onSubmit={add} className="space-y-2.5">
-        <input type="text" placeholder="Название, например «TG ADS Испания»" value={name}
+        <input type="text" placeholder="Название, например «TG ADS Испания ROMAN»" value={name}
                onChange={(e) => setName(e.target.value)} className={field} />
         <input type="password" placeholder="Ключ API Telegram Ads" value={token} autoComplete="off"
                onChange={(e) => setToken(e.target.value)} className={field} />

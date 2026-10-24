@@ -3,10 +3,10 @@
 // Формат задан владельцем и уходит в телегу как есть, поэтому накрыт проверкой:
 // молчаливое изменение разделителя или порядка чисел заметят уже в чате.
 import assert from "node:assert/strict";
-import { buildCheckText, faceTotals, NO_FACE, MANY_FACES, type CheckRow } from "./check";
+import { buildCheckText, faceInName, faceTotals, platformTotals, NO_FACE, MANY_FACES, type CheckRow } from "./check";
 
 const row = (over: Partial<CheckRow>): CheckRow => ({
-  key: "k", label: "L", face: "ROMAN", dailyBudget: null, spend: 0,
+  key: "k", label: "L", platform: "fb", face: "ROMAN", dailyBudget: null, spend: 0,
   subscribers: null, dialogs: null, revenue: null,
   costPdp: null, costDia: null, romi: null, ...over,
 });
@@ -71,5 +71,22 @@ assert.equal(f[0].spend, 200);
 assert.equal(f[0].costPdp, 20, "цена ПДП лица — из сумм, а не средним строк");
 assert.equal(f[0].count, 2);
 
-console.log("check: шаблон для телеги совпадает с образцом, блоки по лицам");
+// Площадки: две подключены — заголовок площадки над лицами; подключена без
+// расхода — «расхода нет»; одна площадка — без заголовка, как раньше
+const both = [
+  row({ label: "FB camp", platform: "fb", face: "ROMAN", spend: 100 }),
+  row({ label: "Static 2 Mexico", platform: "tg", face: "ROMAN", spend: 30 }),
+];
+const twoText = buildCheckText(both, faceTotals(both), null, new Date("2026-10-24T15:00:00Z"), undefined, platformTotals(both, new Set(["fb", "tg"])));
+assert.ok(twoText.indexOf("📘 FACEBOOK") < twoText.indexOf("FB camp") && twoText.indexOf("FB camp") < twoText.indexOf("✈️ TG ADS"), "FB-блок, потом TG");
+assert.ok(twoText.indexOf("Static 2 Mexico") > twoText.indexOf("✈️ TG ADS"));
+const fbOnly = [both[0]];
+const emptyTg = buildCheckText(fbOnly, faceTotals(fbOnly), null, new Date(), undefined, platformTotals(fbOnly, new Set(["fb", "tg"])));
+assert.match(emptyTg, /✈️ TG ADS\nрасхода нет/, "подключена без расхода — не молчим");
+const oneP = buildCheckText(fbOnly, faceTotals(fbOnly), null, new Date(), undefined, platformTotals(fbOnly, new Set(["fb"])));
+assert.ok(!oneP.includes("FACEBOOK") && !oneP.includes("TG ADS"), "не подключена — не пишем; одна — без заголовка");
+assert.equal(faceInName("TG ADS Испания roman"), "ROMAN");
+assert.equal(faceInName("TG ADS Латам"), null);
+
+console.log("check: шаблон для телеги совпадает с образцом, блоки по площадкам и лицам");
 console.log("check: «не знаем» печатается прочерком, а не нулём ✓");

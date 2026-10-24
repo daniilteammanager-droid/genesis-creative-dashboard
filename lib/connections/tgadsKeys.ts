@@ -53,22 +53,23 @@ export async function addTgadsKey(userId: string, name: string, token: string): 
   });
   if (error) throw new Error(error.message);
 
-  // Источник — TG Ads; новый кабинет — история заново, чтобы догрузилась и его.
+  // Новый кабинет — история TG Ads заново, чтобы догрузилась и его. Источник
+  // Facebook не трогаем: площадки параллельны (Decision 069).
   const { error: e2 } = await db.from("buyer_connections").upsert({
-    user_id: userId, spend_source: "tgads", spend_backfilled_from: null, spend_backfill_done: false,
+    user_id: userId, tgads_backfilled_from: null, tgads_backfill_done: false,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
   if (e2) throw new Error(e2.message);
 }
 
-// Последний ключ снят — источника больше нет. История в складе остаётся.
+// Последний ключ снят — прогресс сбрасываем. История в складе остаётся.
 export async function deleteTgadsKey(userId: string, id: string): Promise<void> {
   const db = warehouse();
   const { error } = await db.from("tgads_keys").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
   const { count } = await db.from("tgads_keys").select("id", { count: "exact", head: true }).eq("user_id", userId);
   if (!count) {
-    await db.from("buyer_connections").update({ spend_source: null, spend_backfilled_from: null, spend_backfill_done: false }).eq("user_id", userId);
+    await db.from("buyer_connections").update({ tgads_backfilled_from: null, tgads_backfill_done: false }).eq("user_id", userId);
   }
 }
 

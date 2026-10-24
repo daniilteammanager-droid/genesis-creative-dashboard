@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
-import { getConnection, setDolphinToken } from "@/lib/connections/store";
+import { setDolphinToken } from "@/lib/connections/store";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
 import { verifyDolphin } from "@/lib/dolphin/api";
 import { ingestSoon } from "@/lib/warehouse/kick";
@@ -22,9 +22,6 @@ export async function POST(req: Request) {
     if (!token?.trim()) return fail("Вставь ключ API Dolphin");
     if ((await listMetaKeys(me.id)).length > 0) {
       return fail("Подключён источник Meta. Чтобы перейти на Dolphin, сначала удали ключи Meta");
-    }
-    if ((await getConnection(me.id))?.spendSource === "tgads") {
-      return fail("Подключён Telegram Ads. Чтобы перейти на Dolphin, сначала удали его ключи");
     }
     const checked = await verifyDolphin(token.trim());
     if (typeof checked === "string") return fail(checked);

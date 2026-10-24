@@ -64,7 +64,7 @@ export async function getConnection(userId: string): Promise<{
   crmAdsByIdSheetId: string | null;
   torroToken: string | null;
   torroBuyerId: number | null;
-  spendSource: "meta" | "fbtool" | "dolphin" | "tgads" | null;
+  spendSource: "meta" | "fbtool" | "dolphin" | null;
   dolphinToken: string | null;
 } | null> {
   const { data, error } = await admin()

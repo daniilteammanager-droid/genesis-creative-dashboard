@@ -29,13 +29,13 @@ assert.equal(dueSlot(["10:00", "10:15"], D, "10:15", `${D} 10:00`), `${D} 10:15`
 // Сообщение: верх по расходу, остаток лица одной строкой, итог в конце.
 // 40 строк: чётные — ROMAN, нечётные — RICKY, у RICKY расход меньше.
 const row = (i: number) => ({
-  key: `k${i}`, label: `CAB_${i}`, face: i % 2 ? "RICKY" : "ROMAN", dailyBudget: 50, spend: 100 - i,
+  key: `k${i}`, label: `CAB_${i}`, platform: "fb" as const, face: i % 2 ? "RICKY" : "ROMAN", dailyBudget: 50, spend: 100 - i,
   subscribers: null, dialogs: null, revenue: null, costPdp: null, costDia: null, romi: null,
 });
 const rows40 = Array.from({ length: 40 }, (_, i) => row(i));
 const result = {
   since: D, until: D, groupBy: "campaign" as const, live: true,
-  rows: rows40, faces: faceTotals(rows40), totalBudget: 2000,
+  rows: rows40, faces: faceTotals(rows40), platforms: [], totalBudget: 2000,
   totals: { spend: 3220, revenue: 500, romi: -84.5 }, text: "", buyers: [], sources: [],
   buyer: "all", isBuyer: false, generatedAt: "",
 };

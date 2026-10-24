@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
@@ -200,12 +200,26 @@ export default function LiveCheck() {
                     ))}
                   </tr>
                 </thead>
-                {/* Блок на лицо: строка лица с итогом, под ней его строки (Decision 065) */}
-                {data.faces.map((f) => (
-                  <tbody key={f.face} className="divide-y divide-violet-900/15 border-t border-violet-900/30">
-                    <CheckLine r={f} face />
-                    {data.rows.filter((r) => r.face === f.face).map((r) => <CheckLine key={r.key} r={r} />)}
-                  </tbody>
+                {/* Площадка (если их больше одной, Decision 069) → лицо с итогом (Decision 065) → строки */}
+                {(data.platforms.length > 1 ? data.platforms : [null]).map((p) => (
+                  <Fragment key={p?.platform ?? "all"}>
+                    {p && (
+                      <tbody className="border-t-2 border-violet-700/40">
+                        {p.total ? <CheckLine r={{ ...p.total, label: p.label }} level="platform" /> : (
+                          <tr className="bg-violet-900/25">
+                            <td className="px-3 py-2.5 text-white font-semibold">{p.label}</td>
+                            <td colSpan={6} className="px-3 py-2.5 text-zinc-500">расхода нет</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    )}
+                    {data.faces.filter((f) => !p || f.platform === p.platform).map((f) => (
+                      <tbody key={`${f.platform}|${f.face}`} className="divide-y divide-violet-900/15 border-t border-violet-900/30">
+                        <CheckLine r={f} level="face" />
+                        {data.rows.filter((r) => r.platform === f.platform && r.face === f.face).map((r) => <CheckLine key={r.key} r={r} />)}
+                      </tbody>
+                    ))}
+                  </Fragment>
                 ))}
               </table>
             </div>
@@ -223,12 +237,13 @@ export default function LiveCheck() {
   );
 }
 
-function CheckLine({ r, face = false }: { r: CheckRow; face?: boolean }) {
-  const strong = face ? "text-white font-semibold" : "text-zinc-200";
-  const soft = face ? "text-zinc-200 font-semibold" : "text-zinc-400";
+function CheckLine({ r, level = "row" }: { r: CheckRow; level?: "platform" | "face" | "row" }) {
+  const head = level !== "row";
+  const strong = head ? "text-white font-semibold" : "text-zinc-200";
+  const soft = head ? "text-zinc-200 font-semibold" : "text-zinc-400";
   return (
-    <tr className={face ? "bg-violet-900/15" : "hover:bg-violet-900/10 transition"}>
-      <td className={`px-3 py-2.5 max-w-[320px] truncate ${face ? strong : `${strong} pl-6`}`} title={r.label}>{face ? `👤 ${r.label}` : r.label}</td>
+    <tr className={level === "platform" ? "bg-violet-900/25" : head ? "bg-violet-900/15" : "hover:bg-violet-900/10 transition"}>
+      <td className={`px-3 py-2.5 max-w-[320px] truncate ${head ? strong : `${strong} pl-6`}`} title={r.label}>{level === "face" ? `👤 ${r.label}` : r.label}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.dailyBudget === null ? "—" : `$${nf(r.dailyBudget, 0)}`}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${strong}`}>${nf(r.spend)}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.costPdp === null ? "—" : `$${nf(r.costPdp)}`}</td>

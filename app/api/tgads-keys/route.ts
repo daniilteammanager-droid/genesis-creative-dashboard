@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { addTgadsKey, deleteTgadsKey, listTgadsKeys } from "@/lib/connections/tgadsKeys";
-import { getConnection } from "@/lib/connections/store";
 import { ingestSoon } from "@/lib/warehouse/kick";
 
 // Свои ключи Telegram Ads (Decision 068). user_id из сессии: чужой ключ не
-// увидеть и не удалить. Источник расхода один (Decision 061): пока подключён
-// другой — ключ TG Ads не добавить.
+// увидеть и не удалить. Параллельно источнику Facebook (Decision 069).
 
 // Загрузка после подключения идёт следом за ответом (ingestSoon) — ей нужно время.
 export const maxDuration = 300;
@@ -29,8 +27,6 @@ export async function POST(req: Request) {
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     const { name, token } = (await req.json()) as { name?: string; token?: string };
-    const source = (await getConnection(me.id))?.spendSource;
-    if (source && source !== "tgads") return fail("Подключён другой источник расхода. Чтобы перейти на Telegram Ads, сначала удали его");
     await addTgadsKey(me.id, name ?? "", token ?? "");
     ingestSoon(me.id);
     return NextResponse.json({ keys: await listTgadsKeys(me.id) });

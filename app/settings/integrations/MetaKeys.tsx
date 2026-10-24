@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { MetaKeyView } from "@/lib/connections/metaKeys";
-import TgadsKeys from "./TgadsKeys";
 
 // Источник расхода — ровно один (Decision 061): Meta (ключей сколько угодно,
-// все работают одновременно), Dolphin Cloud (Decision 063) или Telegram Ads
-// (Decision 068, кабинетов тоже несколько). FB Tool — следом.
+// все работают одновременно) или Dolphin Cloud (Decision 063). FB Tool — следом.
+// Это источник Facebook; Telegram Ads — своей карточкой рядом (Decision 069).
 
 const field =
   "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
@@ -20,9 +19,8 @@ const SOURCES = [
   { id: "meta", label: "Meta API", ready: true },
   { id: "fbtool", label: "FB Tool", ready: false },
   { id: "dolphin", label: "Dolphin Cloud", ready: true },
-  { id: "tgads", label: "Telegram Ads", ready: true },
 ];
-type Source = "meta" | "dolphin" | "tgads";
+type Source = "meta" | "dolphin";
 
 const date = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 
@@ -103,7 +101,7 @@ export default function MetaKeys() {
 
   return (
     <div className={card}>
-      <h2 className="text-lg font-semibold text-white mb-2">Источник расхода</h2>
+      <h2 className="text-lg font-semibold text-white mb-2">Источник расхода Facebook</h2>
       <p className="text-sm text-zinc-400 leading-relaxed mb-3">
         Откуда берутся расход, показы и клики. Подключается один источник; чтобы перейти на другой,
         сначала удали текущий. История в дашборде при этом не теряется.
@@ -121,8 +119,6 @@ export default function MetaKeys() {
           </button>
         ))}
       </div>
-
-      {shown === "tgads" && <TgadsKeys onChange={reload} />}
 
       {shown === "dolphin" && (
         <div className="mb-2">

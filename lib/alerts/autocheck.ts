@@ -52,7 +52,7 @@ export function checkMessage(r: CheckResult, at: Date = new Date()): string {
   // Верх по расходу среди всех лиц, но каждое лицо остаётся в чеке со своим
   // итогом: лицо без строк в верхе печатается одной строкой «…и ещё N».
   const top = new Set([...r.rows].sort((a, b) => b.spend - a.spend).slice(0, TOP_ROWS));
-  const lines = [buildCheckText(r.rows.filter((x) => top.has(x)), r.faces, r.totalBudget, at, UNIT[r.groupBy])];
+  const lines = [buildCheckText(r.rows.filter((x) => top.has(x)), r.faces, r.totalBudget, at, UNIT[r.groupBy], r.platforms)];
   const t = r.totals;
   lines.push(`Итого: ${money(t.spend)}$ / доход ${t.revenue === null ? "—" : `${money(t.revenue)}$`} / ROMI ${t.romi === null ? "—" : `${t.romi.toFixed(0)}%`}`);
 

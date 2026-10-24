@@ -3,6 +3,7 @@ import { getProfile } from "@/lib/auth/server";
 import { getConnectionView } from "@/lib/connections/store";
 import ConnectionsForm from "./ConnectionsForm";
 import MetaKeys from "./MetaKeys";
+import TgadsKeys from "./TgadsKeys";
 import GrSheets, { type GrSheet } from "./GrSheets";
 import TelegramLinks from "./TelegramLinks";
 import { createClient } from "@/lib/auth/server";
@@ -40,6 +41,7 @@ export default async function IntegrationsPage() {
   return (
     <div className="space-y-4">
       <MetaKeys />
+      <TgadsKeys />
       <ConnectionsForm
         initial={view}
         loadError={error}

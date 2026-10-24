@@ -26,12 +26,22 @@ import { parseName } from "@/lib/creatives/code";
 //
 // Чек всегда делится по лицам (Decision 065): лицо — из имени кампании, внутри
 // лица — кампании, креативы или страны.
+//
+// Над лицами — площадка (Decision 069): Facebook и Telegram Ads. Площадка в чеке
+// есть, если у кого-то в области видимости она подключена; подключена, а расхода
+// нет — так и пишем; не подключена — её в чеке нет вовсе.
 
 export type CheckGroup = "campaign" | "creative" | "country";
+export type Platform = "fb" | "tg";
+export const PLATFORMS: { id: Platform; label: string }[] = [
+  { id: "fb", label: "📘 FACEBOOK" },
+  { id: "tg", label: "✈️ TG ADS" },
+];
 
 export interface CheckRow {
   key: string;
   label: string;
+  platform: Platform;
   face: string;                 // лицо из имени кампании, NO_FACE / MANY_FACES — не узнали
   dailyBudget: number | null;   // только у живого чека по кампаниям
   spend: number;
@@ -46,19 +56,26 @@ export interface CheckRow {
 // Итог лица — та же строка, плюс сколько в нём строк (для «…и ещё N» в телеге).
 export type FaceTotal = CheckRow & { count: number };
 
+// Площадка в чеке: подключена ли у кого-то в области видимости и её итог.
+// Итог null — подключена, а расхода нет.
+export interface PlatformTotal { platform: Platform; label: string; total: CheckRow | null }
+
 export const NO_FACE = "Без лица";
 // Одно имя объявления в кампаниях разных лиц: доход Torro по имени не делится.
 export const MANY_FACES = "Несколько лиц";
 
 const faceOf = (campaignName: string | null | undefined) => parseName(campaignName ?? "").face ?? NO_FACE;
+// В именах TG Ads лица нет — оно берётся из названия кабинета, которое дал баер.
+export const faceInName = (name: string) => /\b(ROMAN|RICKY)\b/i.exec(name)?.[1].toUpperCase() ?? null;
 
 export interface CheckResult {
   since: string;
   until: string;
   groupBy: CheckGroup;
   live: boolean;
-  rows: CheckRow[];              // сгруппированы по лицам в порядке faces
-  faces: FaceTotal[];
+  rows: CheckRow[];              // сгруппированы по площадкам и лицам в порядке faces
+  faces: FaceTotal[];            // по площадкам, внутри — по лицам
+  platforms: PlatformTotal[];    // только подключённые
   totalBudget: number | null;
   totals: { spend: number; revenue: number | null; romi: number | null };
   text: string;
@@ -113,44 +130,67 @@ const budgetOf = (r: CheckRow) => (r.dailyBudget !== null ? ` - [${nf(r.dailyBud
 
 // Блок на лицо: строка лица с его итогом, под ней строки. rows может быть частью
 // строк лица (авточек шлёт верх) — тогда с unit остаток лица печатается одной строкой.
-export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget: number | null, now: Date, unit?: string): string {
+// Площадок больше одной — над лицами строка площадки с её итогом; подключена, а
+// расхода нет — «расхода нет». Площадка одна — заголовка нет, как раньше.
+export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget: number | null, now: Date, unit?: string, platforms: PlatformTotal[] = []): string {
   const head = `Отчет по трафу / ${mskStamp(now)}` + (totalBudget !== null ? ` / [${nf(totalBudget, 0)}$]` : "");
 
   const lines = [head, ""];
-  for (const f of faces) {
-    const shown = rows.filter((r) => r.face === f.face);
-    if (!shown.length && !unit) continue;
-    lines.push(`👤 ${f.label}${budgetOf(f)}`, numbers(f), "");
-    for (const r of shown) lines.push(`${r.label}${budgetOf(r)}`, numbers(r), "");
-    const hidden = f.count - shown.length;
-    if (unit && hidden > 0) {
-      const spend = f.spend - shown.reduce((x, r) => x + r.spend, 0);
-      lines.push(`…и ещё ${hidden} ${unit} на ${nf(spend)}$`, "");
+  const blocks = platforms.length > 1 ? platforms : [null];
+  for (const p of blocks) {
+    if (p) {
+      lines.push(p.total ? `${p.label}${budgetOf(p.total)}` : p.label, p.total ? numbers(p.total) : "расхода нет", "");
+      if (!p.total) continue;
+    }
+    for (const f of faces.filter((x) => !p || x.platform === p.platform)) {
+      const shown = rows.filter((r) => r.platform === f.platform && r.face === f.face);
+      if (!shown.length && !unit) continue;
+      lines.push(`👤 ${f.label}${budgetOf(f)}`, numbers(f), "");
+      for (const r of shown) lines.push(`${r.label}${budgetOf(r)}`, numbers(r), "");
+      const hidden = f.count - shown.length;
+      if (unit && hidden > 0) {
+        const spend = f.spend - shown.reduce((x, r) => x + r.spend, 0);
+        lines.push(`…и ещё ${hidden} ${unit} на ${nf(spend)}$`, "");
+      }
     }
   }
   return lines.join("\n").trimEnd();
 }
 
-// Итоги по лицам из строк чека. Производные — из сумм (Decision 024). Порядок —
-// по расходу, неузнанные лица в конце.
-export function faceTotals(rows: CheckRow[]): FaceTotal[] {
-  const by = new Map<string, FaceTotal>();
+const sum = (rows: CheckRow[], key: string, label: string, platform: Platform, face: string): CheckRow & { count: number } => {
+  const t = {
+    key, label, platform, face, dailyBudget: null as number | null, spend: 0,
+    subscribers: null as number | null, dialogs: null as number | null, revenue: null as number | null,
+    costPdp: null, costDia: null, romi: null, count: 0,
+  };
   for (const r of rows) {
-    const f = by.get(r.face) ?? {
-      key: r.face, label: r.face, face: r.face, dailyBudget: null, spend: 0,
-      subscribers: null, dialogs: null, revenue: null, costPdp: null, costDia: null, romi: null, count: 0,
-    };
-    f.spend += r.spend;
-    f.dailyBudget = add(f.dailyBudget, r.dailyBudget);
-    f.subscribers = add(f.subscribers, r.subscribers);
-    f.dialogs = add(f.dialogs, r.dialogs);
-    f.revenue = add(f.revenue, r.revenue);
-    f.count++;
-    by.set(r.face, f);
+    t.spend += r.spend;
+    t.dailyBudget = add(t.dailyBudget, r.dailyBudget);
+    t.subscribers = add(t.subscribers, r.subscribers);
+    t.dialogs = add(t.dialogs, r.dialogs);
+    t.revenue = add(t.revenue, r.revenue);
+    t.count++;
   }
+  return derive(t) as CheckRow & { count: number };
+};
+
+// Итоги по лицам внутри площадок. Производные — из сумм (Decision 024). Порядок —
+// площадки как в PLATFORMS, внутри — лица по расходу, неузнанные в конце.
+export function faceTotals(rows: CheckRow[]): FaceTotal[] {
+  const by = new Map<string, CheckRow[]>();
+  for (const r of rows) by.set(`${r.platform}|${r.face}`, [...(by.get(`${r.platform}|${r.face}`) ?? []), r]);
   const unknown = (f: FaceTotal) => (f.face === NO_FACE || f.face === MANY_FACES ? 1 : 0);
-  return [...by.values()].map((f) => derive(f) as FaceTotal)
-    .sort((a, b) => unknown(a) - unknown(b) || b.spend - a.spend);
+  const order = (p: Platform) => PLATFORMS.findIndex((x) => x.id === p);
+  return [...by.values()].map((list) => sum(list, list[0].face, list[0].face, list[0].platform, list[0].face))
+    .sort((a, b) => order(a.platform) - order(b.platform) || unknown(a) - unknown(b) || b.spend - a.spend);
+}
+
+// Подключённые площадки с итогами.
+export function platformTotals(rows: CheckRow[], connected: Set<Platform>): PlatformTotal[] {
+  return PLATFORMS.filter((p) => connected.has(p.id)).map((p) => {
+    const mine = rows.filter((r) => r.platform === p.id);
+    return { platform: p.id, label: p.label, total: mine.length ? sum(mine, p.id, p.label, p.id, "") : null };
+  });
 }
 
 // Одно значение на имя объявления; у имени их несколько — many. Так делятся и
@@ -258,15 +298,14 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
     ]);
     const ownedSet = new Set((owned ?? []).map((o) => o.account_id as string));
     const torro = c?.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined;
-    // Источник у человека один: Dolphin — вместо ключей Meta, а не вместе с ними.
-    if (c?.spendSource === "tgads") {
-      const tgads = await tgadsKeysOf(id);
-      if (tgads.length) list.push({
-        cacheKey: id, userId: id, metaToken: "", tgads,
-        accountScope: {}, campaignsSheetId: "", adsSheetId: "", owned: ownedSet, torro,
-      });
-      continue;
-    }
+    // TG Ads — параллельно Facebook (Decision 069). Torro — и тут: у TG Ads он
+    // клеится к своим строкам (по кампании), к строкам Facebook не прилипнет.
+    const tgads = await tgadsKeysOf(id);
+    if (tgads.length) list.push({
+      cacheKey: id, userId: id, metaToken: "", tgads,
+      accountScope: {}, campaignsSheetId: "", adsSheetId: "", owned: ownedSet, torro,
+    });
+    // Источник Facebook у человека один: Dolphin — вместо ключей Meta, а не вместе с ними.
     if (c?.spendSource === "dolphin" && c.dolphinToken) {
       list.push({
         cacheKey: id, userId: id, metaToken: "", dolphin: c.dolphinToken,
@@ -312,7 +351,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    faces: [], totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
+    faces: [], platforms: [], totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -323,9 +362,24 @@ export async function loadCheck(
     return { ...base, text: "Подключений нет — складу не из чего собираться." };
   }
 
+  // Какие площадки подключены у кого-то в области видимости и чьё лицо у кабинета TG Ads.
+  const [{ data: tgKeyRows }, { data: metaKeyRows }, { data: fbConn }] = scope.length ? await Promise.all([
+    db.from("tgads_keys").select("account_id, name").in("user_id", scope),
+    db.from("meta_keys").select("user_id").in("user_id", scope).limit(1),
+    db.from("buyer_connections").select("user_id").in("user_id", scope).not("spend_source", "is", null).limit(1),
+  ]) : [{ data: [] }, { data: [] }, { data: [] }];
+  const platformsOn = new Set<Platform>();
+  if ((metaKeyRows ?? []).length || (fbConn ?? []).length) platformsOn.add("fb");
+  if ((tgKeyRows ?? []).length) platformsOn.add("tg");
+  const tgFace = new Map((tgKeyRows ?? []).map((k) => [k.account_id as string, faceInName(k.name as string)]));
+  // Лицо строки: у TG Ads — из названия кабинета, у Facebook — из имени кампании.
+  const rowFace = (platform: Platform, campaignName: string | null | undefined, accountId: string | null | undefined) =>
+    (platform === "tg" ? tgFace.get(accountId ?? "") : null) ?? faceOf(campaignName);
+  const platformOfId = (id: string): Platform => (id.startsWith("tg:") ? "tg" : "fb");
+
   const rows = new Map<string, CheckRow>();
-  const blank = (key: string, label: string, face: string): CheckRow => ({
-    key, label, face, dailyBudget: null, spend: 0,
+  const blank = (key: string, label: string, face: string, platform: Platform = platformOfId(key)): CheckRow => ({
+    key, label, platform, face, dailyBudget: null, spend: 0,
     subscribers: null, dialogs: null, revenue: null,
     costPdp: null, costDia: null, romi: null,
   });
@@ -372,13 +426,13 @@ export async function loadCheck(
   }
 
   // Лицо имени объявления — по тем же причинам, что и страна: доход Torro по имени.
-  function faceByName(pairs: { name: string; campaignName: string | null | undefined }[]): Map<string, string> {
-    return onePerName(pairs.map((p) => ({ name: p.name, value: faceOf(p.campaignName) })), MANY_FACES);
+  function faceByName(pairs: { name: string; face: string }[]): Map<string, string> {
+    return onePerName(pairs.map((p) => ({ name: p.name, value: p.face })), MANY_FACES);
   }
-  // Строка разреза по объявлениям: ключ — лицо плюс креатив или страна.
-  const adRow = (face: string, label: string) => {
-    const key = `${face}|${label}`;
-    const row = rows.get(key) ?? blank(key, label, face);
+  // Строка разреза по объявлениям: ключ — площадка, лицо и креатив или страна.
+  const adRow = (platform: Platform, face: string, label: string) => {
+    const key = `${platform}|${face}|${label}`;
+    const row = rows.get(key) ?? blank(key, label, face, platform);
     rows.set(key, row);
     return row;
   };
@@ -435,7 +489,8 @@ export async function loadCheck(
         failedAccounts += meta.failedAccounts;
         const mine = meta.items.filter((c) => take(config, c.accountId));
         for (const c of mine) {
-          const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId, faceOf(c.campaignName));
+          const platform: Platform = config.tgads ? "tg" : "fb";
+          const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId, rowFace(platform, c.campaignName, c.accountId), platform);
           row.spend += c.spend;
           row.dailyBudget = campaignMeta.dailyBudgets.get(c.campaignId) ?? null;
           rows.set(c.campaignId, row);
@@ -475,11 +530,12 @@ export async function loadCheck(
         const mine = meta.items.filter((a) => take(config, a.accountId));
         // Имя, по которому клеится доход: у TG Ads — кампания (= объявление со страной).
         const nameOf = (a: MetaAdRow) => (config.tgads ? a.campaignName : a.adName).trim();
+        const platform: Platform = config.tgads ? "tg" : "fb";
 
         // Расход и доход раскладываются по одному ключу — иначе строка страны
         // получила бы расход одного множества объявлений и доход другого.
         const country = countryByName(mine.map((a) => ({ name: nameOf(a), adsetId: a.adsetId })));
-        const face = faceByName(mine.map((a) => ({ name: nameOf(a), campaignName: a.campaignName })));
+        const face = faceByName(mine.map((a) => ({ name: nameOf(a), face: rowFace(platform, a.campaignName, a.accountId) })));
 
         for (const a of mine) {
           const name = nameOf(a);
@@ -488,12 +544,12 @@ export async function loadCheck(
           // относится к своему адсету.
           if (!name && groupBy === "creative") continue;
           const label = groupBy === "creative" ? name : country.get(name) ?? countryKey(a.adsetId);
-          adRow(face.get(name) ?? faceOf(a.campaignName), label).spend += a.spend;
+          adRow(platform, face.get(name) ?? rowFace(platform, a.campaignName, a.accountId), label).spend += a.spend;
         }
 
         for (const [name, c] of crm.rows) {
           const label = groupBy === "creative" ? name : country.get(name);
-          const row = label ? rows.get(`${face.get(name)}|${label}`) : undefined;
+          const row = label ? rows.get(`${platform}|${face.get(name)}|${label}`) : undefined;
           if (!row) continue;
           row.subscribers = add(row.subscribers, c.subscribers);
           row.dialogs = add(row.dialogs, c.dialogs);
@@ -538,7 +594,7 @@ export async function loadCheck(
         const dayKey = `${d.date}|${d.campaign_id}`;
         if (seenDay.has(dayKey)) continue;
         seenDay.add(dayKey);
-        const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id, faceOf(d.campaign_name));
+        const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id, rowFace(platformOfId(d.campaign_id), d.campaign_name, d.account_id));
         row.spend += num(d.spend);
         rows.set(d.campaign_id, row);
       }
@@ -580,13 +636,16 @@ export async function loadCheck(
       // У TG Ads доход клеится по кампании (= объявление со страной), см. живой чек.
       const nameOf = (d: (typeof days)[number]) => ((d.source === "tgads" ? d.campaign_name : d.ad_name) ?? "").trim();
       const country = countryByName(days.map((d) => ({ name: nameOf(d), adsetId: d.adset_id ?? "" })));
-      const face = faceByName(days.map((d) => ({ name: nameOf(d), campaignName: d.campaign_name })));
+      const platformOf = (d: (typeof days)[number]): Platform => (d.source === "tgads" ? "tg" : "fb");
+      const face = faceByName(days.map((d) => ({ name: nameOf(d), face: rowFace(platformOf(d), d.campaign_name, d.account_id) })));
+      // Площадка имени — чтобы доход Torro лёг туда же, куда расход.
+      const platformByName = new Map(days.map((d) => [nameOf(d), platformOf(d)]));
 
       for (const d of days) {
         const name = nameOf(d);
         if (!name && groupBy === "creative") continue;
         const label = groupBy === "creative" ? name : country.get(name) ?? countryKey(d.adset_id ?? "");
-        adRow(face.get(name) ?? faceOf(d.campaign_name), label).spend += num(d.spend);
+        adRow(platformOf(d), face.get(name) ?? rowFace(platformOf(d), d.campaign_name, d.account_id), label).spend += num(d.spend);
       }
 
       const { data: tgRows } = scope.length
@@ -594,21 +653,21 @@ export async function loadCheck(
         : { data: [] as { user_id: string }[] };
       const tgUsers = (tgRows ?? []).map((r) => r.user_id as string);
       const adUsers = scope.filter((u) => !tgUsers.includes(u));
-      type CrmRow = { ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
+      type CrmRow = { platform?: Platform; ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
       const crm: CrmRow[] = [
-        ...(adUsers.length ? await selectAll<CrmRow>((from, to) =>
+        ...(adUsers.length ? (await selectAll<CrmRow>((from, to) =>
           db.from("wh_crm_ad_periods").select("ad_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
             .in("user_id", adUsers).lte("period_start", until).gte("period_end", since)
             .order("user_id").order("period_start").order("ad_name")
             .range(from, to)
-        ) : []),
+        )).map((r) => ({ ...r, platform: "fb" as const })) : []),
         // TG Ads — кампании Torro под именем объявления: ad_name здесь — имя кампании.
-        ...(tgUsers.length ? await selectAll<CrmRow>((from, to) =>
+        ...(tgUsers.length ? (await selectAll<CrmRow>((from, to) =>
           db.from("wh_crm_campaign_periods").select("ad_name:campaign_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
             .in("user_id", tgUsers).lte("period_start", until).gte("period_end", since)
             .order("user_id").order("period_start").order("campaign_id")
             .range(from, to)
-        ) : []),
+        )).map((r) => ({ ...r, platform: "tg" as const })) : []),
       ];
       for (const c of crm) {
         if (!inside(c.period_start, c.period_end)) { partial++; continue; }
@@ -620,7 +679,7 @@ export async function loadCheck(
         // Лица у такого имени тоже взять неоткуда, кроме расхода за период.
         const label = groupBy === "creative" ? name : country.get(name);
         if (!label) continue;
-        const row = adRow(face.get(name) ?? NO_FACE, label);
+        const row = adRow(platformByName.get(name) ?? c.platform ?? "fb", face.get(name) ?? NO_FACE, label);
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
         row.revenue = add(row.revenue, add(
@@ -639,9 +698,10 @@ export async function loadCheck(
 
   const bySpend = [...rows.values()].map(derive).sort((a, b) => b.spend - a.spend);
   const faces = faceTotals(bySpend);
-  // Строки — блоками по лицам, в порядке лиц; внутри лица — по расходу.
-  const order = new Map(faces.map((f, i) => [f.face, i]));
-  const list = [...bySpend].sort((a, b) => order.get(a.face)! - order.get(b.face)!);
+  const platforms = platformTotals(bySpend, platformsOn);
+  // Строки — блоками по площадкам и лицам, в порядке faces; внутри — по расходу.
+  const order = new Map(faces.map((f, i) => [`${f.platform}|${f.face}`, i]));
+  const list = [...bySpend].sort((a, b) => order.get(`${a.platform}|${a.face}`)! - order.get(`${b.platform}|${b.face}`)!);
   const spend = list.reduce((s, r) => s + r.spend, 0);
   // Складываем только известное. Если дохода не знает ни одна строка — итог тоже
   // неизвестен: иначе карточка показывала бы «Доход $0.00» и «ROMI −100%» там,
@@ -654,13 +714,14 @@ export async function loadCheck(
     sources: sourceLabels,
     rows: list,
     faces,
+    platforms,
     totalBudget,
     totals: {
       spend,
       revenue,
       romi: revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null,
     },
-    text: buildCheckText(list, faces, totalBudget, new Date()),
+    text: buildCheckText(list, faces, totalBudget, new Date(), undefined, platforms),
     warning,
   };
 }

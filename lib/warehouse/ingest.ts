@@ -313,11 +313,12 @@ export async function ingestForUser(
   const [conn, tokens] = await Promise.all([getConnection(userId), metaTokensOf(userId)]);
   const torro = conn?.torroToken && conn.torroBuyerId ? { token: conn.torroToken, buyerId: conn.torroBuyerId } : null;
   const dolphin = conn?.spendSource === "dolphin" ? conn.dolphinToken : null;
-  const tgKeys = conn?.spendSource === "tgads" ? await tgadsKeysOf(userId) : [];
+  // TG Ads — параллельно Facebook, своя площадка и своя догрузка (Decision 069).
+  const tgKeys = await tgadsKeysOf(userId);
   if (tokens.length === 0 && !dolphin && !tgKeys.length && !torro) return { ...result, skipped: "нет подключений" };
 
   const { data: progress } = await db().from("buyer_connections")
-    .select("spend_backfilled_from, spend_backfill_done, spend_backfill_empty, torro_backfilled_from, torro_backfill_done")
+    .select("spend_backfilled_from, spend_backfill_done, spend_backfill_empty, torro_backfilled_from, torro_backfill_done, tgads_backfilled_from, tgads_backfill_done")
     .eq("user_id", userId).maybeSingle();
 
   const runId = crypto.randomUUID();
@@ -325,7 +326,7 @@ export async function ingestForUser(
   const notes: string[] = [];
 
   try {
-    // ─── Расход: один источник (Decision 061) ──────────────────────────────
+    // ─── Расход Facebook: один источник (Decision 061) ─────────────────────
     let floor = shift(today, -MAX_HISTORY_DAYS);
     // Расход не уходит в историю дальше Torro: пусть сначала доход догонит.
     const spendAhead = Boolean(torro) && !progress?.torro_backfill_done &&
@@ -356,31 +357,6 @@ export async function ingestForUser(
           }).eq("user_id", userId);
         }
       }
-    } else if (tgKeys.length) {
-      const seen = new Map(tgKeys.map((k) => [k.accountId, { name: k.accountTitle, created: null }]));
-      const { allowed, conflicts } = await claimAccounts(userId, seen);
-      if (conflicts) { result.conflicts = conflicts; notes.push(`чужих кабинетов: ${conflicts}`); }
-      if (allowed.size) {
-        Object.assign(result, await writeTgadsSpend(userId, tgKeys, since, until, allowed));
-        if (spendBackfill) {
-          // Раньше самого старого объявления истории нет.
-          const oldest = (await Promise.all(tgKeys.filter((k) => allowed.has(k.accountId)).map((k) => oldestAdDay(k.token).catch(() => null))))
-            .filter((d): d is string => Boolean(d)).sort()[0];
-          if (oldest && oldest > floor) floor = oldest;
-          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, CHUNK_DAYS);
-          if (chunk) {
-            const b = await writeTgadsSpend(userId, tgKeys, chunk.since, chunk.until, allowed);
-            result.adRows += b.adRows; result.campaignRows += b.campaignRows; result.failedAccounts += b.failedAccounts;
-            result.backfill = `TG Ads ${chunk.since}…${chunk.until}`;
-          }
-          if (!chunk || result.failedAccounts === 0) {
-            await db().from("buyer_connections").update({
-              spend_backfilled_from: chunk?.since ?? progress?.spend_backfilled_from ?? since,
-              spend_backfill_done: !chunk || chunk.since <= floor,
-            }).eq("user_id", userId);
-          }
-        }
-      }
     } else if (tokens.length) {
       const { seen, failedKeys } = await accountsOf(tokens);
       if (failedKeys) notes.push(`не прочитались ключи Meta: ${failedKeys}`);
@@ -404,6 +380,9 @@ export async function ingestForUser(
             result.campaignRows += b.campaignRows;
             result.failedAccounts += b.failedAccounts;
             result.backfill = `Meta ${chunk.since}…${chunk.until}`;
+            // Страны и для адсетов из истории: иначе прошлые дни уходят в «страна
+            // не определена» (24.10.2026 у Артёма таргет был у 57 адсетов из 219).
+            result.adsetRows += await writeTargeting("today", tokens, b.seenAdsets);
           }
           // Кусок с упавшими кабинетами не засчитываем — повторим его в следующий раз.
           if (!chunk || result.failedAccounts === 0) {
@@ -416,7 +395,42 @@ export async function ingestForUser(
       }
     }
 
-    // ─── Torro — после Meta: id кампаний и объявлений берутся из расхода ──
+    // ─── Расход Telegram Ads: свои кабинеты и своя догрузка (Decision 069) ──
+    if (tgKeys.length) {
+      const seen = new Map(tgKeys.map((k) => [k.accountId, { name: k.accountTitle, created: null }]));
+      const { allowed, conflicts } = await claimAccounts(userId, seen);
+      if (conflicts) { result.conflicts = (result.conflicts ?? 0) + conflicts; notes.push(`чужих кабинетов TG Ads: ${conflicts}`); }
+      if (allowed.size) {
+        const w = await writeTgadsSpend(userId, tgKeys, since, until, allowed);
+        result.adRows += w.adRows; result.campaignRows += w.campaignRows; result.adsetRows += w.adsetRows;
+        result.failedAccounts += w.failedAccounts;
+        const tgAhead = Boolean(torro) && !progress?.torro_backfill_done &&
+          (progress?.tgads_backfilled_from ?? since) < (progress?.torro_backfilled_from ?? since);
+        if (opts.backfill && !progress?.tgads_backfill_done && !tgAhead) {
+          // Раньше самого старого объявления истории нет.
+          let tgFloor = shift(today, -MAX_HISTORY_DAYS);
+          const oldest = (await Promise.all(tgKeys.filter((k) => allowed.has(k.accountId)).map((k) => oldestAdDay(k.token).catch(() => null))))
+            .filter((d): d is string => Boolean(d)).sort()[0];
+          if (oldest && oldest > tgFloor) tgFloor = oldest;
+          const chunk = nextChunk(progress?.tgads_backfilled_from ?? since, tgFloor, CHUNK_DAYS);
+          let failed = 0;
+          if (chunk) {
+            const b = await writeTgadsSpend(userId, tgKeys, chunk.since, chunk.until, allowed);
+            result.adRows += b.adRows; result.campaignRows += b.campaignRows; failed = b.failedAccounts;
+            result.failedAccounts += failed;
+            result.backfill = [result.backfill, `TG Ads ${chunk.since}…${chunk.until}`].filter(Boolean).join(", ");
+          }
+          if (!chunk || (w.failedAccounts === 0 && failed === 0)) {
+            await db().from("buyer_connections").update({
+              tgads_backfilled_from: chunk?.since ?? progress?.tgads_backfilled_from ?? since,
+              tgads_backfill_done: !chunk || chunk.since <= tgFloor,
+            }).eq("user_id", userId);
+          }
+        }
+      }
+    }
+
+    // ─── Torro — после расхода: id кампаний и объявлений берутся из него ──
     if (torro) {
       const t = await ingestTorro(db(), userId, torro.token, torro.buyerId, since, until);
       result.crmRows = t.crmRows;
