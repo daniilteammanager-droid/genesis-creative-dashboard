@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth/server";
 import { getConnectionView } from "@/lib/connections/store";
 import ConnectionsForm from "./ConnectionsForm";
+import MetaKeys from "./MetaKeys";
 import GrSheets, { type GrSheet } from "./GrSheets";
 import TelegramLinks from "./TelegramLinks";
 import { createClient } from "@/lib/auth/server";
@@ -38,10 +39,10 @@ export default async function IntegrationsPage() {
 
   return (
     <div className="space-y-4">
+      <MetaKeys />
       <ConnectionsForm
         initial={view}
         loadError={error}
-        serviceAccount={serviceAccount}
         grSheetId={profile.gr_spreadsheet_id ?? null}
         isMain={isMain}
       />

@@ -1,11 +1,9 @@
 import { warehouse, selectAll } from "./read";
 import { resolveScope } from "./accounts";
-import { reportConfigFor, type ReportConfig } from "@/lib/reports-live/config";
+import type { ReportConfig } from "@/lib/reports-live/config";
+import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { getConnection } from "@/lib/connections/store";
 import { fetchCampaignInsights, fetchAdInsights, fetchCampaignMeta, fetchAdSetTargeting } from "@/lib/reports-live/metaApi";
-import { listSheetTitles, fetchSheetValues } from "@/lib/general-report/googleSheets";
-import { toPeriods } from "@/lib/reports-live/periods";
-import { parseCrmSheet } from "./parseCrm";
 import type { Profile } from "@/lib/auth/types";
 import { mskDay, mskStamp } from "@/lib/day";
 import { fetchDay, toCrm } from "@/lib/torro/mcp";
@@ -108,38 +106,8 @@ export function buildCheckText(rows: CheckRow[], totalBudget: number | null, now
 // ─── Выгрузки Torro за период ────────────────────────────────────────────────
 type CrmTotals = { subscribers: number | null; dialogs: number | null; revenue: number | null };
 // byName — ключи строк это имена кампаний, а не id (Torro по API id не знает).
-type CrmForRange = { rows: Map<string, CrmTotals>; covered: boolean; nearest?: string; byName?: boolean };
+type CrmForRange = { rows: Map<string, CrmTotals>; covered: boolean; byName?: boolean };
 const NO_CRM: CrmForRange = { rows: new Map(), covered: false };
-
-// covered отвечает на вопрос «а была ли вообще выгрузка за этот период».
-// Без него день без листа выглядел бы как день без единой заявки: расход есть,
-// ПДП нули — и по такому чеку кампанию выключат ни за что. Так и было: командная
-// выгрузка по объявлениям недельная, и чек по крео за сегодня показывал нули
-// (замер 31.08.2026).
-async function crmForRange(sheetId: string, since: string, until: string): Promise<CrmForRange> {
-  const titles = await listSheetTitles(sheetId);
-  const all = toPeriods(titles);
-  const periods = all.filter((p) => p.since >= since && p.until <= until);
-  if (periods.length === 0) {
-    // Называем ближайший лист: «выгрузки нет» и «выгрузка недельная, а спросили
-    // день» — разные беды, и чинятся они по-разному.
-    const nearest = all.filter((p) => p.until >= since && p.since <= until).map((p) => p.key).sort()[0];
-    return { ...NO_CRM, nearest };
-  }
-
-  const values = await fetchSheetValues(sheetId, periods.map((p) => p.key));
-  const merged = new Map<string, { subscribers: number | null; dialogs: number | null; revenue: number | null }>();
-  for (const p of periods) {
-    for (const row of parseCrmSheet(values.get(p.key) ?? [])) {
-      const cur = merged.get(row.key) ?? { subscribers: null, dialogs: null, revenue: null };
-      cur.subscribers = add(cur.subscribers, row.subscribers);
-      cur.dialogs = add(cur.dialogs, row.dialogs);
-      cur.revenue = add(cur.revenue, add(row.depSum, row.redepSum));
-      merged.set(row.key, cur);
-    }
-  }
-  return { rows: merged, covered: true };
-}
 
 // Torro по API за один день — для живого чека (он всегда про сегодня).
 // Тот же клиент и тот же обход потолка в 100 строк, что и у склада (Decision 055).
@@ -160,34 +128,34 @@ async function torroForDay(
   return { rows, covered: true, byName: groupBy === "campaign_name" };
 }
 
-// Ключи, по которым собирается живой чек.
+// Ключи, по которым собирается живой чек (Decision 061).
 //
-// Кабинеты у баеров разные, и одним ключом чужой расход не увидеть — поэтому
-// живой чек ходит в Meta столько раз, сколько подключений попало в область
-// видимости. Владелец пока льёт со своих кабинетов, а подключения у него нет:
-// его ключи лежат в переменных окружения, и они добавляются к общей картине.
-type LiveSource = ReportConfig & { torro?: { token: string; buyerId: number } };
+// По источнику на каждый ключ Meta каждого человека в области видимости. Кабинет
+// считается через ключ того, за кем он закреплён, и только один раз — даже если
+// его видят два ключа. Torro — один раз на человека, на первом его ключе: иначе
+// подписки сложились бы столько раз, сколько у него ключей.
+//
+// Командного ключа из окружения здесь больше нет: сводная владельца — это сумма
+// интеграций всех, а не отдельный ключ, который видит то же самое ещё раз.
+type LiveSource = ReportConfig & { userId: string; owned: Set<string>; torro?: { token: string; buyerId: number } };
 
-async function liveSources(me: Profile, scope: string[], buyerFilter?: string): Promise<LiveSource[]> {
+async function liveSources(scope: string[]): Promise<LiveSource[]> {
+  const db = warehouse();
   const list: LiveSource[] = [];
   for (const id of scope) {
-    const c = await getConnection(id);
-    if (!c?.metaToken) continue;
-    list.push({
-      cacheKey: id,
-      metaToken: c.metaToken,
-      accountScope: { includeBusinesses: false },
-      campaignsSheetId: c.crmCampaignsSheetId ?? "",
-      adsSheetId: c.crmAdsSheetId ?? "",
-      torro: c.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined,
-    });
+    const [keys, c, { data: owned }] = await Promise.all([
+      metaTokensOf(id),
+      getConnection(id),
+      db.from("wh_account_owners").select("account_id").eq("owner_user_id", id),
+    ]);
+    const ownedSet = new Set((owned ?? []).map((o) => o.account_id as string));
+    keys.forEach((k, i) => list.push({
+      cacheKey: id, userId: id, metaToken: k.token,
+      accountScope: { includeBusinesses: false, anyStatus: true },
+      campaignsSheetId: "", adsSheetId: "", owned: ownedSet,
+      torro: i === 0 && c?.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined,
+    }));
   }
-
-  if (me.role !== "buyer" && !buyerFilter) {
-    const env = await reportConfigFor(me);
-    if (!("missing" in env)) list.push(env);
-  }
-
   // Один и тот же ключ дважды сложил бы расход сам с собой.
   return [...new Map(list.map((c) => [c.metaToken, c])).values()];
 }
@@ -291,28 +259,24 @@ export async function loadCheck(
   if (accountIds !== null && accountIds.length === 0) {
     return { ...base, text: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда»." };
   }
-  // Живая Мета отдаёт всё, что видит токен, поэтому фильтровать приходится и
-  // здесь: иначе чек за сегодня противоречил бы отчётам за вчера.
-  const ownAccount = (id: string | undefined) =>
-    accountIds === null || (id !== undefined && accountIds.includes(id.replace(/^act_/, "")));
-
   if (live) {
-    const sources = await liveSources(me, scope, buyerFilter);
-    sourceLabels = sources.map((c) =>
-      c.cacheKey === "team" ? "мои кабинеты (ключи из окружения)" : buyerLabel.get(c.cacheKey) ?? c.cacheKey
-    );
+    const sources = await liveSources(scope);
+    sourceLabels = [...new Set(sources.map((c) => buyerLabel.get(c.userId) ?? c.userId))];
     if (sources.length === 0) {
-      const cfg = await reportConfigFor(me);
-      return {
-        ...base,
-        text: "missing" in cfg
-          ? `Не хватает: ${cfg.missing.join(", ")}`
-          : "Ни у кого из выбранных нет подключённого ключа Meta.",
-      };
+      return { ...base, text: "Ни у кого из выбранных нет ключа Meta — добавь его в Настройках → Интеграции." };
     }
+    // Кабинет — через ключ своего владельца и один раз на весь чек.
+    const takenBy = new Map<string, LiveSource>();
+    const take = (config: LiveSource, raw: string | undefined) => {
+      if (!raw) return false;
+      const id = raw.replace(/^act_/, "");
+      if (!config.owned.has(id)) return false;
+      const t = takenBy.get(id);
+      if (t && t !== config) return false;
+      takenBy.set(id, config);
+      return true;
+    };
     let failedAccounts = 0;
-    let uncovered = 0;
-    let nearestSheet: string | undefined;
 
     // У живого чека таргет спрашивается прямо у Meta. Склад тут не помощник: он
     // собирается по подключениям баеров, а кабинеты владельца в него не попадают
@@ -331,17 +295,16 @@ export async function loadCheck(
         const [meta, campaignMeta, crm] = await Promise.all([
           fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
           fetchCampaignMeta(config.metaToken, config.accountScope),
-          config.torro ? torroForDay(config.torro, since, "campaign_name")
-            : config.campaignsSheetId ? crmForRange(config.campaignsSheetId, since, until) : NO_CRM,
+          config.torro ? torroForDay(config.torro, since, "campaign_name") : NO_CRM,
         ]);
         return { meta, campaignMeta, crm };
       }));
 
-      for (const { meta, campaignMeta, crm } of parts) {
+      for (const [i, { meta, campaignMeta, crm }] of parts.entries()) {
+        const config = sources[i];
         failedAccounts += meta.failedAccounts;
-        if (!crm.covered) { uncovered++; if (crm.nearest) nearestSheet = crm.nearest; }
-        for (const c of meta.items) {
-          if (!ownAccount(c.accountId)) continue;
+        const mine = meta.items.filter((c) => take(config, c.accountId));
+        for (const c of mine) {
           const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId);
           row.spend += c.spend;
           row.dailyBudget = campaignMeta.dailyBudgets.get(c.campaignId) ?? null;
@@ -351,7 +314,7 @@ export async function loadCheck(
         // них нет, а строка с голым id в телеге бесполезна.
         // Torro отдаёт имена — id берём из расхода, и только у однозначного имени.
         const idOf = crm.byName
-          ? uniqueIds(meta.items.map((c) => ({ id: c.campaignId, name: c.campaignName })))
+          ? uniqueIds(mine.map((c) => ({ id: c.campaignId, name: c.campaignName })))
           : null;
         for (const [key, c] of crm.rows) {
           const id = idOf ? idOf.get(key) : key;
@@ -361,7 +324,7 @@ export async function loadCheck(
           row.dialogs = add(row.dialogs, c.dialogs);
           row.revenue = add(row.revenue, c.revenue);
         }
-        const budget = [...new Set(meta.items.map((c) => c.campaignId))]
+        const budget = [...new Set(mine.map((c) => c.campaignId))]
           .reduce((s, id) => s + (campaignMeta.dailyBudgets.get(id) ?? 0), 0);
         if (budget > 0) totalBudget = (totalBudget ?? 0) + budget;
       }
@@ -369,24 +332,21 @@ export async function loadCheck(
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, crm] = await Promise.all([
           fetchAdInsights(config.metaToken, since, until, config.accountScope),
-          config.torro ? torroForDay(config.torro, since, "ad_name")
-            : config.adsSheetId ? crmForRange(config.adsSheetId, since, until) : NO_CRM,
+          config.torro ? torroForDay(config.torro, since, "ad_name") : NO_CRM,
         ]);
         return { meta, crm };
       }));
 
-      for (const { meta, crm } of parts) {
+      for (const [i, { meta, crm }] of parts.entries()) {
+        const config = sources[i];
         failedAccounts += meta.failedAccounts;
-        if (!crm.covered) { uncovered++; if (crm.nearest) nearestSheet = crm.nearest; }
+        const mine = meta.items.filter((a) => take(config, a.accountId));
 
         // Расход и доход раскладываются по одному ключу — иначе строка страны
         // получила бы расход одного множества объявлений и доход другого.
-        const country = countryByName(
-          meta.items.filter((a) => ownAccount(a.accountId)).map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId }))
-        );
+        const country = countryByName(mine.map((a) => ({ name: a.adName.trim(), adsetId: a.adsetId })));
 
-        for (const a of meta.items) {
-          if (!ownAccount(a.accountId)) continue;
+        for (const a of mine) {
           const name = a.adName.trim();
           // Расход не теряем даже у безымянного объявления: в разрезе по крео
           // такому взяться неоткуда, а в разрезе по странам оно всё равно
@@ -413,13 +373,12 @@ export async function loadCheck(
 
     const notes: string[] = [];
     if (failedAccounts > 0) notes.push(`не прочиталось кабинетов: ${failedAccounts}`);
-    if (uncovered > 0) {
-      const what = nearestSheet
-        ? `ближайший лист выгрузки — ${nearestSheet}, под этот период он не подходит`
-        : "выгрузка Torro за этот период не найдена";
-      notes.push(uncovered === sources.length
-        ? `${what} — показан только расход`
-        : `у ${uncovered} из ${sources.length} подключений нет выгрузки за этот период`);
+    // Torro — один на человека, поэтому и считаем людей, а не ключи.
+    const noTorro = [...new Set(sources.map((c) => c.userId))].filter((u) => !sources.some((c) => c.userId === u && c.torro));
+    if (noTorro.length > 0) {
+      notes.push(noTorro.length === new Set(sources.map((c) => c.userId)).size
+        ? "Torro не подключён — показан только расход"
+        : `Torro не подключён у: ${noTorro.map((u) => buyerLabel.get(u) ?? u).join(", ")}`);
     }
     if (notes.length > 0) warning = `Цифры неполные: ${notes.join("; ")}.`;
   } else {

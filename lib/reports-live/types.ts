@@ -1,5 +1,5 @@
 // Типы клиента Meta Marketing API. От старого Live-отчёта здесь остался только
-// LiveMode: им конфиг источников различает, какой выгрузки не хватает человеку.
+// LiveMode — режим живого отчёта.
 
 export type LiveMode = "campaigns" | "ads";
 

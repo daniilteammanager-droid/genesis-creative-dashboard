@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
-import { listAccounts, listMyAccounts, claimAccount, releaseAccount } from "@/lib/warehouse/accounts";
+import { listAccounts, listMyAccounts } from "@/lib/warehouse/accounts";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 
-// Закрепление рекламных кабинетов. Баер закрепляет за собой по id — чужой
-// занятый кабинет не возьмёт. Владелец видит всё и переназначает.
+// Кабинеты и чьи они — только чтение. Закрепляет загрузка сама: кабинет
+// принадлежит тому, чей ключ его видит (Decision 061).
 
 export const maxDuration = 120;
 
@@ -24,37 +24,5 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("Accounts API error:", e);
     return fail(e, 500);
-  }
-}
-
-export async function POST(req: Request) {
-  const me = await getProfile();
-  if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
-
-  try {
-    const { accountId, ownerUserId } = (await req.json()) as { accountId?: string; ownerUserId?: string | null };
-    if (!accountId?.trim()) return NextResponse.json({ error: "Не указан кабинет" }, { status: 400 });
-
-    // Пустой владелец — это «снять закрепление».
-    if (ownerUserId === null || ownerUserId === "") {
-      await releaseAccount(me, accountId);
-      return NextResponse.json({ ok: true });
-    }
-    return NextResponse.json(await claimAccount(me, accountId, ownerUserId ?? me.id));
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-export async function DELETE(req: Request) {
-  const me = await getProfile();
-  if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
-  const accountId = new URL(req.url).searchParams.get("accountId");
-  if (!accountId) return NextResponse.json({ error: "Не указан кабинет" }, { status: 400 });
-  try {
-    await releaseAccount(me, accountId);
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    return fail(e);
   }
 }

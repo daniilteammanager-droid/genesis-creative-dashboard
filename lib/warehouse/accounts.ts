@@ -74,13 +74,8 @@ export interface AccountRow {
   spend: number;              // за окно, после схлопывания дублей
   adCount: number;
   lastSpendDate: string | null;
-  // Сколько объявлений кабинета нашлось в личной выгрузке Torro баера.
-  // Подсказка для нераспределённых, а не решение.
-  hints: { userId: string; matched: number }[];
 }
 
-const normalizeId = (raw: string) => raw.trim().replace(/^act_/i, "");
-const looksLikeId = (id: string) => /^\d{6,20}$/.test(id);
 
 // Кабинеты, закреплённые за человеком, — для его страницы Интеграций.
 export async function listMyAccounts(userId: string): Promise<{ accountId: string; accountName: string }[]> {
@@ -111,19 +106,6 @@ export async function listAccounts(me: Profile, since: string, until: string): P
         .order("account_id").order("date").order("ad_id")
         .range(from, to)
   );
-
-  const crm = await selectAll<{ user_id: string; ad_name: string }>((from, to) =>
-    db.from("wh_crm_ad_periods").select("user_id, ad_name")
-      .gte("period_start", since).lte("period_end", until)
-      .order("user_id").order("period_start").order("ad_name")
-      .range(from, to)
-  );
-  const namesByUser = new Map<string, Set<string>>();
-  for (const r of crm) {
-    const set = namesByUser.get(r.user_id) ?? new Set<string>();
-    set.add((r.ad_name ?? "").trim());
-    namesByUser.set(r.user_id, set);
-  }
 
   const { data: owners } = await db.from("wh_account_owners").select("account_id, account_name, owner_user_id");
 
@@ -159,10 +141,6 @@ export async function listAccounts(me: Profile, since: string, until: string): P
     spend: a.spend,
     adCount: a.ads.size,
     lastSpendDate: a.last,
-    hints: buyers
-      .map((b) => ({ userId: b.id, matched: [...a.ads].filter((n) => namesByUser.get(b.id)?.has(n)).length }))
-      .filter((h) => h.matched > 0)
-      .sort((x, y) => y.matched - x.matched),
   }));
 
   // Нераспределённые с расходом — сверху: это деньги без владельца.
@@ -170,69 +148,4 @@ export async function listAccounts(me: Profile, since: string, until: string): P
     (a.ownerUserId ? 1 : 0) - (b.ownerUserId ? 1 : 0) || b.spend - a.spend || a.accountName.localeCompare(b.accountName, "ru")
   );
   return { accounts, buyers };
-}
-
-// Закрепить кабинет. Баер — только за собой, владелец — за кем угодно.
-export async function claimAccount(
-  me: Profile,
-  rawId: string,
-  forUserId: string
-): Promise<{ accountId: string; accountName: string }> {
-  const accountId = normalizeId(rawId);
-  if (!looksLikeId(accountId)) throw new Error("id кабинета — это число, без act_ и пробелов");
-  if (me.role === "buyer" && forUserId !== me.id) throw new Error("Закрепить кабинет можно только за собой");
-  if (me.role === "teamlead") throw new Error("Кабинеты раздаёт владелец");
-
-  const db = warehouse();
-
-  const { data: target } = await db.from("profiles").select("id, status").eq("id", forUserId).maybeSingle();
-  if (!target) throw new Error("Такого человека нет");
-  if (target.status === "disabled") throw new Error("Этот человек отключён");
-
-  // Занятый кабинет баер не перехватит — ради этого и ввод по id, а не выбор
-  // из списка. Владелец переназначает сознательно, ему можно.
-  const { data: existing } = await db.from("wh_account_owners").select("owner_user_id").eq("account_id", accountId).maybeSingle();
-  if (existing?.owner_user_id && existing.owner_user_id !== forUserId && me.role !== "main") {
-    const { data: p } = await db.from("profiles").select("name, buyer_code").eq("id", existing.owner_user_id).maybeSingle();
-    throw new Error(`Этот кабинет уже закреплён за ${p?.name ?? p?.buyer_code ?? "другим человеком"}`);
-  }
-
-  // Имя и сам факт существования подтверждает ключ того, за кем закрепляем.
-  // Нет своего ключа — владелец проверяет своим, командным: он видит всё.
-  const { getConnection } = await import("@/lib/connections/store");
-  const { verifyAdAccount } = await import("@/lib/connections/verify");
-  const conn = await getConnection(forUserId);
-  const token = conn?.metaToken ?? (me.role === "main" ? process.env.META_ACCESS_TOKEN : undefined);
-  if (!token) throw new Error("Сначала подключи ключ Meta — им и проверяется кабинет");
-
-  const checked = await verifyAdAccount(token, accountId);
-  if (typeof checked === "string") throw new Error(checked);
-
-  const { error } = await db.from("wh_account_owners").upsert(
-    {
-      account_id: checked.id,
-      account_name: checked.name,
-      owner_user_id: forUserId,
-      assigned_by: me.id,
-      assigned_at: new Date().toISOString(),
-    },
-    { onConflict: "account_id" }
-  );
-  if (error) throw new Error(error.message);
-  return { accountId: checked.id, accountName: checked.name };
-}
-
-// Снять закрепление. Баер — только со своего, владелец — с любого.
-export async function releaseAccount(me: Profile, rawId: string): Promise<void> {
-  const accountId = normalizeId(rawId);
-  const db = warehouse();
-  const { data: existing } = await db.from("wh_account_owners").select("owner_user_id").eq("account_id", accountId).maybeSingle();
-  if (!existing) return;
-  if (me.role !== "main" && existing.owner_user_id !== me.id) throw new Error("Это не твой кабинет");
-
-  // Строку оставляем, владельца снимаем: имя пригодится, когда кабинет закрепят снова.
-  const { error } = await db.from("wh_account_owners")
-    .update({ owner_user_id: null, assigned_by: me.id, assigned_at: new Date().toISOString() })
-    .eq("account_id", accountId);
-  if (error) throw new Error(error.message);
 }

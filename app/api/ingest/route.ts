@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ingestForUser, usersToIngest, type IngestKind } from "@/lib/warehouse/ingest";
-import { getMetaToken } from "@/lib/connections/store";
+import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { checkCabinets } from "@/lib/alerts/cabinets";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { runAutocheck } from "@/lib/alerts/autocheck";
@@ -36,6 +36,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Неизвестный режим: ${kind}` }, { status: 400 });
   }
 
+  // Догрузка истории — только пока есть запас: следом ещё алерты, антиотклон
+  // и авточек, а крон ждёт ответа 280 секунд.
+  const started = Date.now();
+  const BACKFILL_BUDGET_MS = 150_000;
+
   try {
     const users = await usersToIngest();
     const results = [];
@@ -44,7 +49,8 @@ export async function POST(req: Request) {
     // полных обходов — верный способ выбить его целиком.
     for (const userId of users) {
       try {
-        results.push(await ingestForUser(userId, kind));
+        const backfill = kind === "today" && Date.now() - started < BACKFILL_BUDGET_MS;
+        results.push(await ingestForUser(userId, kind, { backfill }));
       } catch (e) {
         // Один упавший баер не должен ронять прогон остальных.
         results.push({ userId, kind, error: e instanceof Error ? e.message : String(e) });
@@ -57,7 +63,7 @@ export async function POST(req: Request) {
     let rejected: unknown = null;
     if (kind === "today") {
       try {
-        const tokens = (await Promise.all(users.map((u) => getMetaToken(u)))).filter((t): t is string => Boolean(t));
+        const tokens = (await Promise.all(users.map((u) => metaTokensOf(u)))).flat().map((k) => k.token);
         // tokenFor — ключи Meta, в ответ роута им нельзя.
         const { tokenFor, ...summary } = await checkCabinets(tokens);
         cabinets = summary;

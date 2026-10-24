@@ -39,10 +39,11 @@ async function graphGet<T>(token: string, path: string, params: Record<string, s
   return json;
 }
 
-interface AdAccount {
+export interface AdAccount {
   id: string;
   name: string;
   account_status: number;
+  created_time?: string;
 }
 
 // Meta hands back an `after` cursor even on the final page — only `paging.next` says there
@@ -101,10 +102,13 @@ const ACCOUNTS_CACHE_TTL_MS = 5 * 60_000;
 export interface AccountScope {
   // false — брать только то, что токен получил напрямую. Для баеров всегда так.
   includeBusinesses?: boolean;
+  // true — кабинеты в любом статусе. Складу нужны и заблокированные: расход у
+  // них был настоящий, и история без него врёт (Decision 061).
+  anyStatus?: boolean;
 }
 
 const scopeKey = (token: string, scope?: AccountScope) =>
-  `${scope?.includeBusinesses === false ? "direct" : "all"}::${token}`;
+  `${scope?.includeBusinesses === false ? "direct" : "all"}:${scope?.anyStatus ? "any" : "active"}::${token}`;
 
 export async function fetchActiveAccounts(token: string, scope?: AccountScope): Promise<AdAccount[]> {
   const key = scopeKey(token, scope);
@@ -179,7 +183,7 @@ async function discoverAccounts(token: string, scope?: AccountScope): Promise<Ad
   // render a report with zero spend and no indication anything was wrong.
   let discoveryError: Error | undefined;
   const [direct, businesses] = await Promise.all([
-    fetchEdgePaged<AdAccount>(token, "me", "adaccounts", "id,name,account_status").catch((e) => {
+    fetchEdgePaged<AdAccount>(token, "me", "adaccounts", "id,name,account_status,created_time").catch((e) => {
       discoveryError = e;
       return [];
     }),
@@ -193,15 +197,15 @@ async function discoverAccounts(token: string, scope?: AccountScope): Promise<Ad
 
   const viaBusinesses = await mapWithConcurrency(businesses, CONCURRENCY, async (b) => {
     const [owned, client] = await Promise.all([
-      fetchEdgePaged<AdAccount>(token, b.id, "owned_ad_accounts", "id,name,account_status").catch(() => []),
-      fetchEdgePaged<AdAccount>(token, b.id, "client_ad_accounts", "id,name,account_status").catch(() => []),
+      fetchEdgePaged<AdAccount>(token, b.id, "owned_ad_accounts", "id,name,account_status,created_time").catch(() => []),
+      fetchEdgePaged<AdAccount>(token, b.id, "client_ad_accounts", "id,name,account_status,created_time").catch(() => []),
     ]);
     return [...owned, ...client];
   });
 
   const byId = new Map<string, AdAccount>();
   for (const a of [...direct, ...viaBusinesses.flat()]) {
-    if (a.account_status === 1) byId.set(a.id, a);
+    if (scope?.anyStatus || a.account_status === 1) byId.set(a.id, a);
   }
 
   // Оставляем только то, на что выдано разрешение.
@@ -450,11 +454,12 @@ export interface MetaCampaignDay {
   impressions: number;
 }
 
+// only — какие кабинеты читать (id без act_). Не передан — все, что видит ключ.
 export async function fetchAdDays(
   token: string, since: string, until: string,
-  scope?: AccountScope
+  scope?: AccountScope, only?: Set<string>
 ): Promise<{ items: MetaAdDay[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token, scope);
+  const accounts = (await fetchActiveAccounts(token, scope)).filter((a) => !only || only.has(a.id.replace(/^act_/, "")));
   const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "ad", since, until, true);
   const items = rows
     // Строка без даты означает, что Meta проигнорировала дневную разбивку.
@@ -480,9 +485,9 @@ export async function fetchAdDays(
 
 export async function fetchCampaignDays(
   token: string, since: string, until: string,
-  scope?: AccountScope
+  scope?: AccountScope, only?: Set<string>
 ): Promise<{ items: MetaCampaignDay[]; failedAccounts: number }> {
-  const accounts = await fetchActiveAccounts(token, scope);
+  const accounts = (await fetchActiveAccounts(token, scope)).filter((a) => !only || only.has(a.id.replace(/^act_/, "")));
   const { rows, failedAccounts } = await fetchInsightsForAllAccounts(token, accounts, "campaign", since, until, true);
   const items = rows
     .filter((r) => r.date_start && r.campaign_id)

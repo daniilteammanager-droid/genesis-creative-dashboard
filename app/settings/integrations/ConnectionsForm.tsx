@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import type { ConnectionView } from "@/lib/connections/store";
-import AdAccounts from "./AdAccounts";
 
-const TORRO_HELP =
-  "https://torrocrm.com/ru/help/nastroika-analitiki-i-trekinga/nastroika-avtomaticheskoi-vygruzki-dannykh-iz-mvp-v-google-sheets";
+// Torro CRM — только по API (Decision 061): выгрузки в таблицы убраны, чтобы
+// склад совпадал с CRM целиком. Ключи Meta — отдельной карточкой (MetaKeys).
 
 const field =
   "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
@@ -13,109 +12,62 @@ const field =
 
 const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
 
-// Набор колонок один на все три выгрузки. Отсутствующая колонка не станет нулём —
-// в складе будет прочерк, чтобы «не выгружали» не путалось с «выгрузили ноль».
-const CRM_COLUMNS = [
-  "Название",
-  "Клики",
-  "Подписчики",
-  "Диалоги",
-  "Кол-во регистраций",
-  "Кол-во продаж",
-  "Сумма продаж",
-  "Кол-во повторных продаж",
-  "Сумма повторных продаж",
-];
-
 export default function ConnectionsForm({
   initial,
   loadError,
-  serviceAccount,
   grSheetId,
   isMain,
 }: {
   initial: ConnectionView | null;
   loadError: string | null;
-  serviceAccount: string | null;
   grSheetId: string | null;
   isMain: boolean;
 }) {
   const [view, setView] = useState(initial);
-  const [metaToken, setMetaToken] = useState("");
-  const [campaigns, setCampaigns] = useState(initial?.crmCampaignsSheetId ?? "");
-  const [ads, setAds] = useState(initial?.crmAdsSheetId ?? "");
-  const [adsById, setAdsById] = useState(initial?.crmAdsByIdSheetId ?? "");
   const [torroToken, setTorroToken] = useState("");
   const [torroBuyer, setTorroBuyer] = useState(initial?.torroBuyerId ? String(initial.torroBuyerId) : "");
-  const [confirmTorroDelete, setConfirmTorroDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  // Удаление в два клика: ключ обратно не читается, восстановить его из дашборда
-  // невозможно — только идти в Meta за новым.
+  // Удаление в два клика: ключ обратно не читается.
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function post(body: Record<string, unknown>, ok: string) {
+    setBusy(true);
+    setMsg(null);
+    const res = await fetch("/api/connections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    // Ответ не всегда JSON: упавшая или обрубленная по времени функция отдаёт
+    // HTML, и без этого форма застряла бы на «Проверяю…».
+    let data: (ConnectionView & { error?: string }) | null = null;
+    try { data = (await res.json()) as ConnectionView & { error?: string }; } catch { /* не JSON */ }
+    setBusy(false);
+    if (!res.ok || !data) {
+      setMsg({ ok: false, text: data?.error ?? "Не удалось сохранить — попробуй ещё раз" });
+      return false;
+    }
+    setView(data);
+    setMsg({ ok: true, text: ok });
+    return true;
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setMsg(null);
-
-    const res = await fetch("/api/connections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // Шлём только изменённое. Иначе давняя ссылка Торро, ставшая нерабочей,
-      // не даёт сохранить даже новый ключ Meta — проверяется-то всё присланное.
-      body: JSON.stringify({
-        // Пустое поле ключа — «не трогать», а не «удалить»: прочитать его назад
-        // нельзя, поэтому оно всегда пустое при открытии страницы.
-        ...(metaToken.trim() ? { metaToken: metaToken.trim() } : {}),
-        ...(torroToken.trim() ? { torroToken: torroToken.trim() } : {}),
-        ...(torroBuyer.trim() && torroBuyer.trim() !== String(initial?.torroBuyerId ?? "")
-          ? { torroBuyerId: torroBuyer.trim() } : {}),
-        ...(campaigns.trim() !== (initial?.crmCampaignsSheetId ?? "")
-          ? { crmCampaignsSheetId: campaigns.trim() || null } : {}),
-        ...(ads.trim() !== (initial?.crmAdsSheetId ?? "")
-          ? { crmAdsSheetId: ads.trim() || null } : {}),
-        ...(adsById.trim() !== (initial?.crmAdsByIdSheetId ?? "")
-          ? { crmAdsByIdSheetId: adsById.trim() || null } : {}),
-      }),
-    });
-    // Ответ не всегда JSON: упавшая или обрубленная по времени функция отдаёт
-    // HTML. Без этого разбор кидает, setBusy(false) не выполняется, и форма
-    // навсегда застревает на «Проверяю…».
-    let data: (ConnectionView & { error?: string }) | null = null;
-    try { data = (await res.json()) as ConnectionView & { error?: string }; } catch { /* не JSON */ }
-    setBusy(false);
-
-    if (!res.ok || !data) {
-      setMsg({ ok: false, text: data?.error ?? "Не удалось сохранить — попробуй ещё раз" });
-      return;
-    }
-    setView(data);
-    setMetaToken("");
-    setTorroToken("");
-    setMsg({ ok: true, text: "Проверено и сохранено" });
+    // Шлём только изменённое: пустое поле ключа — «не трогать», прочитать его
+    // назад нельзя, поэтому оно всегда пустое при открытии страницы.
+    const done = await post({
+      ...(torroToken.trim() ? { torroToken: torroToken.trim() } : {}),
+      ...(torroBuyer.trim() && torroBuyer.trim() !== String(initial?.torroBuyerId ?? "")
+        ? { torroBuyerId: torroBuyer.trim() } : {}),
+    }, "Проверено и сохранено. История догрузится сама");
+    if (done) setTorroToken("");
   }
 
-  async function disconnect(field: "metaToken" | "torroToken") {
-    setBusy(true);
-    setMsg(null);
-    const res = await fetch("/api/connections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: null }),
-    });
-    let data: (ConnectionView & { error?: string }) | null = null;
-    try { data = (await res.json()) as ConnectionView & { error?: string }; } catch { /* не JSON */ }
-    setBusy(false);
-    if (!res.ok || !data) {
-      setMsg({ ok: false, text: data?.error ?? "Не удалось отключить" });
-      return;
-    }
-    setView(data);
-    setConfirmDelete(false);
-    setConfirmTorroDelete(false);
-    if (field === "torroToken") setTorroBuyer("");
-    setMsg({ ok: true, text: "Ключ удалён" });
+  async function disconnect() {
+    const done = await post({ torroToken: null }, "Ключ удалён");
+    if (done) { setConfirmDelete(false); setTorroBuyer(""); }
   }
 
   if (loadError) {
@@ -130,47 +82,6 @@ export default function ConnectionsForm({
     <form onSubmit={save} className="space-y-4">
       <div className={card}>
         <div className="flex items-center gap-3 mb-2 flex-wrap">
-          <h2 className="text-lg font-semibold text-white">Ключ Meta</h2>
-          {view?.metaConnected && (
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">
-              подключено {view.metaHint}
-            </span>
-          )}
-        </div>
-        <p className="text-sm text-zinc-400 leading-relaxed mb-4">
-          По нему собирается твой расход, показы, клики и статусы в Reports.
-        </p>
-
-        <input
-          type="password"
-          placeholder={view?.metaConnected ? "Вставь новый ключ, чтобы заменить" : "Токен доступа"}
-          value={metaToken}
-          onChange={(e) => setMetaToken(e.target.value)}
-          autoComplete="off"
-          className={field}
-        />
-
-        <div className="flex items-center gap-3 mt-3 flex-wrap">
-          {view?.metaConnected && (
-            <button type="button" disabled={busy}
-                    onClick={() => (confirmDelete ? disconnect("metaToken") : setConfirmDelete(true))}
-                    className="text-[11px] px-2.5 py-1 rounded-full border border-red-800/40 text-red-300 hover:bg-red-900/20 transition disabled:opacity-50">
-              {confirmDelete ? "точно удалить? вернуть будет нельзя" : "удалить ключ"}
-            </button>
-          )}
-          <p className="text-[11px] text-zinc-600 leading-relaxed">
-            Ключ проверяется при сохранении и обратно не читается — ни интерфейсом, ни мной.
-            Забыл — вставь новый.
-          </p>
-        </div>
-
-        {/* Кабинеты живут рядом с ключом: ключ их проверяет, по ним считается
-            расход. Владельцу здесь нечего закреплять — его ключ командный. */}
-        {!isMain && <AdAccounts metaConnected={Boolean(view?.metaConnected)} />}
-      </div>
-
-      <div className={card}>
-        <div className="flex items-center gap-3 mb-2 flex-wrap">
           <h2 className="text-lg font-semibold text-white">Torro CRM</h2>
           {view?.torroConnected && (
             <span className="text-[11px] px-2.5 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">
@@ -179,8 +90,7 @@ export default function ConnectionsForm({
           )}
         </div>
         <p className="text-sm text-zinc-400 leading-relaxed mb-4">
-          Подписки, диалоги и депозиты напрямую из Torro, по дням. Ключ MCP и свой id
-          баера берутся в Torro. С ними выгрузки в таблицы ниже не нужны.
+          Подписки, диалоги и депозиты напрямую из Torro, по дням. Ключ MCP и свой id баера берутся в Torro.
         </p>
 
         <input
@@ -195,101 +105,48 @@ export default function ConnectionsForm({
         <input type="text" inputMode="numeric" placeholder="5183" value={torroBuyer}
                onChange={(e) => setTorroBuyer(e.target.value)} className={field} />
 
-        {view?.torroConnected && (
-          <button type="button" disabled={busy}
-                  onClick={() => (confirmTorroDelete ? disconnect("torroToken") : setConfirmTorroDelete(true))}
-                  className="mt-3 text-[11px] px-2.5 py-1 rounded-full border border-red-800/40 text-red-300 hover:bg-red-900/20 transition disabled:opacity-50">
-            {confirmTorroDelete ? "точно удалить? вернуть будет нельзя" : "удалить ключ"}
+        <div className="flex items-center gap-3 mt-3 flex-wrap">
+          <button type="submit" disabled={busy}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+            {busy ? "Проверяю…" : "Проверить и сохранить"}
           </button>
+          {view?.torroConnected && (
+            <button type="button" disabled={busy}
+                    onClick={() => (confirmDelete ? disconnect() : setConfirmDelete(true))}
+                    className="text-[11px] px-2.5 py-1 rounded-full border border-red-800/40 text-red-300 hover:bg-red-900/20 transition disabled:opacity-50">
+              {confirmDelete ? "точно удалить? вернуть будет нельзя" : "удалить ключ"}
+            </button>
+          )}
+        </div>
+
+        {msg && (
+          <div className={`rounded-xl px-4 py-3 text-sm border mt-3 ${
+            msg.ok ? "bg-green-950/30 border-green-700/30 text-green-300"
+                   : "bg-red-950/40 border-red-700/30 text-red-300"
+          }`}>
+            {msg.text}
+          </div>
         )}
       </div>
 
-      <div className={card}>
-        <h2 className="text-lg font-semibold text-white mb-2">Выгрузки Torro в таблицы</h2>
-        <p className="text-sm text-zinc-400 leading-relaxed mb-1">
-          Запасной путь, если ключа Torro нет. Подключён ключ — склад берёт цифры из него,
-          а таблицы не читает.
-        </p>
-        <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
-          Как их настроить —{" "}
-          <a href={TORRO_HELP} target="_blank" rel="noreferrer" className="text-violet-400 hover:text-violet-300 underline">
-            инструкция Torro
-          </a>
-          .{serviceAccount && (
-            <>
-              {" "}Свою таблицу открой на чтение для{" "}
-              <code className="text-zinc-400 break-all">{serviceAccount}</code> — иначе мы её не прочитаем.
-            </>
-          )}
-        </p>
-
-        <label className="block text-[11px] text-zinc-600 mb-1">Кампании, по id кампании</label>
-        <input type="text" placeholder="1AbC…" value={campaigns}
-               onChange={(e) => setCampaigns(e.target.value)} className={`${field} mb-3`} />
-
-        <label className="block text-[11px] text-zinc-600 mb-1">Объявления, по названию объявления</label>
-        <input type="text" placeholder="1AbC…" value={ads}
-               onChange={(e) => setAds(e.target.value)} className={`${field} mb-3`} />
-
-        <label className="block text-[11px] text-zinc-600 mb-1">Объявления, по id объявления</label>
-        <input type="text" placeholder="1AbC…" value={adsById}
-               onChange={(e) => setAdsById(e.target.value)} className={field} />
-
-        <p className="text-[11px] text-zinc-600 leading-relaxed mt-2 mb-3">
-          Все три — дневные, ключ таблицы это кусок её адреса между <code>/d/</code> и <code>/edit</code>.
-          Выгрузка по названию нужна для раздела Креативы, по id объявления — чтобы видеть
-          депозиты на отдельном объявлении и на адсете.
-        </p>
-
-        {/* Колонки прямо здесь, а не в отдельной инструкции: их набирают руками в
-            Торро, и человек не должен искать список в другом месте. Порядок не
-            важен, код читает по заголовкам — важен состав. */}
-        <p className="text-[11px] text-zinc-600 mb-1.5">Колонки в каждой выгрузке, ровно эти:</p>
-        <div className="flex flex-wrap gap-1.5">
-          {CRM_COLUMNS.map((c) => (
-            <span key={c} className="text-[11px] px-2 py-1 rounded-lg bg-[#0d0b14] border border-violet-900/40 text-zinc-400">
-              {c}
-            </span>
-          ))}
-        </div>
-        <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
-          Период — дневной. Группировка своя у каждой: по id кампании, по названию
-          объявления, по id объявления.
-        </p>
-      </div>
-
       {!isMain && (
-      <div className={card}>
-        <div className="flex items-center gap-3 mb-2 flex-wrap">
-          <h2 className="text-lg font-semibold text-white">Таблица General Report 3.0</h2>
-          <span className={`text-[11px] px-2.5 py-1 rounded-full border ${
-            grSheetId
-              ? "bg-green-900/30 text-green-400 border-green-800/30"
-              : "bg-zinc-800/60 text-zinc-500 border-zinc-700/40"
-          }`}>
-            {grSheetId ? "подключена" : "не подключена"}
-          </span>
-        </div>
-        <p className="text-sm text-zinc-400 leading-relaxed">
-          Её заводит и подключает владелец — таблицы его, и доступ к ним выдаёт он.
-          Здесь показано только состояние.
-        </p>
-      </div>
-      )}
-
-      {msg && (
-        <div className={`rounded-xl px-4 py-3 text-sm border ${
-          msg.ok ? "bg-green-950/30 border-green-700/30 text-green-300"
-                 : "bg-red-950/40 border-red-700/30 text-red-300"
-        }`}>
-          {msg.text}
+        <div className={card}>
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
+            <h2 className="text-lg font-semibold text-white">Таблица General Report 3.0</h2>
+            <span className={`text-[11px] px-2.5 py-1 rounded-full border ${
+              grSheetId
+                ? "bg-green-900/30 text-green-400 border-green-800/30"
+                : "bg-zinc-800/60 text-zinc-500 border-zinc-700/40"
+            }`}>
+              {grSheetId ? "подключена" : "не подключена"}
+            </span>
+          </div>
+          <p className="text-sm text-zinc-400 leading-relaxed">
+            Её заводит и подключает владелец — таблицы его, и доступ к ним выдаёт он.
+            Здесь показано только состояние.
+          </p>
         </div>
       )}
-
-      <button type="submit" disabled={busy}
-              className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
-        {busy ? "Проверяю…" : "Проверить и сохранить"}
-      </button>
     </form>
   );
 }
