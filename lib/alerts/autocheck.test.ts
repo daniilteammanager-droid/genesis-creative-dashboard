@@ -35,7 +35,7 @@ const row = (i: number) => ({
 const rows40 = Array.from({ length: 40 }, (_, i) => row(i));
 const result = {
   since: D, until: D, groupBy: "campaign" as const, live: true,
-  rows: rows40, faces: faceTotals(rows40), platforms: [], totalBudget: 2000,
+  rows: rows40, faces: faceTotals(rows40), platforms: [], unmatched: { subscribers: 120, dialogs: 30, revenue: 1500, names: 7 }, totalBudget: 2000,
   totals: { spend: 3220, revenue: 500, romi: -84.5 }, text: "", buyers: [], sources: [],
   buyer: "all", isBuyer: false, generatedAt: "",
 };
@@ -48,6 +48,7 @@ assert.match(msg, /…и ещё 12 кампаний на 876,00\$/);
 // RICKY показал 1,3,…,13 (7 строк) — скрыто 13: 85+83+…+61 = 949.
 assert.match(msg, /…и ещё 13 кампаний на 949,00\$/);
 assert.match(msg, /Итого: 3\s220,00\$ \/ доход 500,00\$ \/ ROMI -85%/);
+assert.match(msg, /Нет в подключённых кабинетах: 1\s500,00\$ дохода · 120 подп\. · 30 диал\. \(7 шт\.\)/);
 assert.match(checkMessage({ ...result, rows: [], faces: [] }), /расхода пока нет/);
 
 // Кнопка ведёт на тот же день и разрез; без адреса дашборда кнопки нет

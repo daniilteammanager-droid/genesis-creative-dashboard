@@ -4,13 +4,19 @@ import type { Profile } from "@/lib/auth/types";
 
 // Reports как аналог FB Tool: кампании, внутри адсеты, внутри объявления.
 //
-// Всё считается из ОДНОГО набора дневных строк уровня объявления — адсеты и
-// кампании это group by, а не отдельные запросы. adset_id приходит в строках
-// уровня ad бесплатно (замерено 31.08.2026: в 100% строк).
+// Расход — из ОДНОГО набора дневных строк уровня объявления: адсеты и кампании —
+// это group by, а не отдельные запросы.
 //
-// Депозиты на объявлении и на адсете берутся из выгрузки по id объявления.
-// Из выгрузки по названию их взять нельзя: она предагрегирована по имени и
-// между объявлениями не делится.
+// Torro (Decision 070) id не отдаёт, только имена:
+//   кампания   — срез Torro по имени кампании: точная цифра, даже если объявления
+//                кампании между собой не делятся;
+//   объявление — связка «кампания × объявление» (wh_crm_pairs). Одно имя дважды в
+//                одной кампании (в двух адсетах) делить нечем — тогда только на кампании.
+//                День, который связки ещё не разложили, — по выгрузке по id объявления;
+//   кампании только из Torro (их кабинет не подключён) — в конце дерева, без расхода,
+//                и в итог с ROMI не идут.
+
+export type Quals = [number, number, number, number, number];   // A–E
 
 export interface TreeNode {
   id: string;
@@ -19,10 +25,13 @@ export interface TreeNode {
   spend: number;
   clicks: number;
   impressions: number;
+  lpClicks: number | null;      // клики на ленде — из Torro
   subscribers: number | null;
   dialogs: number | null;
   depCount: number | null;
   depSum: number | null;
+  quals: Quals | null;
+  outside?: boolean;            // только в Torro: кабинет не подключён
   children?: TreeNode[];
 }
 
@@ -35,6 +44,8 @@ export interface ReportTreeResult {
   // переключатель баеров не показывался тому, кому он ничего не даёт.
   isBuyer: boolean;
   totals: { spend: number; clicks: number; impressions: number; depSum: number };
+  // Кампании только из Torro: сколько и что принесли.
+  outside: { campaigns: number; subscribers: number; depSum: number } | null;
   // Почему пусто. Пустая таблица без объяснения читается как поломка.
   notice?: string;
   generatedAt: string;
@@ -52,6 +63,39 @@ function add(a: number | null, b: number | null): number | null {
   if (b === null) return a;
   return a + b;
 }
+
+type Crm = Pick<TreeNode, "lpClicks" | "subscribers" | "dialogs" | "depCount" | "depSum" | "quals">;
+const NO_CRM = (): Crm => ({ lpClicks: null, subscribers: null, dialogs: null, depCount: null, depSum: null, quals: null });
+
+function addQuals(a: Quals | null, b: Quals | null): Quals | null {
+  if (!a) return b ? [...b] as Quals : null;
+  if (!b) return a;
+  return a.map((v, i) => v + b[i]) as Quals;
+}
+function addCrm(to: Crm, c: Crm): void {
+  to.lpClicks = add(to.lpClicks, c.lpClicks);
+  to.subscribers = add(to.subscribers, c.subscribers);
+  to.dialogs = add(to.dialogs, c.dialogs);
+  to.depCount = add(to.depCount, c.depCount);
+  to.depSum = add(to.depSum, c.depSum);
+  to.quals = addQuals(to.quals, c.quals);
+}
+
+type CrmRow = {
+  clicks?: number | null; subscribers: number | null; dialogs: number | null;
+  dep_count: number | null; dep_sum: number | string | null; redep_count: number | null; redep_sum: number | string | null;
+  qual_a?: number | null; qual_b?: number | null; qual_c?: number | null; qual_d?: number | null; qual_e?: number | null;
+};
+const toCrm = (c: CrmRow): Crm => ({
+  lpClicks: c.clicks ?? null,
+  subscribers: c.subscribers, dialogs: c.dialogs,
+  depCount: add(c.dep_count, c.redep_count),
+  depSum: add(c.dep_sum === null ? null : num(c.dep_sum), c.redep_sum === null ? null : num(c.redep_sum)),
+  quals: c.qual_a === undefined || c.qual_a === null ? null
+    : [c.qual_a ?? 0, c.qual_b ?? 0, c.qual_c ?? 0, c.qual_d ?? 0, c.qual_e ?? 0],
+});
+const METRICS = "clicks, subscribers, dialogs, dep_count, dep_sum, redep_count, redep_sum";
+const QUAL_COLS = "qual_a, qual_b, qual_c, qual_d, qual_e";
 
 export async function loadReportTree(
   me: Profile,
@@ -74,20 +118,12 @@ export async function loadReportTree(
 
   const { userIds: scope, accountIds } = await resolveScope(db, me, buyerFilter);
 
-  if (accountIds !== null && accountIds.length === 0) {
-    return {
-      since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
-      totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 },
-      notice: NO_CABINETS,
-      generatedAt: new Date().toISOString(),
-    };
-  }
-
   const empty: ReportTreeResult = {
     since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
-    totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 },
+    totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 }, outside: null,
     generatedAt: new Date().toISOString(),
   };
+  if (accountIds !== null && accountIds.length === 0) return { ...empty, notice: NO_CABINETS };
   if (scope.length === 0) return empty;
 
   type AdDay = {
@@ -106,37 +142,19 @@ export async function loadReportTree(
       .range(from, to);
   });
 
-  type CrmAd = {
-    ad_id: string; period_start: string; period_end: string;
-    subscribers: number | null; dialogs: number | null;
-    dep_count: number | null; dep_sum: number | string | null;
-    redep_count: number | null; redep_sum: number | string | null;
-  };
-  const crmRaw = await selectAll<CrmAd>((from, to) =>
-    db.from("wh_crm_ad_id_periods")
-      .select("ad_id, period_start, period_end, subscribers, dialogs, dep_count, dep_sum, redep_count, redep_sum")
-      .in("user_id", scope).gte("period_end", since).lte("period_start", until)
-      .order("user_id").order("period_start").order("ad_id")
-      .range(from, to)
-  );
-  // Только периоды, целиком лежащие внутри диапазона: задетый краем принёс бы
-  // цифры за дни снаружи.
-  const crmByAd = new Map<string, { subscribers: number | null; dialogs: number | null; depCount: number | null; depSum: number | null }>();
-  for (const c of crmRaw) {
-    if (c.period_start < since || c.period_end > until) continue;
-    const cur = crmByAd.get(c.ad_id) ?? { subscribers: null, dialogs: null, depCount: null, depSum: null };
-    cur.subscribers = add(cur.subscribers, c.subscribers);
-    cur.dialogs = add(cur.dialogs, c.dialogs);
-    cur.depCount = add(cur.depCount, add(c.dep_count, c.redep_count));
-    cur.depSum = add(cur.depSum, add(
-      c.dep_sum === null ? null : num(c.dep_sum),
-      c.redep_sum === null ? null : num(c.redep_sum)
-    ));
-    crmByAd.set(c.ad_id, cur);
-  }
+  // Torro — только дневные строки внутри диапазона (у API каждый день — свой период).
+  const range = <T>(table: string, cols: string, order: string) => selectAll<T>((from, to) =>
+    db.from(table).select(cols).in("user_id", scope).gte("period_start", since).lte("period_start", until)
+      .order("user_id").order("period_start").order(order).range(from, to));
+  const [campaignCrm, pairs, adIdCrm] = await Promise.all([
+    range<CrmRow & { user_id: string; period_start: string; campaign_name: string }>("wh_crm_campaign_periods", `user_id, period_start, campaign_name, ${METRICS}, ${QUAL_COLS}`, "campaign_name"),
+    range<CrmRow & { user_id: string; period_start: string; campaign_name: string; ad_name: string }>("wh_crm_pairs", `user_id, period_start, campaign_name, ad_name, ${METRICS}, ${QUAL_COLS}`, "campaign_name"),
+    range<CrmRow & { user_id: string; period_start: string; ad_id: string }>("wh_crm_ad_id_periods", `user_id, period_start, ad_id, ${METRICS}`, "ad_id"),
+  ]);
 
   // ─── Объявления ──────────────────────────────────────────────────────────
-  const ads = new Map<string, TreeNode & { adsetId: string; campaignId: string; adsetName: string; campaignName: string }>();
+  type AdNode = TreeNode & { adsetId: string; campaignId: string; adsetName: string; campaignName: string };
+  const ads = new Map<string, AdNode>();
   // Один и тот же день одного объявления мог прийти от двух токенов сразу —
   // считаем один раз (Decision 052).
   const seenAdDay = new Set<string>();
@@ -148,8 +166,7 @@ export async function loadReportTree(
     const key = d.ad_id;
     const node = ads.get(key) ?? {
       id: key, name: d.ad_name || key, level: "ad" as const,
-      spend: 0, clicks: 0, impressions: 0,
-      subscribers: null, dialogs: null, depCount: null, depSum: null,
+      spend: 0, clicks: 0, impressions: 0, ...NO_CRM(),
       adsetId: d.adset_id || "—", adsetName: d.adset_name || "Без адсета",
       campaignId: d.campaign_id || "—", campaignName: d.campaign_name || "Без кампании",
     };
@@ -158,32 +175,62 @@ export async function loadReportTree(
     node.impressions += num(d.impressions);
     ads.set(key, node);
   }
-  for (const [adId, node] of ads) {
-    const c = crmByAd.get(adId);
-    if (c) Object.assign(node, c);
+
+  // Связки: «кампания × объявление» → узел объявления, если он один такой.
+  const byPair = new Map<string, AdNode[]>();
+  for (const a of ads.values()) {
+    const k = `${a.campaignName.trim()}|${a.name.trim()}`;
+    byPair.set(k, [...(byPair.get(k) ?? []), a]);
+  }
+  const campaignNames = new Set([...ads.values()].map((a) => a.campaignName.trim()));
+  const paired = new Set(pairs.map((p) => `${p.user_id}|${p.period_start}`));
+  const outsideAds = new Map<string, Map<string, Crm>>();   // кампания → объявление → цифры
+  for (const p of pairs) {
+    const nodes = byPair.get(`${p.campaign_name.trim()}|${p.ad_name.trim()}`);
+    if (nodes?.length === 1) addCrm(nodes[0], toCrm(p));
+    else if (!campaignNames.has(p.campaign_name.trim())) {
+      const m = outsideAds.get(p.campaign_name) ?? new Map<string, Crm>();
+      const c = m.get(p.ad_name) ?? NO_CRM();
+      addCrm(c, toCrm(p));
+      m.set(p.ad_name, c);
+      outsideAds.set(p.campaign_name, m);
+    }
+  }
+  // Дни, которые связки ещё не разложили, — по выгрузке по id объявления.
+  for (const c of adIdCrm) {
+    if (paired.has(`${c.user_id}|${c.period_start}`)) continue;
+    const node = ads.get(c.ad_id);
+    if (node) addCrm(node, toCrm(c));
+  }
+
+  // Кампания — срезом Torro по её имени: он точен, даже когда объявления не делятся.
+  const crmByCampaign = new Map<string, Crm>();
+  for (const c of campaignCrm) {
+    const cur = crmByCampaign.get(c.campaign_name.trim()) ?? NO_CRM();
+    addCrm(cur, toCrm(c));
+    crmByCampaign.set(c.campaign_name.trim(), cur);
   }
 
   // ─── Адсеты и кампании — сворачиваем вверх ───────────────────────────────
-  function fold(nodes: TreeNode[], id: string, name: string, level: TreeNode["level"]): TreeNode {
+  function fold(nodes: TreeNode[], id: string, name: string, level: TreeNode["level"], crm?: Crm): TreeNode {
+    const sum = NO_CRM();
+    for (const n of nodes) addCrm(sum, n);
     return {
       id, name, level,
       spend: nodes.reduce((s, n) => s + n.spend, 0),
       clicks: nodes.reduce((s, n) => s + n.clicks, 0),
       impressions: nodes.reduce((s, n) => s + n.impressions, 0),
-      subscribers: nodes.reduce<number | null>((s, n) => add(s, n.subscribers), null),
-      dialogs: nodes.reduce<number | null>((s, n) => add(s, n.dialogs), null),
-      depCount: nodes.reduce<number | null>((s, n) => add(s, n.depCount), null),
-      depSum: nodes.reduce<number | null>((s, n) => add(s, n.depSum), null),
+      ...(crm ?? sum),
       children: nodes.sort((a, b) => b.spend - a.spend),
     };
   }
 
   const byCampaign = new Map<string, Map<string, TreeNode[]>>();
-  const campaignNames = new Map<string, string>();
+  const nameOfCampaign = new Map<string, string>();
   const adsetNames = new Map<string, string>();
 
   for (const node of ads.values()) {
-    campaignNames.set(node.campaignId, node.campaignName);
+    nameOfCampaign.set(node.campaignId, node.campaignName);
     adsetNames.set(node.adsetId, node.adsetName);
     if (!byCampaign.has(node.campaignId)) byCampaign.set(node.campaignId, new Map());
     const sets = byCampaign.get(node.campaignId)!;
@@ -191,23 +238,49 @@ export async function loadReportTree(
     sets.get(node.adsetId)!.push(node);
   }
 
+  // Одно имя у двух кампаний (в разных кабинетах) — срез по имени делить нечем,
+  // тогда у каждой — сумма её объявлений.
+  const nameCount = new Map<string, number>();
+  for (const name of nameOfCampaign.values()) nameCount.set(name.trim(), (nameCount.get(name.trim()) ?? 0) + 1);
+
   const nodes: TreeNode[] = [];
   for (const [campaignId, sets] of byCampaign) {
     const adsetNodes = [...sets.entries()].map(([adsetId, adNodes]) =>
       fold(adNodes, adsetId, adsetNames.get(adsetId) ?? adsetId, "adset")
     );
-    nodes.push(fold(adsetNodes, campaignId, campaignNames.get(campaignId) ?? campaignId, "campaign"));
+    const name = nameOfCampaign.get(campaignId) ?? campaignId;
+    const exact = nameCount.get(name.trim()) === 1 ? crmByCampaign.get(name.trim()) : undefined;
+    nodes.push(fold(adsetNodes, campaignId, name, "campaign", exact));
   }
   nodes.sort((a, b) => b.spend - a.spend);
 
+  // ─── Кампании только из Torro ────────────────────────────────────────────
+  const outsideNodes: TreeNode[] = [];
+  for (const [name, crm] of crmByCampaign) {
+    if (campaignNames.has(name)) continue;
+    const children = [...(outsideAds.get(name) ?? new Map<string, Crm>())].map(([ad, c]): TreeNode => ({
+      id: `torro|${name}|${ad}`, name: ad, level: "ad", spend: 0, clicks: 0, impressions: 0, ...c, outside: true,
+    })).sort((a, b) => (b.depSum ?? 0) - (a.depSum ?? 0) || (b.subscribers ?? 0) - (a.subscribers ?? 0));
+    outsideNodes.push({
+      id: `torro|${name}`, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, ...crm,
+      outside: true, children: children.length ? children : undefined,
+    });
+  }
+  outsideNodes.sort((a, b) => (b.depSum ?? 0) - (a.depSum ?? 0) || (b.subscribers ?? 0) - (a.subscribers ?? 0));
+
   return {
-    since, until, nodes, buyers, isBuyer: me.role === "buyer",
+    since, until, nodes: [...nodes, ...outsideNodes], buyers, isBuyer: me.role === "buyer",
     totals: {
       spend: nodes.reduce((s, n) => s + n.spend, 0),
       clicks: nodes.reduce((s, n) => s + n.clicks, 0),
       impressions: nodes.reduce((s, n) => s + n.impressions, 0),
       depSum: nodes.reduce((s, n) => s + (n.depSum ?? 0), 0),
     },
+    outside: outsideNodes.length ? {
+      campaigns: outsideNodes.length,
+      subscribers: outsideNodes.reduce((s, n) => s + (n.subscribers ?? 0), 0),
+      depSum: outsideNodes.reduce((s, n) => s + (n.depSum ?? 0), 0),
+    } : null,
     generatedAt: new Date().toISOString(),
   };
 }

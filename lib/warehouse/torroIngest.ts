@@ -8,15 +8,18 @@ import { selectAll } from "./read";
 // пришли цифры, и знать не должны.
 //
 // Но у API нет id: Torro группирует по имени кампании и имени объявления. id
-// берём из расхода Meta этого же баера — только когда имя однозначно. Два
+// берём из расхода этого же баера — только когда имя однозначно. Два
 // объявления с одним именем делить нечем, и такое имя в by-id не пишется вовсе:
 // угадать, чьи это депозиты, значит показать правдоподобную неверную цифру.
+//
+// Кампании пишутся по имени всегда, даже без id (Decision 070): кампания из
+// неподключённого кабинета — это всё равно доход баера, терять его нельзя.
 
 type Db = SupabaseClient;
 
 export interface TorroIngestResult {
   crmRows: number;
-  unmatchedCampaigns: number;   // имена кампаний без единственного id в Meta
+  unmatchedCampaigns: number;   // имена кампаний без единственного id в расходе — записаны по имени
   unmatchedAds: number;         // то же для объявлений, в by-id не попали
 }
 
@@ -96,7 +99,13 @@ export function mergeByKey(rows: Record<string, unknown>[], keyCol: string): Rec
   return [...out.values()];
 }
 
-function crmColumns(r: TorroRow, withUnsub: boolean) {
+// Квалификация A–E — сегменты CRM (seg_a_count…), как в General 4.0.
+const n = (v: unknown) => (typeof v === "number" ? v : 0);
+export const quals = (r: TorroRow) => ({
+  qual_a: n(r.seg_a_count), qual_b: n(r.seg_b_count), qual_c: n(r.seg_c_count), qual_d: n(r.seg_d_count), qual_e: n(r.seg_e_count),
+});
+
+export function crmColumns(r: TorroRow, withUnsub: boolean) {
   const c = toCrm(r);
   return {
     clicks: c.clicks, subscribers: c.subscribers, dialogs: c.dialogs, registrations: c.registrations,
@@ -123,7 +132,7 @@ export async function ingestTorro(
 
     const adRows = named(ads);
     // trim может склеить «x» и «x » в одно имя — тоже складываем.
-    const nameRows = mergeByKey(adRows.map((r) => ({ ...period, ad_name: r.group.trim(), ...crmColumns(r, true) })), "ad_name");
+    const nameRows = mergeByKey(adRows.map((r) => ({ ...period, ad_name: r.group.trim(), ...crmColumns(r, true), ...quals(r) })), "ad_name");
     await replaceDay(db, "wh_crm_ad_periods", "ad_name", userId, day, nameRows);
 
     const adIds = await namesToIds(db, userId, "wh_ad_days", adRows.map((r) => r.group.trim()));
@@ -134,12 +143,11 @@ export async function ingestTorro(
 
     const campaignRows = named(campaigns);
     const campaignIds = await namesToIds(db, userId, "wh_campaign_days", campaignRows.map((r) => r.group.trim()));
-    const mapped = campaignRows.filter((r) => campaignIds.has(r.group.trim()));
-    result.unmatchedCampaigns += campaignRows.length - mapped.length;
-    const campaignOut = mergeByKey(mapped.map((r) => ({
-      ...period, campaign_id: campaignIds.get(r.group.trim()), campaign_name: r.group.trim(), ...crmColumns(r, false),
-    })), "campaign_id");
-    await replaceDay(db, "wh_crm_campaign_periods", "campaign_id", userId, day, campaignOut);
+    result.unmatchedCampaigns += campaignRows.filter((r) => !campaignIds.has(r.group.trim())).length;
+    const campaignOut = mergeByKey(campaignRows.map((r) => ({
+      ...period, campaign_id: campaignIds.get(r.group.trim()) ?? null, campaign_name: r.group.trim(), ...crmColumns(r, false), ...quals(r),
+    })), "campaign_name");
+    await replaceDay(db, "wh_crm_campaign_periods", "campaign_name", userId, day, campaignOut);
 
     result.crmRows += nameRows.length + idRows.length + campaignOut.length;
   }

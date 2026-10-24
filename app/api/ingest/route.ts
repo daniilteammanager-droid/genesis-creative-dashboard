@@ -6,6 +6,7 @@ import { checkCabinets } from "@/lib/alerts/cabinets";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { runAutocheck } from "@/lib/alerts/autocheck";
 import { runDailySummary } from "@/lib/alerts/summary";
+import { runPairs } from "@/lib/warehouse/torroPairs";
 
 // Точка входа для крона. Дёргает её VPS, на которой уже крутится воркер: у
 // бесплатного тарифа Vercel крон запускается раз в сутки, а нам нужен час и чаще.
@@ -33,7 +34,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Нет доступа" }, { status: 401 });
   }
 
-  const kind = (new URL(req.url).searchParams.get("kind") ?? "today") as IngestKind;
+  const raw = new URL(req.url).searchParams.get("kind") ?? "today";
+  // Связки «кампания × объявление» из Torro — своим кроном: ~1 с на объявление,
+  // в прогон раз в 15 минут они не влезают (Decision 070).
+  if (raw === "pairs") {
+    try {
+      const runs = await runPairs(240_000);
+      return NextResponse.json({ kind: "pairs", runs });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
+    }
+  }
+  const kind = raw as IngestKind;
   if (kind !== "today" && kind !== "window") {
     return NextResponse.json({ error: `Неизвестный режим: ${kind}` }, { status: 400 });
   }

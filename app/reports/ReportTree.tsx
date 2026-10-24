@@ -26,6 +26,42 @@ function romi(spend: number, revenue: number | null): string {
 
 const daysAgo = (days: number) => mskDaysAgo(days);
 
+// Столбцы — как в General 4.0, кроме CPA/IB: тут просто число депов и доход.
+// Производные — из сумм узла, а не средним детей (Decision 024).
+const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
+const pct = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(1)}%`);
+const quals = (x: TreeNode) => (x.quals ? x.quals.reduce((s, v) => s + v, 0) : null);
+const QUAL = ["A", "B", "C", "D", "E"];
+type Col = { label: string; cell: (x: TreeNode) => string; strong?: boolean };
+const COLS: Col[] = [
+  { label: "Расход", cell: (x) => money(x.spend), strong: true },
+  { label: "Доход", cell: (x) => money(x.depSum), strong: true },
+  { label: "Net Profit", cell: (x) => (x.depSum === null ? "—" : money(x.depSum - x.spend)) },
+  { label: "ROMI", cell: (x) => romi(x.spend, x.depSum) },
+  { label: "ROAS", cell: (x) => { const v = ratio(x.depSum, x.spend); return v === null ? "—" : v.toFixed(2); } },
+  { label: "Показы", cell: (x) => n(x.impressions) },
+  { label: "Клики", cell: (x) => n(x.clicks) },
+  { label: "CPM", cell: (x) => money(x.impressions ? (x.spend / x.impressions) * 1000 : null) },
+  { label: "CPC", cell: (x) => money(ratio(x.spend, x.clicks)) },
+  { label: "CTR", cell: (x) => pct(ratio(x.clicks, x.impressions)) },
+  { label: "Клики на ленде", cell: (x) => n(x.lpClicks) },
+  { label: "CR% клик → ленд", cell: (x) => pct(ratio(x.lpClicks, x.clicks)) },
+  { label: "CR% ленд → канал", cell: (x) => pct(ratio(x.subscribers, x.lpClicks)) },
+  { label: "Подписки", cell: (x) => n(x.subscribers) },
+  { label: "Общая CR", cell: (x) => pct(ratio(x.subscribers, x.clicks)) },
+  { label: "Цена подписки", cell: (x) => money(ratio(x.spend, x.subscribers)), strong: true },
+  { label: "Диалоги", cell: (x) => n(x.dialogs) },
+  { label: "CR% в диалог", cell: (x) => pct(ratio(x.dialogs, x.subscribers)) },
+  { label: "Цена диалога", cell: (x) => money(ratio(x.spend, x.dialogs)), strong: true },
+  { label: "Депы", cell: (x) => n(x.depCount) },
+  { label: "CR% диалог → деп", cell: (x) => pct(ratio(x.depCount, x.dialogs)) },
+  { label: "CAC", cell: (x) => money(ratio(x.spend, x.depCount)) },
+  { label: "Квалы", cell: (x) => n(quals(x)) },
+  { label: "Неквалы", cell: (x) => { const q = quals(x); return q === null || x.dialogs === null ? "—" : n(x.dialogs - q); } },
+  ...QUAL.map((k, i): Col => ({ label: `Квал ${k}`, cell: (x) => n(x.quals ? x.quals[i] : null) })),
+  ...QUAL.map((k, i): Col => ({ label: `% ${k}`, cell: (x) => pct(x.quals ? ratio(x.quals[i], quals(x)) : null) })),
+];
+
 // Пресеты периодов. Раздел открывается на сегодня: раньше по умолчанию было
 // 14 дней, и каждый раз приходилось переключаться руками.
 const PERIODS = [
@@ -49,8 +85,8 @@ function Row({ node, depth, open, toggle }: {
 
   return (
     <>
-      <tr className="hover:bg-violet-900/10 transition border-b border-violet-900/15">
-        <td className={`px-3 py-2.5 ${INDENT[depth]}`}>
+      <tr className={`hover:bg-violet-900/10 transition border-b border-violet-900/15 ${node.outside ? "opacity-70" : ""}`}>
+        <td className={`px-3 py-2.5 sticky left-0 bg-[#111118] z-10 ${INDENT[depth]}`}>
           <button
             onClick={() => expandable && toggle(node.id)}
             className={`text-left flex items-center gap-2 max-w-[420px] ${expandable ? "cursor-pointer" : "cursor-default"}`}
@@ -59,18 +95,15 @@ function Row({ node, depth, open, toggle }: {
             <span className={`truncate ${depth === 0 ? "text-zinc-100" : "text-zinc-300"}`} title={node.name}>
               {node.name}
             </span>
+            {node.outside && depth === 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300/90 whitespace-nowrap">нет в кабинетах</span>
+            )}
           </button>
         </td>
-        <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">{money(node.spend)}</td>
-        <td className="px-3 py-2.5 text-zinc-400">{n(node.clicks)}</td>
-        <td className="px-3 py-2.5 text-zinc-400">{n(node.impressions)}</td>
-        <td className="px-3 py-2.5 text-zinc-400">{n(node.subscribers)}</td>
-        <td className="px-3 py-2.5 text-zinc-400">{n(node.dialogs)}</td>
-        <td className="px-3 py-2.5 text-zinc-400">{n(node.depCount)}</td>
-        <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">{money(node.depSum)}</td>
-        <td className={`px-3 py-2.5 whitespace-nowrap ${(node.depSum ?? 0) > node.spend ? "text-green-400" : "text-zinc-400"}`}>
-          {romi(node.spend, node.depSum)}
-        </td>
+        {COLS.map((c) => (
+          <td key={c.label} className={`px-3 py-2.5 whitespace-nowrap ${c.strong ? "text-zinc-200" : "text-zinc-400"} ${
+            c.label === "ROMI" && (node.depSum ?? 0) > node.spend ? "text-green-400" : ""}`}>{c.cell(node)}</td>
+        ))}
       </tr>
       {isOpen && node.children?.map((c) => (
         <Row key={c.id} node={c} depth={depth + 1} open={open} toggle={toggle} />
@@ -186,7 +219,9 @@ export default function ReportTree() {
               ["Расход", money(data!.totals.spend)],
               ["Доход", money(data!.totals.depSum)],
               ["ROMI", romi(data!.totals.spend, data!.totals.depSum)],
-              ["Кампаний", n(data!.nodes.length)],
+              data!.outside
+                ? ["Вне подключённых кабинетов", `${money(data!.outside.depSum)} · ${n(data!.outside.campaigns)} РК`]
+                : ["Кампаний", n(data!.nodes.length)],
             ] as const).map(([label, value]) => (
               <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
                 <p className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">{label}</p>
@@ -199,9 +234,11 @@ export default function ReportTree() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-violet-900/25">
-                  {["Кампания / адсет / объявление", "Расход", "Клики", "Показы",
-                    "Подписки", "Диалоги", "Депозиты", "Доход", "ROMI"].map((h) => (
-                    <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#111118] z-10">
+                    Кампания / адсет / объявление
+                  </th>
+                  {COLS.map((c) => (
+                    <th key={c.label} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{c.label}</th>
                   ))}
                 </tr>
               </thead>
@@ -213,9 +250,11 @@ export default function ReportTree() {
             </table>
           </div>
 
-          <p className="text-[11px] text-zinc-600 mt-3">
-            Депозиты на адсете и на объявлении берутся из выгрузки Торро по id объявления.
-            Если её не подключить, на этих уровнях будет прочерк, а на кампании — цифры.
+          <p className="text-[11px] text-zinc-600 mt-3 leading-relaxed">
+            Подписки, диалоги, депы и квалы — из Torro. На кампании — срез Torro по её имени, на
+            объявлении — связка «кампания × объявление»; одно имя в двух адсетах кампании делить
+            нечем, тогда цифры только на кампании. Внизу — кампании, которые есть в Torro, но их
+            кабинет не подключён: в итог и ROMI они не идут.
           </p>
         </>
       )}

@@ -60,6 +60,15 @@ export type FaceTotal = CheckRow & { count: number };
 // Итог null — подключена, а расхода нет.
 export interface PlatformTotal { platform: Platform; label: string; total: CheckRow | null }
 
+// Torro, которому не нашлось расхода: кампании из неподключённых кабинетов
+// (Decision 070). В итог и ROMI не идёт — расхода по ним нет, — но и не теряется.
+export interface Unmatched { subscribers: number; dialogs: number; revenue: number; names: number }
+
+export function unmatchedLine(u: Unmatched | null | undefined): string {
+  if (!u || (!u.revenue && !u.subscribers && !u.dialogs)) return "";
+  return `\n\n⚠️ Нет в подключённых кабинетах: ${nf(u.revenue)}$ дохода · ${nf(u.subscribers, 0)} подп. · ${nf(u.dialogs, 0)} диал. (${u.names} шт.)`;
+}
+
 export const NO_FACE = "Без лица";
 // Одно имя объявления в кампаниях разных лиц: доход Torro по имени не делится.
 export const MANY_FACES = "Несколько лиц";
@@ -76,6 +85,7 @@ export interface CheckResult {
   rows: CheckRow[];              // сгруппированы по площадкам и лицам в порядке faces
   faces: FaceTotal[];            // по площадкам, внутри — по лицам
   platforms: PlatformTotal[];    // только подключённые
+  unmatched: Unmatched | null;
   totalBudget: number | null;
   totals: { spend: number; revenue: number | null; romi: number | null };
   text: string;
@@ -351,7 +361,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    faces: [], platforms: [], totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
+    faces: [], platforms: [], unmatched: null, totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -376,6 +386,17 @@ export async function loadCheck(
   const rowFace = (platform: Platform, campaignName: string | null | undefined, accountId: string | null | undefined) =>
     (platform === "tg" ? tgFace.get(accountId ?? "") : null) ?? faceOf(campaignName);
   const platformOfId = (id: string): Platform => (id.startsWith("tg:") ? "tg" : "fb");
+
+  // Строки Torro по людям: что легло на расход и что нет. По людям — потому что
+  // у человека с FB и TG Ads один Torro приходит в обе площадки, и имя другой
+  // площадки в одной из них «не находится», хотя в другой легло. Только в разрезе
+  // по кампаниям: там у обеих площадок одни и те же имена — имена кампаний.
+  const crmSeen = new Map<string, Map<string, CrmTotals>>();
+  const crmMatched = new Map<string, Set<string>>();
+  const crmNote = (userId: string, name: string, c: CrmTotals, matched: boolean) => {
+    if (matched) crmMatched.set(userId, (crmMatched.get(userId) ?? new Set()).add(name));
+    else if (!crmSeen.get(userId)?.has(name)) crmSeen.set(userId, (crmSeen.get(userId) ?? new Map()).set(name, c));
+  };
 
   const rows = new Map<string, CheckRow>();
   const blank = (key: string, label: string, face: string, platform: Platform = platformOfId(key)): CheckRow => ({
@@ -504,6 +525,7 @@ export async function loadCheck(
         for (const [key, c] of crm.rows) {
           const id = idOf ? idOf.get(key) : key;
           const row = id ? rows.get(id) : undefined;
+          crmNote(config.userId, key, c, Boolean(row));
           if (!row) continue;
           row.subscribers = add(row.subscribers, c.subscribers);
           row.dialogs = add(row.dialogs, c.dialogs);
@@ -599,22 +621,24 @@ export async function loadCheck(
         rows.set(d.campaign_id, row);
       }
 
-      const crm = await selectAll<{ campaign_id: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
-        db.from("wh_crm_campaign_periods").select("campaign_id, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
+      // Кампании Torro — по имени (Decision 070): id есть не у всех, имя — у всех.
+      const idByName = uniqueIds(days.map((d) => ({ id: d.campaign_id, name: d.campaign_name })));
+      const crm = await selectAll<{ user_id: string; campaign_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null }>((from, to) =>
+        db.from("wh_crm_campaign_periods").select("user_id, campaign_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
           .in("user_id", scope).lte("period_start", until).gte("period_end", since)
-          .order("user_id").order("period_start").order("campaign_id")
+          .order("user_id").order("period_start").order("campaign_name")
           .range(from, to)
       );
       for (const c of crm) {
         if (!inside(c.period_start, c.period_end)) { partial++; continue; }
-        const row = rows.get(c.campaign_id) ?? blank(c.campaign_id, c.campaign_id, NO_FACE);
+        const revenue = add(c.dep_sum === null ? null : num(c.dep_sum), c.redep_sum === null ? null : num(c.redep_sum));
+        const id = idByName.get(c.campaign_name.trim());
+        const row = id ? rows.get(id) : undefined;
+        crmNote(`${c.user_id}|${c.period_start}`, c.campaign_name, { subscribers: c.subscribers, dialogs: c.dialogs, revenue }, Boolean(row));
+        if (!row) continue;
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
-        row.revenue = add(row.revenue, add(
-          c.dep_sum === null ? null : num(c.dep_sum),
-          c.redep_sum === null ? null : num(c.redep_sum)
-        ));
-        rows.set(c.campaign_id, row);
+        row.revenue = add(row.revenue, revenue);
       }
     } else {
       const daysRaw = await selectAll<{ ad_name: string; ad_id: string; adset_id: string | null; campaign_name: string | null; account_id: string | null; date: string; spend: number | string; source: string }>((from, to) => {
@@ -653,17 +677,17 @@ export async function loadCheck(
         : { data: [] as { user_id: string }[] };
       const tgUsers = (tgRows ?? []).map((r) => r.user_id as string);
       const adUsers = scope.filter((u) => !tgUsers.includes(u));
-      type CrmRow = { platform?: Platform; ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
+      type CrmRow = { platform?: Platform; user_id: string; ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
       const crm: CrmRow[] = [
         ...(adUsers.length ? (await selectAll<CrmRow>((from, to) =>
-          db.from("wh_crm_ad_periods").select("ad_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
+          db.from("wh_crm_ad_periods").select("user_id, ad_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
             .in("user_id", adUsers).lte("period_start", until).gte("period_end", since)
             .order("user_id").order("period_start").order("ad_name")
             .range(from, to)
         )).map((r) => ({ ...r, platform: "fb" as const })) : []),
         // TG Ads — кампании Torro под именем объявления: ad_name здесь — имя кампании.
         ...(tgUsers.length ? (await selectAll<CrmRow>((from, to) =>
-          db.from("wh_crm_campaign_periods").select("ad_name:campaign_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
+          db.from("wh_crm_campaign_periods").select("user_id, ad_name:campaign_name, period_start, period_end, subscribers, dialogs, dep_sum, redep_sum")
             .in("user_id", tgUsers).lte("period_start", until).gte("period_end", since)
             .order("user_id").order("period_start").order("campaign_id")
             .range(from, to)
@@ -707,6 +731,16 @@ export async function loadCheck(
   // неизвестен: иначе карточка показывала бы «Доход $0.00» и «ROMI −100%» там,
   // где в таблице у всех строк честное «—», и по этому экрану выключили бы связку.
   const withRevenue = list.filter((r) => r.revenue !== null);
+  // Что из Torro не легло ни на одну строку расхода — у этого человека за этот день.
+  let unmatched: Unmatched | null = null;
+  for (const [who, names] of crmSeen) for (const [name, c] of names) {
+    if (crmMatched.get(who)?.has(name)) continue;
+    unmatched ??= { subscribers: 0, dialogs: 0, revenue: 0, names: 0 };
+    unmatched.subscribers += c.subscribers ?? 0;
+    unmatched.dialogs += c.dialogs ?? 0;
+    unmatched.revenue += c.revenue ?? 0;
+    unmatched.names++;
+  }
   const revenue = withRevenue.length ? withRevenue.reduce((s, r) => s + (r.revenue as number), 0) : null;
 
   return {
@@ -715,13 +749,14 @@ export async function loadCheck(
     rows: list,
     faces,
     platforms,
+    unmatched,
     totalBudget,
     totals: {
       spend,
       revenue,
       romi: revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null,
     },
-    text: buildCheckText(list, faces, totalBudget, new Date(), undefined, platforms),
+    text: buildCheckText(list, faces, totalBudget, new Date(), undefined, platforms) + unmatchedLine(unmatched),
     warning,
   };
 }

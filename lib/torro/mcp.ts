@@ -33,6 +33,7 @@ interface Query {
   groupBy: TorroGroupBy;
   country?: string[];
   campaignName?: string[];
+  adName?: string[];
 }
 
 // Любой инструмент Torro MCP: JSON-RPC tools/call, ответ — один текстовый блок с JSON.
@@ -86,6 +87,7 @@ export async function callStatistics(q: Query, doFetch: typeof fetch = fetch): P
   };
   if (q.country) args.country = q.country;
   if (q.campaignName) args.campaign_name = q.campaignName;
+  if (q.adName) args.ad_name = q.adName;
   const payload = await callTool<TorroPayload>(q.token, "get_statistics", args, doFetch);
   if (!Array.isArray(payload.rows) || !payload.summary) throw new Error("Torro: в ответе нет rows или summary");
   return payload;
@@ -115,7 +117,7 @@ const CHECKED = ["click", "sub", "chat", "dep_count", "redep_count"] as const;
 // фильтрует по id — по ним не разобьёшь. Не влезло и так — честная ошибка с
 // адресом, а не обрезанные цифры.
 export async function fetchDay(
-  base: Omit<Query, "groupBy" | "country" | "campaignName">,
+  base: Omit<Query, "groupBy" | "country" | "campaignName" | "adName">,
   groupBy: "ad_name" | "campaign_name",
   doFetch: typeof fetch = fetch
 ): Promise<TorroRow[]> {

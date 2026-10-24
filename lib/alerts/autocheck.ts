@@ -1,5 +1,5 @@
 import { warehouse } from "@/lib/warehouse/read";
-import { buildCheckText, loadCheck, type CheckGroup, type CheckResult } from "@/lib/warehouse/check";
+import { buildCheckText, loadCheck, unmatchedLine, type CheckGroup, type CheckResult } from "@/lib/warehouse/check";
 import { escapeHtml, sendToLinks } from "@/lib/telegram/links";
 import { mskDay, mskTime } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
@@ -53,6 +53,8 @@ export function checkMessage(r: CheckResult, at: Date = new Date()): string {
   // итогом: лицо без строк в верхе печатается одной строкой «…и ещё N».
   const top = new Set([...r.rows].sort((a, b) => b.spend - a.spend).slice(0, TOP_ROWS));
   const lines = [buildCheckText(r.rows.filter((x) => top.has(x)), r.faces, r.totalBudget, at, UNIT[r.groupBy], r.platforms)];
+  const extra = unmatchedLine(r.unmatched).trim();
+  if (extra) lines.push(extra);
   const t = r.totals;
   lines.push(`Итого: ${money(t.spend)}$ / доход ${t.revenue === null ? "—" : `${money(t.revenue)}$`} / ROMI ${t.romi === null ? "—" : `${t.romi.toFixed(0)}%`}`);
 
