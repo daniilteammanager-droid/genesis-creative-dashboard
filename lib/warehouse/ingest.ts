@@ -27,9 +27,11 @@ const TORRO_CHUNK_DAYS = 7;
 const MAX_HISTORY_DAYS = 37 * 30;
 const OWNER_STALE_MS = 2 * 24 * 3600_000;
 
-// Баерские ключи — только прямые кабинеты (Decision 050), в любом статусе:
-// у заблокированного кабинета расход был настоящий.
-const SCOPE: AccountScope = { includeBusinesses: false, anyStatus: true };
+// Все кабинеты ключа — и выданные напрямую, и через Business Manager
+// (Decision 062): у Артёма только прямые, и часть кабинетов терялась. Чужое,
+// если ключ его видит, ловит закрепление — конфликт, а не тихий чужой расход.
+// В любом статусе: у заблокированного кабинета расход был настоящий.
+const SCOPE: AccountScope = { includeBusinesses: true, anyStatus: true };
 
 export type IngestKind = "today" | "window";
 

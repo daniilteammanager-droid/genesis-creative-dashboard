@@ -151,7 +151,8 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
     const ownedSet = new Set((owned ?? []).map((o) => o.account_id as string));
     keys.forEach((k, i) => list.push({
       cacheKey: id, userId: id, metaToken: k.token,
-      accountScope: { includeBusinesses: false, anyStatus: true },
+      // Как в складе: напрямую и через БМ, в любом статусе (Decision 062).
+      accountScope: { includeBusinesses: true, anyStatus: true },
       campaignsSheetId: "", adsSheetId: "", owned: ownedSet,
       torro: i === 0 && c?.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined,
     }));

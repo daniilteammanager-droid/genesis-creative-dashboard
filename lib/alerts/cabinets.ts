@@ -185,8 +185,8 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
   const db = warehouse();
   const tokens: { token: string; withBusinesses: boolean }[] = [
     ...(process.env.META_ACCESS_TOKEN ? [{ token: process.env.META_ACCESS_TOKEN, withBusinesses: true }] : []),
-    // Баерские ключи — как в складе, только прямые кабинеты (Decision 050).
-    ...buyerTokens.map((token) => ({ token, withBusinesses: false })),
+    // Как в складе: напрямую и через Business Manager (Decision 062).
+    ...buyerTokens.map((token) => ({ token, withBusinesses: true })),
   ];
 
   const seen = new Map<string, CabinetState>();
