@@ -145,8 +145,10 @@ export function diffCabinets(
       alerts.push({
         accountId: next.accountId,
         text: alertText(next, p, at),
+        // Через Ads Manager, а не billing_hub: у Артёма стоял billing_hub/payment_settings,
+        // и он открывал просто Facebook без кабинета (проверено 24.10.2026).
         payUrl: PAYMENT.has(next.status)
-          ? `https://business.facebook.com/billing_hub/payment_settings?asset_id=${next.accountId}`
+          ? `https://adsmanager.facebook.com/ads/manager/billing/transactions?act=${next.accountId}`
           : null,
       });
     }

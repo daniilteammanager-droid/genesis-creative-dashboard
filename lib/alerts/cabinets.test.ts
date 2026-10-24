@@ -21,7 +21,7 @@ assert.equal(r.alerts[0].payUrl, null);
 
 // Платёжная проблема — с кнопкой оплаты и суммой
 r = diffCabinets(map(cab("2", "ACTIVE")), [cab("2", "UNSETTLED", { balance: 125.5 })], true);
-assert.ok(r.alerts[0].payUrl?.includes("asset_id=2"));
+assert.equal(r.alerts[0].payUrl, "https://adsmanager.facebook.com/ads/manager/billing/transactions?act=2");
 assert.match(r.alerts[0].text, /К оплате/);
 
 // Выход из проблемы — «снята»; смена между двумя не-проблемами — тишина
