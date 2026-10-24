@@ -3,6 +3,7 @@ import { ingestForUser, usersToIngest, type IngestKind } from "@/lib/warehouse/i
 import { getMetaToken } from "@/lib/connections/store";
 import { checkCabinets } from "@/lib/alerts/cabinets";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
+import { runAutocheck } from "@/lib/alerts/autocheck";
 
 // Точка входа для крона. Дёргает её VPS, на которой уже крутится воркер: у
 // бесплатного тарифа Vercel крон запускается раз в сутки, а нам нужен час и чаще.
@@ -69,7 +70,16 @@ export async function POST(req: Request) {
         cabinets = { error: e instanceof Error ? e.message : String(e) };
       }
     }
-    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected });
+    // Авточек по расписанию привязок — тоже раз в четверть часа, вместе с прогоном.
+    let autocheck: unknown = null;
+    if (kind === "today") {
+      try {
+        autocheck = await runAutocheck();
+      } catch (e) {
+        autocheck = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected, autocheck });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
   }

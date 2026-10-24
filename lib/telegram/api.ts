@@ -51,13 +51,35 @@ export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function sendMessage(chatId: number, text: string, threadId?: number | null, extra: Record<string, unknown> = {}) {
-  return tg("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-    link_preview_options: { is_disabled: true },
-    ...(threadId ? { message_thread_id: threadId } : {}),
-    ...extra,
-  });
+// Telegram берёт до 4096 символов. Чек по всей команде длиннее, поэтому режем
+// по пустой строке (граница блока чека), а нет её — по строке. Теги в наших
+// сообщениях не переходят через строку, так что разметка не рвётся.
+const LIMIT = 3900;
+export function splitMessage(text: string): string[] {
+  const out: string[] = [];
+  let rest = text;
+  while (rest.length > LIMIT) {
+    let cut = rest.lastIndexOf("\n\n", LIMIT);
+    if (cut < LIMIT * 0.5) cut = rest.lastIndexOf("\n", LIMIT);
+    if (cut <= 0) cut = LIMIT;
+    out.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).replace(/^\n+/, "");
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+
+export async function sendMessage(chatId: number, text: string, threadId?: number | null, extra: Record<string, unknown> = {}) {
+  const parts = splitMessage(text);
+  for (const [i, part] of parts.entries()) {
+    await tg("sendMessage", {
+      chat_id: chatId,
+      text: part,
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      ...(threadId ? { message_thread_id: threadId } : {}),
+      // Кнопки — под последней частью, где сообщение заканчивается.
+      ...(i === parts.length - 1 ? extra : {}),
+    });
+  }
 }

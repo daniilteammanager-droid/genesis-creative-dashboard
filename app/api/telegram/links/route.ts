@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { botUsername } from "@/lib/telegram/api";
 import { EVENTS, cleanEvents } from "@/lib/telegram/events";
-import { createLinkCode, deleteLink, listLinks, sendTest, setLinkEvents } from "@/lib/telegram/links";
+import { createLinkCode, deleteLink, listLinks, sendTest, setLinkEvents, setLinkSchedule } from "@/lib/telegram/links";
+import { CHECK_GROUPS, parseCheckTimes } from "@/lib/alerts/autocheck";
 
 // Свои привязки Telegram. user_id всегда из сессии: чужую привязку не увидеть,
 // не отвязать и не перенастроить.
@@ -51,9 +52,15 @@ export async function PATCH(req: Request) {
   const me = await getProfile();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
-    const body = (await req.json()) as { id?: string; events?: unknown };
+    // Либо набор уведомлений, либо расписание авточека — что прислали.
+    const body = (await req.json()) as { id?: string; events?: unknown; checkTimes?: unknown; checkGroup?: string };
     if (!body.id) return fail("Нет id привязки", 400);
-    await setLinkEvents(me.id, body.id, cleanEvents(body.events));
+    if (body.events !== undefined) await setLinkEvents(me.id, body.id, cleanEvents(body.events));
+    if (body.checkTimes !== undefined) {
+      const group = body.checkGroup ?? "campaign";
+      if (!(CHECK_GROUPS as string[]).includes(group)) return fail("Неизвестный разрез чека", 400);
+      await setLinkSchedule(me.id, body.id, parseCheckTimes(body.checkTimes), group);
+    }
     return NextResponse.json({ links: await listLinks(me.id) });
   } catch (e) {
     return fail(e, 400);

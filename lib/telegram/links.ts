@@ -14,6 +14,8 @@ export interface TelegramLink {
   title: string | null;
   threadId: number | null;
   events: string[];
+  checkTimes: string[];
+  checkGroup: "campaign" | "creative" | "country";
   createdAt: string;
 }
 
@@ -31,11 +33,12 @@ export async function createLinkCode(userId: string): Promise<string> {
 
 export async function listLinks(userId: string): Promise<TelegramLink[]> {
   const { data, error } = await db().from("telegram_links")
-    .select("id, chat_type, title, thread_id, events, created_at")
+    .select("id, chat_type, title, thread_id, events, check_times, check_group, created_at")
     .eq("user_id", userId).order("created_at");
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => ({
-    id: r.id, chatType: r.chat_type, title: r.title, threadId: r.thread_id, events: r.events, createdAt: r.created_at,
+    id: r.id, chatType: r.chat_type, title: r.title, threadId: r.thread_id, events: r.events,
+    checkTimes: r.check_times, checkGroup: r.check_group, createdAt: r.created_at,
   }));
 }
 
@@ -47,6 +50,15 @@ export async function deleteLink(userId: string, id: string): Promise<void> {
 
 export async function setLinkEvents(userId: string, id: string, events: string[]): Promise<void> {
   const { error } = await db().from("telegram_links").update({ events }).eq("id", id).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+// Расписание авточека. Сброс отметки отправки — чтобы новое время, уже
+// наступившее в эту четверть часа, не потерялось за старой отметкой.
+export async function setLinkSchedule(userId: string, id: string, checkTimes: string[], checkGroup: string): Promise<void> {
+  const { error } = await db().from("telegram_links")
+    .update({ check_times: checkTimes, check_group: checkGroup, check_sent_slot: null })
+    .eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
 }
 
@@ -135,7 +147,7 @@ export async function sendTest(userId: string, id: string): Promise<void> {
   if (sent === 0) throw new Error("Telegram не доставил сообщение: бота убрали из чата, привязка снята");
 }
 
-async function sendToLinks(links: { id: string; chat_id: number; thread_id: number | null }[], text: string, extra: Record<string, unknown> = {}) {
+export async function sendToLinks(links: { id: string; chat_id: number; thread_id: number | null }[], text: string, extra: Record<string, unknown> = {}) {
   let sent = 0;
   for (const l of links) {
     try {

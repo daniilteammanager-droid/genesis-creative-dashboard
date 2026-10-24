@@ -26,6 +26,11 @@ export function mskStamp(d: Date = new Date()): string {
   return `${day}.${month} - ${timeFmt.format(d)}`;
 }
 
+/** Московское время: `13:53`. */
+export function mskTime(d: Date = new Date()): string {
+  return timeFmt.format(d);
+}
+
 /** Сдвиг от московского сегодня на N дней назад. */
 export function mskDaysAgo(days: number, from: Date = new Date()): string {
   const d = new Date(from);

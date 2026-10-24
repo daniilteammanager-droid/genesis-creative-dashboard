@@ -13,6 +13,37 @@ const button =
 interface State { bot: string | null; events: TelegramEvent[]; links: TelegramLink[] }
 interface Invite { privateUrl: string; groupUrl: string; command: string }
 
+const GROUP_LABELS: Record<TelegramLink["checkGroup"], string> = {
+  campaign: "по кампаниям", creative: "по креативам", country: "по странам",
+};
+
+// Время авточека — строкой, как его и говорят: «10:00, 14:00, 18:00».
+// Проверяет сервер: кратность 15 минутам там же, где и сам прогон.
+function Schedule({ link, busy, save }: {
+  link: TelegramLink; busy: boolean; save: (times: string, group: TelegramLink["checkGroup"]) => void;
+}) {
+  const [times, setTimes] = useState(link.checkTimes.join(", "));
+  const [group, setGroup] = useState(link.checkGroup);
+  const changed = times !== link.checkTimes.join(", ") || group !== link.checkGroup;
+  const input = "bg-[#0d0b14] border border-violet-900/40 rounded-lg px-3 py-1.5 outline-none focus:border-violet-600/50 text-white text-[12px]";
+  return (
+    <div className="flex items-center gap-2 flex-wrap mt-2.5">
+      <span className="text-[12px] text-zinc-500">Чек в</span>
+      <input type="text" value={times} onChange={(e) => setTimes(e.target.value)}
+             placeholder="10:00, 18:00" className={`${input} w-40`} />
+      <select value={group} onChange={(e) => setGroup(e.target.value as TelegramLink["checkGroup"])}
+              className={`${input} cursor-pointer`}>
+        {(Object.keys(GROUP_LABELS) as TelegramLink["checkGroup"][]).map((g) => <option key={g} value={g}>{GROUP_LABELS[g]}</option>)}
+      </select>
+      <button type="button" disabled={busy || !changed} onClick={() => save(times, group)}
+              className={`${pill} border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
+        сохранить
+      </button>
+      <span className="text-[11px] text-zinc-600">по Москве, шаг 15 минут</span>
+    </div>
+  );
+}
+
 function placeLabel(l: TelegramLink): string {
   if (l.chatType === "private") return "личный чат";
   return l.threadId ? "тема в группе" : "группа";
@@ -121,6 +152,13 @@ export default function TelegramLinks() {
                       </label>
                     ))}
                   </div>
+                  {l.events.includes("autocheck") && (
+                    <Schedule link={l} busy={busy}
+                              save={async (checkTimes, checkGroup) => {
+                                const data = await call("/api/telegram/links", json("PATCH", { id: l.id, checkTimes, checkGroup }));
+                                if (data && state) { setState({ ...state, links: data.links }); setMsg({ ok: true, text: "Расписание сохранено" }); }
+                              }} />
+                  )}
                 </div>
               ))}
             </div>
