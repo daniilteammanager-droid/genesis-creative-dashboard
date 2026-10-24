@@ -86,17 +86,19 @@ function Row({ node, depth, open, toggle }: {
   return (
     <>
       <tr className={`hover:bg-violet-900/10 transition border-b border-violet-900/15 ${node.outside ? "opacity-70" : ""}`}>
-        <td className={`px-3 py-2.5 sticky left-0 bg-[#111118] z-10 ${INDENT[depth]}`}>
+        {/* На телефоне закреплённое имя — не шире половины экрана, иначе цифрам
+            не остаётся места и таблица не листается вбок. */}
+        <td className={`px-3 py-2.5 sticky left-0 bg-[#111118] z-10 max-w-[48vw] sm:max-w-[440px] ${INDENT[depth]}`}>
           <button
             onClick={() => expandable && toggle(node.id)}
-            className={`text-left flex items-center gap-2 max-w-[420px] ${expandable ? "cursor-pointer" : "cursor-default"}`}
+            className={`text-left flex items-center gap-2 max-w-full min-w-0 ${expandable ? "cursor-pointer" : "cursor-default"}`}
           >
             <span className={`text-zinc-600 text-xs w-3 ${expandable ? "" : "opacity-0"}`}>{isOpen ? "▾" : "▸"}</span>
-            <span className={`truncate ${depth === 0 ? "text-zinc-100" : "text-zinc-300"}`} title={node.name}>
+            <span className={`truncate min-w-0 ${depth === 0 ? "text-zinc-100" : "text-zinc-300"}`} title={node.name}>
               {node.name}
             </span>
             {node.outside && depth === 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300/90 whitespace-nowrap">нет в кабинетах</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300/90 whitespace-nowrap shrink-0">нет в кабинетах</span>
             )}
           </button>
         </td>
@@ -234,7 +236,7 @@ export default function ReportTree() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-violet-900/25">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#111118] z-10">
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider sticky left-0 bg-[#111118] z-10 max-w-[48vw] sm:max-w-none">
                     Кампания / адсет / объявление
                   </th>
                   {COLS.map((c) => (
