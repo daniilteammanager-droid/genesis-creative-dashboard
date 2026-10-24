@@ -2,6 +2,9 @@ import { warehouse, selectAll } from "./read";
 import { resolveScope } from "./accounts";
 import type { ReportConfig } from "@/lib/reports-live/config";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
+import { dolphinAdDays, type DolphinAdDay } from "@/lib/dolphin/api";
+import type { MetaCampaignRow, MetaAdRow } from "@/lib/reports-live/types";
+import type { CampaignMeta } from "@/lib/reports-live/metaApi";
 import { getConnection } from "@/lib/connections/store";
 import { fetchCampaignInsights, fetchAdInsights, fetchCampaignMeta, fetchAdSetTargeting } from "@/lib/reports-live/metaApi";
 import type { Profile } from "@/lib/auth/types";
@@ -128,6 +131,40 @@ async function torroForDay(
   return { rows, covered: true, byName: groupBy === "campaign_name" };
 }
 
+// ─── Dolphin в форме Meta (Decision 063) ────────────────────────────────────
+// Живой чек всегда за один день. Dolphin отдаёт объявления с кампаниями и
+// бюджетами одним списком — один запрос на день, а не три, кэш на вызов чека.
+const dolphinDay = new Map<string, Promise<DolphinAdDay[]>>();
+function dolphinRows(token: string, day: string) {
+  const key = `${token}|${day}`;
+  if (!dolphinDay.has(key)) {
+    dolphinDay.set(key, dolphinAdDays(token, day, day).finally(() => setTimeout(() => dolphinDay.delete(key), 60_000)));
+  }
+  return dolphinDay.get(key)!;
+}
+
+async function dolphinCampaigns(token: string, day: string) {
+  const byId = new Map<string, MetaCampaignRow>();
+  for (const r of await dolphinRows(token, day)) {
+    const c = byId.get(r.campaignId) ?? { campaignId: r.campaignId, campaignName: r.campaignName, accountId: r.accountId, accountName: r.accountName, spend: 0, clicks: 0, impressions: 0 };
+    c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions;
+    byId.set(r.campaignId, c);
+  }
+  return { items: [...byId.values()], failedAccounts: 0 };
+}
+
+async function dolphinBudgets(token: string, day: string): Promise<CampaignMeta> {
+  const dailyBudgets = new Map<string, number>();
+  for (const r of await dolphinRows(token, day)) if (r.campaignDailyBudget) dailyBudgets.set(r.campaignId, r.campaignDailyBudget);
+  return { statuses: new Map(), dailyBudgets };
+}
+
+async function dolphinAds(token: string, day: string, geo: Map<string, string[]>) {
+  const rows = await dolphinRows(token, day);
+  for (const r of rows) if (r.adsetId && r.countries.length) geo.set(r.adsetId, r.countries);
+  return { items: rows as MetaAdRow[], failedAccounts: 0 };
+}
+
 // Ключи, по которым собирается живой чек (Decision 061).
 //
 // По источнику на каждый ключ Meta каждого человека в области видимости. Кабинет
@@ -137,7 +174,11 @@ async function torroForDay(
 //
 // Командного ключа из окружения здесь больше нет: сводная владельца — это сумма
 // интеграций всех, а не отдельный ключ, который видит то же самое ещё раз.
-type LiveSource = ReportConfig & { userId: string; owned: Set<string>; torro?: { token: string; buyerId: number } };
+type LiveSource = ReportConfig & {
+  userId: string; owned: Set<string>; torro?: { token: string; buyerId: number };
+  // Источник — Dolphin (Decision 063): metaToken тогда пустой, ходим в Dolphin.
+  dolphin?: string;
+};
 
 async function liveSources(scope: string[]): Promise<LiveSource[]> {
   const db = warehouse();
@@ -149,16 +190,25 @@ async function liveSources(scope: string[]): Promise<LiveSource[]> {
       db.from("wh_account_owners").select("account_id").eq("owner_user_id", id),
     ]);
     const ownedSet = new Set((owned ?? []).map((o) => o.account_id as string));
+    const torro = c?.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined;
+    // Источник у человека один: Dolphin — вместо ключей Meta, а не вместе с ними.
+    if (c?.spendSource === "dolphin" && c.dolphinToken) {
+      list.push({
+        cacheKey: id, userId: id, metaToken: "", dolphin: c.dolphinToken,
+        accountScope: {}, campaignsSheetId: "", adsSheetId: "", owned: ownedSet, torro,
+      });
+      continue;
+    }
     keys.forEach((k, i) => list.push({
       cacheKey: id, userId: id, metaToken: k.token,
       // Как в складе: напрямую и через БМ, в любом статусе (Decision 062).
       accountScope: { includeBusinesses: true, anyStatus: true },
       campaignsSheetId: "", adsSheetId: "", owned: ownedSet,
-      torro: i === 0 && c?.torroToken && c.torroBuyerId ? { token: c.torroToken, buyerId: c.torroBuyerId } : undefined,
+      torro: i === 0 ? torro : undefined,
     }));
   }
   // Один и тот же ключ дважды сложил бы расход сам с собой.
-  return [...new Map(list.map((c) => [c.metaToken, c])).values()];
+  return [...new Map(list.map((c) => [c.dolphin ?? c.metaToken, c])).values()];
 }
 
 export async function loadCheck(
@@ -264,7 +314,7 @@ export async function loadCheck(
     const sources = await liveSources(scope);
     sourceLabels = [...new Set(sources.map((c) => buyerLabel.get(c.userId) ?? c.userId))];
     if (sources.length === 0) {
-      return { ...base, text: "Ни у кого из выбранных нет ключа Meta — добавь его в Настройках → Интеграции." };
+      return { ...base, text: "Ни у кого из выбранных нет источника расхода — подключи Meta или Dolphin в Настройках → Интеграции." };
     }
     // Кабинет — через ключ своего владельца и один раз на весь чек.
     const takenBy = new Map<string, LiveSource>();
@@ -284,7 +334,8 @@ export async function loadCheck(
     // вовсе — страновой чек за сегодня иначе состоял бы из одной строки
     // «страна не определена» (замер 31.08.2026).
     if (groupBy === "country") {
-      const targeting = await Promise.all(sources.map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
+      // Dolphin таргет не отдаёт — его страны приходят из нейминга вместе с расходом ниже.
+      const targeting = await Promise.all(sources.filter((c) => !c.dolphin).map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
       for (const t of targeting) {
         failedAccounts += t.failedAccounts;
         for (const a of t.items) geoByAdset.set(a.adsetId, a.countries);
@@ -294,8 +345,8 @@ export async function loadCheck(
     if (groupBy === "campaign") {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, campaignMeta, crm] = await Promise.all([
-          fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
-          fetchCampaignMeta(config.metaToken, config.accountScope),
+          config.dolphin ? dolphinCampaigns(config.dolphin, since) : fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
+          config.dolphin ? dolphinBudgets(config.dolphin, since) : fetchCampaignMeta(config.metaToken, config.accountScope),
           config.torro ? torroForDay(config.torro, since, "campaign_name") : NO_CRM,
         ]);
         return { meta, campaignMeta, crm };
@@ -332,7 +383,7 @@ export async function loadCheck(
     } else {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, crm] = await Promise.all([
-          fetchAdInsights(config.metaToken, since, until, config.accountScope),
+          config.dolphin ? dolphinAds(config.dolphin, since, geoByAdset) : fetchAdInsights(config.metaToken, since, until, config.accountScope),
           config.torro ? torroForDay(config.torro, since, "ad_name") : NO_CRM,
         ]);
         return { meta, crm };

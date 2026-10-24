@@ -1,5 +1,6 @@
 import { getProfile } from "@/lib/auth/server";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
+import { getConnection } from "@/lib/connections/store";
 import NoConnections from "@/components/NoConnections";
 
 // Отчёт баера собирается по его интеграциям (Decision 061). Без ключа Meta
@@ -11,12 +12,12 @@ export default async function ReportsLayout({ children }: { children: React.Reac
   if (me?.role === "buyer") {
     // Сбой чтения ключей не должен класть раздел — дальше ответит роут и
     // объяснит причину текстом.
-    const keys = await listMetaKeys(me.id).catch(() => null);
-    if (keys && keys.length === 0) {
+    const [keys, conn] = await Promise.all([listMetaKeys(me.id).catch(() => null), getConnection(me.id).catch(() => null)]);
+    if (keys && keys.length === 0 && conn?.spendSource !== "dolphin") {
       return (
         <NoConnections
           title="Reports"
-          what="Отчёт собирается по твоим интеграциям. Добавь ключ Meta в Настройках → Интеграции — история догрузится сама."
+          what="Отчёт собирается по твоим интеграциям. Подключи источник расхода (Meta или Dolphin) в Настройках → Интеграции — история догрузится сама."
         />
       );
     }

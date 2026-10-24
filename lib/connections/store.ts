@@ -64,10 +64,12 @@ export async function getConnection(userId: string): Promise<{
   crmAdsByIdSheetId: string | null;
   torroToken: string | null;
   torroBuyerId: number | null;
+  spendSource: "meta" | "fbtool" | "dolphin" | null;
+  dolphinToken: string | null;
 } | null> {
   const { data, error } = await admin()
     .from("buyer_connections")
-    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id, torro_token_enc, torro_buyer_id")
+    .select("meta_token_enc, crm_campaigns_sheet_id, crm_ads_sheet_id, crm_ads_by_id_sheet_id, torro_token_enc, torro_buyer_id, spend_source, dolphin_token_enc")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -80,7 +82,26 @@ export async function getConnection(userId: string): Promise<{
     crmAdsByIdSheetId: data.crm_ads_by_id_sheet_id ?? null,
     torroToken: data.torro_token_enc ? decryptSecret(data.torro_token_enc) : null,
     torroBuyerId: data.torro_buyer_id ?? null,
+    spendSource: data.spend_source ?? null,
+    dolphinToken: data.dolphin_token_enc ? decryptSecret(data.dolphin_token_enc) : null,
   };
+}
+
+// Подключить Dolphin источником расхода или снять его (token = null). Источник
+// у человека один (Decision 061): при подключённом Meta вызывающий отказывает раньше.
+export async function setDolphinToken(userId: string, token: string | null): Promise<void> {
+  const t = token?.trim() || null;
+  const { error } = await admin().from("buyer_connections").upsert({
+    user_id: userId,
+    dolphin_token_enc: t ? encryptSecret(t) : null,
+    dolphin_token_hint: t ? secretHint(t) : null,
+    dolphin_set_at: t ? new Date().toISOString() : null,
+    spend_source: t ? "dolphin" : null,
+    // Новый источник — догрузка истории заново: те же строки перезапишутся.
+    spend_backfilled_from: null, spend_backfill_done: false, spend_backfill_empty: 0,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
 }
 
 // Занят ли id баера Torro кем-то ещё. Уникальный индекс в базе это тоже ловит,

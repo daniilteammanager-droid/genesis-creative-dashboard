@@ -5,6 +5,7 @@ import { notify, escapeHtml } from "@/lib/telegram/links";
 import { mskDay } from "@/lib/day";
 import { warehouse } from "./read";
 import { ingestTorro } from "./torroIngest";
+import { dolphinAdDays, dolphinCabinets } from "@/lib/dolphin/api";
 
 // Сбор склада для одного человека (Decision 061).
 //
@@ -26,6 +27,8 @@ const TORRO_CHUNK_DAYS = 7;
 // Глубже Meta Insights не отдаёт: 37 месяцев.
 const MAX_HISTORY_DAYS = 37 * 30;
 const OWNER_STALE_MS = 2 * 24 * 3600_000;
+// Dolphin: шесть пустых кусков подряд (12 недель) — история кончилась.
+const DOLPHIN_EMPTY_CHUNKS = 6;
 
 // Все кабинеты ключа — и выданные напрямую, и через Business Manager
 // (Decision 062): у Артёма только прямые, и часть кабинетов терялась. Чужое,
@@ -160,6 +163,13 @@ async function reportConflicts(userId: string, list: { accountId: string; ownerI
 
 // ─── Расход ─────────────────────────────────────────────────────────────────
 
+async function put(table: string, conflict: string, rows: Record<string, unknown>[]) {
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db().from(table).upsert(rows.slice(i, i + 500), { onConflict: conflict });
+    if (error) throw new Error(`${table}: ${error.message}`);
+  }
+}
+
 async function writeSpend(userId: string, tokens: { id: string; token: string }[], since: string, until: string, allowed: Set<string>) {
   const ads = new Map<string, Record<string, unknown>>();
   const campaigns = new Map<string, Record<string, unknown>>();
@@ -195,12 +205,6 @@ async function writeSpend(userId: string, tokens: { id: string; token: string }[
     }
   }
 
-  const put = async (table: string, conflict: string, rows: Record<string, unknown>[]) => {
-    for (let i = 0; i < rows.length; i += 500) {
-      const { error } = await db().from(table).upsert(rows.slice(i, i + 500), { onConflict: conflict });
-      if (error) throw new Error(`${table}: ${error.message}`);
-    }
-  };
   await put("wh_ad_days", "date,ad_id", [...ads.values()]);
   await put("wh_campaign_days", "date,campaign_id", [...campaigns.values()]);
   return { adRows: ads.size, campaignRows: campaigns.size, failedAccounts, seenAdsets };
@@ -216,6 +220,42 @@ async function upsertAdsets(items: { adsetId: string; adsetName: string; account
     if (error) throw new Error(`wh_adsets: ${error.message}`);
   }
   return rows.length;
+}
+
+// Расход из Dolphin (Decision 063): те же строки склада, что и от Meta, — id
+// настоящие. Кампании — сумма объявлений за день, отдельного запроса не нужно.
+// Страны таргета Dolphin не отдаёт — адсету пишется страна из нейминга.
+async function writeDolphinSpend(userId: string, token: string, since: string, until: string, allowed: Set<string>) {
+  const now = new Date().toISOString();
+  const rows = (await dolphinAdDays(token, since, until)).filter((r) => allowed.has(r.accountId));
+  const ads = new Map<string, Record<string, unknown>>();
+  const campaigns = new Map<string, Record<string, unknown> & { spend: number; clicks: number; impressions: number }>();
+  const adsets = new Map<string, { adsetId: string; adsetName: string; accountId: string; countries: string[] }>();
+  for (const r of rows) {
+    ads.set(`${r.date}|${r.adId}`, {
+      user_id: userId, source: "dolphin", date: r.date, ad_id: r.adId, ad_name: r.adName,
+      adset_id: r.adsetId || null, adset_name: r.adsetName || null,
+      campaign_id: r.campaignId || null, campaign_name: r.campaignName || null,
+      account_id: r.accountId, account_name: r.accountName,
+      spend: r.spend, clicks: r.clicks, impressions: r.impressions, updated_at: now,
+    });
+    if (r.campaignId) {
+      const key = `${r.date}|${r.campaignId}`;
+      const c = campaigns.get(key) ?? {
+        user_id: userId, source: "dolphin", date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
+        account_id: r.accountId, spend: 0, clicks: 0, impressions: 0, updated_at: now,
+      };
+      c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions;
+      campaigns.set(key, c);
+    }
+    if (r.adsetId && r.countries.length) {
+      adsets.set(r.adsetId, { adsetId: r.adsetId, adsetName: r.adsetName, accountId: r.accountId, countries: r.countries });
+    }
+  }
+  await put("wh_ad_days", "date,ad_id", [...ads.values()]);
+  await put("wh_campaign_days", "date,campaign_id", [...campaigns.values()]);
+  const adsetRows = adsets.size ? await upsertAdsets([...adsets.values()]) : 0;
+  return { adRows: ads.size, campaignRows: campaigns.size, adsetRows };
 }
 
 // Страны таргета: полный обход на окне, на частом прогоне — только новые адсеты
@@ -248,10 +288,11 @@ export async function ingestForUser(
 
   const [conn, tokens] = await Promise.all([getConnection(userId), metaTokensOf(userId)]);
   const torro = conn?.torroToken && conn.torroBuyerId ? { token: conn.torroToken, buyerId: conn.torroBuyerId } : null;
-  if (tokens.length === 0 && !torro) return { ...result, skipped: "нет подключений" };
+  const dolphin = conn?.spendSource === "dolphin" ? conn.dolphinToken : null;
+  if (tokens.length === 0 && !dolphin && !torro) return { ...result, skipped: "нет подключений" };
 
   const { data: progress } = await db().from("buyer_connections")
-    .select("spend_backfilled_from, spend_backfill_done, torro_backfilled_from, torro_backfill_done")
+    .select("spend_backfilled_from, spend_backfill_done, spend_backfill_empty, torro_backfilled_from, torro_backfill_done")
     .eq("user_id", userId).maybeSingle();
 
   const runId = crypto.randomUUID();
@@ -259,9 +300,34 @@ export async function ingestForUser(
   const notes: string[] = [];
 
   try {
-    // ─── Meta ──────────────────────────────────────────────────────────────
+    // ─── Расход: один источник (Decision 061) ──────────────────────────────
     let floor = shift(today, -MAX_HISTORY_DAYS);
-    if (tokens.length) {
+    if (dolphin) {
+      const seen = new Map((await dolphinCabinets(dolphin, today)).map((c) => [c.id, { name: c.name, created: null }]));
+      const { allowed, conflicts } = await claimAccounts(userId, seen);
+      if (conflicts) { result.conflicts = conflicts; notes.push(`чужих кабинетов: ${conflicts}`); }
+      if (allowed.size) {
+        const w = await writeDolphinSpend(userId, dolphin, since, until, allowed);
+        Object.assign(result, w);
+        if (opts.backfill && !progress?.spend_backfill_done) {
+          const chunk = nextChunk(progress?.spend_backfilled_from ?? since, floor, META_CHUNK_DAYS);
+          let empty = progress?.spend_backfill_empty ?? 0;
+          if (chunk) {
+            const b = await writeDolphinSpend(userId, dolphin, chunk.since, chunk.until, allowed);
+            result.adRows += b.adRows;
+            result.campaignRows += b.campaignRows;
+            result.backfill = `Dolphin ${chunk.since}…${chunk.until}`;
+            empty = b.adRows ? 0 : empty + 1;
+          }
+          // Даты создания у Dolphin нет: история кончилась, когда кусков подряд пусто.
+          await db().from("buyer_connections").update({
+            spend_backfilled_from: chunk?.since ?? progress?.spend_backfilled_from ?? since,
+            spend_backfill_empty: empty,
+            spend_backfill_done: !chunk || chunk.since <= floor || empty >= DOLPHIN_EMPTY_CHUNKS,
+          }).eq("user_id", userId);
+        }
+      }
+    } else if (tokens.length) {
       const { seen, failedKeys } = await accountsOf(tokens);
       if (failedKeys) notes.push(`не прочитались ключи Meta: ${failedKeys}`);
       const { allowed, conflicts } = await claimAccounts(userId, seen);
@@ -333,11 +399,11 @@ export async function ingestForUser(
   }
 }
 
-// Все, у кого есть хоть одно подключение: ключ Meta или Torro.
+// Все, у кого есть хоть одно подключение: ключ Meta, Dolphin или Torro.
 export async function usersToIngest(): Promise<string[]> {
   const [{ data: keys, error: e1 }, { data: torro, error: e2 }] = await Promise.all([
     db().from("meta_keys").select("user_id"),
-    db().from("buyer_connections").select("user_id").not("torro_token_enc", "is", null),
+    db().from("buyer_connections").select("user_id").or("torro_token_enc.not.is.null,dolphin_token_enc.not.is.null"),
   ]);
   if (e1) throw new Error(e1.message);
   if (e2) throw new Error(e2.message);
