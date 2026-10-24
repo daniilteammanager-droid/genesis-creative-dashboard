@@ -36,7 +36,24 @@ interface Query {
 }
 
 // Любой инструмент Torro MCP: JSON-RPC tools/call, ответ — один текстовый блок с JSON.
+//
+// Torro режет частоту: ручной прогон и крон подряд дали «Torro: rate_limited» и
+// упавший прогон (24.10.2026). На это — пауза и повтор, а не ошибка сразу.
+const RATE_WAITS_MS = [5_000, 15_000, 30_000];
+const rateLimited = (e: unknown) => e instanceof Error && /rate.?limit|HTTP 429/i.test(e.message);
+
 export async function callTool<T>(token: string, name: string, args: Record<string, unknown>, doFetch: typeof fetch = fetch): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callToolOnce<T>(token, name, args, doFetch);
+    } catch (e) {
+      if (!rateLimited(e) || attempt >= RATE_WAITS_MS.length) throw e;
+      await new Promise((r) => setTimeout(r, RATE_WAITS_MS[attempt]));
+    }
+  }
+}
+
+async function callToolOnce<T>(token: string, name: string, args: Record<string, unknown>, doFetch: typeof fetch): Promise<T> {
   let res: Response;
   try {
     res = await doFetch(MCP_URL, {
