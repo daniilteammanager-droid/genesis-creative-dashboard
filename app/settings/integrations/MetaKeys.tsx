@@ -63,7 +63,7 @@ export default function MetaKeys() {
     e.preventDefault();
     const done = await call(
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, token }) },
-      "/api/meta-keys", "Ключ проверен и добавлен. История догрузится сама, кусками раз в 15 минут",
+      "/api/meta-keys", "Ключ проверен и добавлен. Кабинеты и сегодняшний расход подтянутся в течение пары минут, история догрузится сама",
     );
     if (done) { setName(""); setToken(""); }
   }
@@ -86,7 +86,7 @@ export default function MetaKeys() {
     const d = await res.json().catch(() => null);
     if (!res.ok) { setMsg({ ok: false, text: d?.error ?? "Не получилось — попробуй ещё раз" }); return; }
     setDolphinToken("");
-    setMsg({ ok: true, text: `Dolphin подключён (${d.account}). История догрузится сама, кусками раз в 15 минут` });
+    setMsg({ ok: true, text: `Dolphin подключён (${d.account}). Кабинеты и сегодняшний расход подтянутся в течение пары минут, история догрузится сама` });
     reload();
   }
 

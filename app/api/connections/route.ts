@@ -3,6 +3,10 @@ import { getProfile } from "@/lib/auth/server";
 import { getConnection, getConnectionView, saveConnection, torroBuyerTakenBy, type ConnectionInput } from "@/lib/connections/store";
 import { verifyTorro } from "@/lib/torro/mcp";
 import { mskDay } from "@/lib/day";
+import { ingestSoon } from "@/lib/warehouse/kick";
+
+// Загрузка после подключения идёт следом за ответом (ingestSoon) — ей нужно время.
+export const maxDuration = 300;
 
 // Свои подключения человек правит только сам: user_id берётся из сессии, а не из
 // тела запроса. Иначе один баер подменил бы ключ другому.
@@ -55,6 +59,7 @@ export async function POST(req: Request) {
     }
 
     await saveConnection(me.id, body);
+    if (body.torroToken) ingestSoon(me.id);
     return NextResponse.json(await getConnectionView(me.id));
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });

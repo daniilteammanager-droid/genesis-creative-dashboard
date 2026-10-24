@@ -1,5 +1,5 @@
 import { warehouse, selectAll } from "./read";
-import { resolveScope } from "./accounts";
+import { NO_CABINETS, resolveScope } from "./accounts";
 import { parseCreativeCode, geoOf, approachOf, buyerOf } from "@/lib/creatives/code";
 import type { Profile } from "@/lib/auth/types";
 
@@ -114,7 +114,7 @@ export async function loadCreatives(
     return {
       since, until, rows: [], buyers, countries: [], isBuyer: me.role === "buyer", partialPeriods: [],
       totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0, depCount: 0 },
-      notice: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда».",
+      notice: NO_CABINETS,
       generatedAt: new Date().toISOString(),
     };
   }

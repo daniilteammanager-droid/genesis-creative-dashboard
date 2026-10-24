@@ -3,6 +3,10 @@ import { getProfile } from "@/lib/auth/server";
 import { setDolphinToken } from "@/lib/connections/store";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
 import { verifyDolphin } from "@/lib/dolphin/api";
+import { ingestSoon } from "@/lib/warehouse/kick";
+
+// Загрузка после подключения идёт следом за ответом (ingestSoon) — ей нужно время.
+export const maxDuration = 300;
 
 // Dolphin Cloud источником расхода (Decision 063). user_id из сессии.
 // Источник у человека один (Decision 061): пока есть ключи Meta — отказ.
@@ -22,6 +26,7 @@ export async function POST(req: Request) {
     const checked = await verifyDolphin(token.trim());
     if (typeof checked === "string") return fail(checked);
     await setDolphinToken(me.id, token);
+    ingestSoon(me.id);
     return NextResponse.json({ ok: true, account: checked.name });
   } catch (e) {
     return fail(e, 500);

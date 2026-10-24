@@ -1,5 +1,5 @@
 import { warehouse, selectAll } from "./read";
-import { resolveScope } from "./accounts";
+import { NO_CABINETS, resolveScope } from "./accounts";
 import type { ReportConfig } from "@/lib/reports-live/config";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { dolphinAdDays, type DolphinAdDay } from "@/lib/dolphin/api";
@@ -365,9 +365,9 @@ export async function loadCheck(
   };
 
   // Кабинеты, которые ещё никому не отдали, баер не видит. Пустой список — это
-  // не «расхода нет», а «кабинеты не распределены», и говорить об этом надо вслух.
+  // не «расхода нет», а «кабинеты ещё не закреплены», и говорить об этом надо вслух.
   if (accountIds !== null && accountIds.length === 0) {
-    return { ...base, text: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда»." };
+    return { ...base, text: NO_CABINETS };
   }
   if (live) {
     const sources = await liveSources(scope);

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { addMetaKey, deleteMetaKey, listMetaKeys } from "@/lib/connections/metaKeys";
 import { warehouse } from "@/lib/warehouse/read";
+import { ingestSoon } from "@/lib/warehouse/kick";
+
+// Загрузка после подключения идёт следом за ответом (ingestSoon) — ей нужно время.
+export const maxDuration = 300;
 
 // Свои ключи Meta. user_id из сессии: чужой ключ не увидеть и не удалить.
 // Источник расхода у человека один (Decision 061): пока подключён FB Tool или
@@ -43,6 +47,7 @@ export async function POST(req: Request) {
       return fail("Подключён другой источник расхода. Чтобы перейти на Meta, сначала удали его");
     }
     await addMetaKey(me.id, name ?? "", token ?? "");
+    ingestSoon(me.id);
     return NextResponse.json(await view(me.id));
   } catch (e) {
     return fail(e);

@@ -1,5 +1,5 @@
 import { warehouse, selectAll } from "./read";
-import { resolveScope } from "./accounts";
+import { NO_CABINETS, resolveScope } from "./accounts";
 import type { Profile } from "@/lib/auth/types";
 
 // Reports как аналог FB Tool: кампании, внутри адсеты, внутри объявления.
@@ -78,7 +78,7 @@ export async function loadReportTree(
     return {
       since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
       totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 },
-      notice: "Кабинеты ещё не распределены — попроси владельца назначить их на странице «Команда».",
+      notice: NO_CABINETS,
       generatedAt: new Date().toISOString(),
     };
   }
