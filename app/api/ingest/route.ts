@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ingestForUser, usersToIngest, type IngestKind } from "@/lib/warehouse/ingest";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
+import { getConnection } from "@/lib/connections/store";
 import { checkCabinets } from "@/lib/alerts/cabinets";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { runAutocheck } from "@/lib/alerts/autocheck";
@@ -64,11 +65,13 @@ export async function POST(req: Request) {
     if (kind === "today") {
       try {
         const tokens = (await Promise.all(users.map((u) => metaTokensOf(u)))).flat().map((k) => k.token);
-        // tokenFor — ключи Meta, в ответ роута им нельзя.
-        const { tokenFor, ...summary } = await checkCabinets(tokens);
+        const dolphin = (await Promise.all(users.map((u) => getConnection(u).catch(() => null))))
+          .flatMap((c) => (c?.spendSource === "dolphin" && c.dolphinToken ? [c.dolphinToken] : []));
+        // tokenFor и dolphinFor — ключи, в ответ роута им нельзя.
+        const { tokenFor, dolphinFor, ...summary } = await checkCabinets(tokens, dolphin);
         cabinets = summary;
         try {
-          rejected = await checkRejectedAds(tokenFor);
+          rejected = await checkRejectedAds(tokenFor, dolphinFor);
         } catch (e) {
           rejected = { error: e instanceof Error ? e.message : String(e) };
         }

@@ -1,4 +1,6 @@
 import { fetchEdgePaged } from "@/lib/reports-live/metaApi";
+import { dolphinCabinets } from "@/lib/dolphin/api";
+import { mskDay } from "@/lib/day";
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/links";
 import { deliver } from "./deliver";
@@ -10,6 +12,9 @@ import { deliver } from "./deliver";
 // который видит хоть один ключ, жив. «Пропал» — это когда его не видит никто,
 // и решается это только по полному прогону: упал хоть один ключ — пропажу не
 // объявляем, иначе каждый сбой Meta рассылал бы «кабинет пропал» пачкой.
+//
+// Баер на Dolphin — тот же поток, только состояние берётся из Dolphin (Decision 064).
+// Свежесть — как у его синхронизации, часы, а не 15 минут: сами Dolphin не пинаем.
 
 const STATUS: Record<number, string> = {
   1: "ACTIVE", 2: "DISABLED", 3: "UNSETTLED", 7: "PENDING_RISK_REVIEW", 8: "PENDING_SETTLEMENT",
@@ -105,7 +110,7 @@ function alertText(next: CabinetState, prev: CabinetState, at: Date): string {
     ? `${next.prepay ? "Остаток предоплаты" : "К оплате"}: ${money(next.balance, next.currency)}`
     : null;
   const missing = next.status === "MISSING"
-    ? "Его не видит ни один подключённый ключ Meta. История в дашборде остаётся."
+    ? "Его не видит ни один подключённый источник — ключи Meta и Dolphin. История в дашборде остаётся."
     : null;
   return [
     `<b>${heading}</b>`,
@@ -179,9 +184,10 @@ export interface CabinetCheckResult {
   failedTokens: number;
   firstRun: boolean;
   tokenFor: Map<string, string>;   // живой кабинет → ключ, который его видит
+  dolphinFor: Map<string, string>; // живой кабинет без ключа Meta → ключ Dolphin
 }
 
-export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheckResult> {
+export async function checkCabinets(buyerTokens: string[], dolphinTokens: string[] = []): Promise<CabinetCheckResult> {
   const db = warehouse();
   const tokens: { token: string; withBusinesses: boolean }[] = [
     ...(process.env.META_ACCESS_TOKEN ? [{ token: process.env.META_ACCESS_TOKEN, withBusinesses: true }] : []),
@@ -192,6 +198,7 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
   const seen = new Map<string, CabinetState>();
   // Каким ключом читать живой кабинет дальше — антиотклону.
   const tokenFor = new Map<string, string>();
+  const dolphinFor = new Map<string, string>();
   let failedTokens = 0;
   // Последовательно: лимит приложения общий на все ключи (Decision 042).
   for (const t of tokens) {
@@ -209,7 +216,25 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
       console.warn("cabinets: ключ не прочитался:", e instanceof Error ? e.message : e);
     }
   }
-  if (tokens.length > 0 && failedTokens === tokens.length) throw new Error("Ни один ключ Meta не прочитался — состояние кабинетов не обновлено");
+  // Dolphin — после Meta: кабинет, который видят оба, читаем через Meta, она свежее.
+  for (const token of dolphinTokens) {
+    try {
+      for (const c of await dolphinCabinets(token, mskDay())) {
+        const s: CabinetState = {
+          ...toState({ id: c.id, name: c.name, account_status: c.status, disable_reason: c.disableReason ?? undefined, currency: c.currency }),
+          balance: c.balance, prepay: null,
+        };
+        const was = seen.get(s.accountId);
+        if (!was || (s.status === "ACTIVE" && was.status !== "ACTIVE")) seen.set(s.accountId, s);
+        if (s.status === "ACTIVE" && !tokenFor.has(s.accountId) && !dolphinFor.has(s.accountId)) dolphinFor.set(s.accountId, token);
+      }
+    } catch (e) {
+      failedTokens++;
+      console.warn("cabinets: Dolphin не прочитался:", e instanceof Error ? e.message : e);
+    }
+  }
+  const sources = tokens.length + dolphinTokens.length;
+  if (sources > 0 && failedTokens === sources) throw new Error("Ни один источник не прочитался — состояние кабинетов не обновлено");
 
   const { data: prevRows, error } = await db.from("wh_cabinet_states").select("*");
   if (error) throw new Error(`wh_cabinet_states: ${error.message}`);
@@ -245,5 +270,5 @@ export async function checkCabinets(buyerTokens: string[]): Promise<CabinetCheck
     text: a.text,
     extra: a.payUrl ? { reply_markup: { inline_keyboard: [[{ text: "💳 Открыть оплату в Meta", url: a.payUrl }]] } } : undefined,
   })), "cabinet_status");
-  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0, tokenFor };
+  return { cabinets: states.length, alerts: alerts.length, sent, failedTokens, firstRun: prev.size === 0, tokenFor, dolphinFor };
 }

@@ -68,9 +68,13 @@ export async function verifyDolphin(token: string): Promise<{ name: string } | s
   }
 }
 
-export interface DolphinCabinet { id: string; name: string; status: number; currency: string }
+// status и disable_reason — коды Meta как есть; баланс уже в долларах, не в центах.
+export interface DolphinCabinet { id: string; name: string; status: number; disableReason: number | null; balance: number | null; currency: string }
 
-interface RawCab { id?: string; ad_account_id?: string; name?: string; account_status?: number; currency?: string }
+interface RawCab {
+  id?: string; ad_account_id?: string; name?: string; account_status?: number; disable_reason?: number;
+  balance?: number | string | null; currency?: string;
+}
 
 export async function dolphinCabinets(token: string, day: string): Promise<DolphinCabinet[]> {
   const rows = await allPages<RawCab>(token, `/fb-cabs?from_date=${day}&to_date=${day}&currency=USD&${FLAGS}`);
@@ -78,12 +82,16 @@ export async function dolphinCabinets(token: string, day: string): Promise<Dolph
     id: String(c.ad_account_id ?? c.id ?? "").replace(/^act_/, ""),
     name: c.name ?? "",
     status: Number(c.account_status ?? 0),
+    disableReason: c.disable_reason ? Number(c.disable_reason) : null,
+    balance: c.balance === null || c.balance === undefined || c.balance === "" ? null : n(c.balance),
     currency: c.currency ?? "USD",
   })).filter((c) => c.id);
 }
 
 interface RawAd {
   ad_id?: string; id?: string; name?: string;
+  effective_status?: string;
+  ad_review_feedback?: Record<string, string> | null;
   stats?: { spend?: number | string; impressions?: number | string; link_click?: number | string };
   adset?: {
     adset_id?: string; name?: string;
@@ -135,4 +143,30 @@ export async function dolphinAdDays(token: string, since: string, until: string)
     }
   }
   return out.filter((r) => r.adId && r.accountId);
+}
+
+export interface DolphinAdStatus {
+  adId: string; accountId: string; name: string; campaignName: string; adsetName: string;
+  effectiveStatus: string;
+  feedback: Record<string, string> | null;   // «правило → текст», плоско, без global
+}
+
+// Отклонённые и с замечаниями — для антиотклона. Фильтра по статусу у Dolphin нет,
+// поэтому берём весь список без статистики и отбираем сами (у Ильи — 2 страницы).
+// Свежесть — как у последней синхронизации Dolphin: сами его не пинаем.
+export async function dolphinProblemAds(token: string, day: string): Promise<DolphinAdStatus[]> {
+  const ads = await allPages<RawAd>(token, `/fb-ads?from_date=${day}&to_date=${day}&currency=USD`);
+  return ads
+    .filter((a) => a.effective_status === "DISAPPROVED" || a.effective_status === "WITH_ISSUES")
+    .map((a) => {
+      const adset = a.adset ?? {}, campaign = adset.campaign ?? {}, cab = campaign.cab ?? {};
+      return {
+        adId: String(a.ad_id ?? a.id ?? ""),
+        accountId: String(cab.ad_account_id ?? cab.id ?? "").replace(/^act_/, ""),
+        name: a.name ?? "", campaignName: campaign.name ?? "", adsetName: adset.name ?? "",
+        effectiveStatus: a.effective_status ?? "",
+        feedback: a.ad_review_feedback ?? null,
+      };
+    })
+    .filter((a) => a.adId && a.accountId);
 }

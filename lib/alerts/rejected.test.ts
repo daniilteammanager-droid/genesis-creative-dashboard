@@ -1,6 +1,6 @@
 // Самопроверка антиотклона. Запуск: npx tsx lib/alerts/rejected.test.ts
 import assert from "node:assert/strict";
-import { diffRejected, isRejected, reasonOf, rejectionText, toRejected } from "./rejected";
+import { diffRejected, fromDolphin, isRejected, reasonOf, rejectionText, toRejected } from "./rejected";
 
 // DISAPPROVED — всегда; WITH_ISSUES — только с замечаниями ревью
 assert.equal(isRejected({ id: "1", effective_status: "DISAPPROVED" }), true);
@@ -18,6 +18,13 @@ assert.match(reason!, /ADVERTISING_POLICIES: Финансовые услуги/)
 assert.match(reason!, /placement_specific · instagram · X: Текст/, "вложенность площадки разобрана");
 assert.equal(reason!.split("\n").length, 3);
 assert.equal(reasonOf({ id: "6", effective_status: "DISAPPROVED" }), null);
+
+// Dolphin: замечания плоские «правило → текст» — читаются как global у Meta
+const dolphinAd = { adId: "7", accountId: "99", name: "video16live-es", campaignName: "C", adsetName: "A", effectiveStatus: "DISAPPROVED",
+  feedback: { "Unacceptable Business Practices": "Ads must not promote…" } };
+assert.equal(reasonOf(fromDolphin(dolphinAd)), "Unacceptable Business Practices: Ads must not promote…");
+assert.equal(isRejected(fromDolphin({ ...dolphinAd, effectiveStatus: "WITH_ISSUES", feedback: null })), false, "WITH_ISSUES без замечаний и у Dolphin не отклонение");
+assert.equal(toRejected(fromDolphin(dolphinAd), "99").campaignName, "C");
 
 // Новое — алерт; одобренное — забыть; непрочитанный кабинет — ничего не забываем
 const a = toRejected({ id: "10", effective_status: "DISAPPROVED", name: "vid-x" }, "111");

@@ -1,4 +1,6 @@
 import { fetchEdgePaged } from "@/lib/reports-live/metaApi";
+import { dolphinProblemAds, type DolphinAdStatus } from "@/lib/dolphin/api";
+import { mskDay } from "@/lib/day";
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/links";
 import { deliver } from "./deliver";
@@ -10,6 +12,7 @@ import { deliver } from "./deliver";
 //
 // Смотрим только живые кабинеты: в заблокированном отклонения уже не важны.
 // Ключ на каждый кабинет приходит из проверки кабинетов — тот, что его видит.
+// Кабинеты баера на Dolphin читаются из Dolphin, по той же логике (Decision 064).
 
 const FIELDS = "id,name,account_id,effective_status,ad_review_feedback,issues_info,campaign{name},adset{name}";
 const FILTER = JSON.stringify([{ field: "effective_status", operator: "IN", value: ["DISAPPROVED", "WITH_ISSUES"] }]);
@@ -71,6 +74,15 @@ export function reasonOf(ad: MetaAd): string | null {
   return rows.length ? [...new Set(rows)].join("\n").slice(0, 1400) : null;
 }
 
+// У Dolphin замечания плоские: «правило → текст». Это ровно global у Meta.
+export function fromDolphin(a: DolphinAdStatus): MetaAd {
+  return {
+    id: a.adId, name: a.name, account_id: a.accountId, effective_status: a.effectiveStatus,
+    ad_review_feedback: a.feedback ? { global: a.feedback } : undefined,
+    campaign: { name: a.campaignName }, adset: { name: a.adsetName },
+  };
+}
+
 export function toRejected(ad: MetaAd, accountId: string): RejectedAd {
   return {
     adId: ad.id, accountId, adName: ad.name ?? null,
@@ -112,7 +124,7 @@ export interface RejectedCheckResult {
   firstRun: boolean;
 }
 
-export async function checkRejectedAds(tokenFor: Map<string, string>): Promise<RejectedCheckResult> {
+export async function checkRejectedAds(tokenFor: Map<string, string>, dolphinFor: Map<string, string> = new Map()): Promise<RejectedCheckResult> {
   const db = warehouse();
   const current: RejectedAd[] = [];
   const checked = new Set<string>();
@@ -128,6 +140,22 @@ export async function checkRejectedAds(tokenFor: Map<string, string>): Promise<R
     } catch (e) {
       failedAccounts++;
       console.warn(`rejected: кабинет …${accountId.slice(-4)} не прочитался:`, e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Dolphin: один список на ключ, а не запрос на кабинет — фильтра по кабинету у него нет.
+  const byDolphin = new Map<string, Set<string>>();
+  for (const [accountId, token] of dolphinFor) byDolphin.set(token, (byDolphin.get(token) ?? new Set()).add(accountId));
+  for (const [token, accounts] of byDolphin) {
+    try {
+      for (const a of await dolphinProblemAds(token, mskDay())) {
+        const ad = fromDolphin(a);
+        if (accounts.has(a.accountId) && isRejected(ad)) current.push(toRejected(ad, a.accountId));
+      }
+      for (const id of accounts) checked.add(id);
+    } catch (e) {
+      failedAccounts += accounts.size;
+      console.warn("rejected: Dolphin не прочитался:", e instanceof Error ? e.message : e);
     }
   }
 
@@ -181,5 +209,5 @@ export async function checkRejectedAds(tokenFor: Map<string, string>): Promise<R
     sent = await deliver(alerts, "ad_rejected");
   }
 
-  return { accounts: tokenFor.size, failedAccounts, rejected: current.length, fresh: fresh.length, sent, firstRun };
+  return { accounts: tokenFor.size + dolphinFor.size, failedAccounts, rejected: current.length, fresh: fresh.length, sent, firstRun };
 }
