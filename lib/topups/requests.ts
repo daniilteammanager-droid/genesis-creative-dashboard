@@ -8,8 +8,15 @@ import { addressFits, AUTO_SEARCH, findPayment, txUrl, type Asset, type Network,
 // закрыть оплатой, отказом или по сроку. Таблицы закрыты от браузера — всё
 // сервисным ключом, доступ проверяют роуты.
 
-// Что пополняем. ponytail: стартовый список, полный Даниил пришлёт — правится здесь.
-export const KINDS = ["Карты", "Агенты", "Платёжки", "Расходники"];
+// Что пополняем: категория → куда именно. «Другое» — для того, чего нет в списке
+// (провайдеров прокси всех не впишешь): тогда что именно — обязательно в комментарии.
+export const OTHER = "Другое";
+export const CATEGORIES: Record<string, string[]> = {
+  "Расходники": ["Кабинеты/БМ/Кинги/ФП", "Прокси", "Домены", "Почты", "Антик", "Сервера/хостинг", "Подписки/сервисы", "Кошелёк USDT", "Склад кабинетов", OTHER],
+  "Карты": ["Brocard", "AbCard", "Adpos", "FBMcards", OTHER],
+  "Агенты": ["T2A", "RentAcc", "TSR", "Monika (агенты TikTok)", OTHER],
+  "Кабинеты": ["TG Ads кабинеты (TON)", OTHER],
+};
 export const NETWORKS: { network: Network; asset: Asset; label: string }[] = [
   { network: "TRC20", asset: "USDT", label: "USDT · TRC20" },
   { network: "TON", asset: "USDT", label: "USDT · TON" },
@@ -21,7 +28,7 @@ export const NETWORKS: { network: Network; asset: Asset; label: string }[] = [
 const SEARCH_FOR_MS = 24 * 3600_000;
 
 export interface Topup {
-  id: string; number: number; user_id: string; kind: string;
+  id: string; number: number; user_id: string; kind: string; target: string;
   amount: number; fee: number; asset: Asset; network: Network; address: string; comment: string | null;
   expires_at: string | null; status: "pending" | "paid" | "rejected" | "expired";
   searching_since: string | null; tx_hash: string | null; paid_amount: number | null; paid_at: string | null;
@@ -29,7 +36,7 @@ export interface Topup {
   author?: string;
 }
 
-const COLS = "id, number, user_id, kind, amount, fee, asset, network, address, comment, expires_at, status, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at";
+const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at";
 const db = () => warehouse();
 const num = (r: Topup): Topup => ({ ...r, amount: Number(r.amount), fee: Number(r.fee), paid_amount: r.paid_amount === null ? null : Number(r.paid_amount) });
 
@@ -67,6 +74,7 @@ async function getTopup(id: string): Promise<Topup | null> {
   return { ...r, author: (await authors([r.user_id])).get(r.user_id) ?? "—" };
 }
 
+export const what = (r: Pick<Topup, "kind" | "target">) => (r.target ? `${r.kind} · ${r.target}` : r.kind);
 const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 6 });
 const when = (iso: string) => {
   const d = new Date(iso);
@@ -77,7 +85,7 @@ const when = (iso: string) => {
 export function topupText(r: Topup): string {
   const total = r.fee ? ` + комиссия ${money(r.fee)} = <b>${money(r.amount + r.fee)} ${r.asset}</b>` : ` ${r.asset}`;
   const lines = [
-    `🧾 <b>Заявка #${r.number}</b> · ${escapeHtml(r.kind)}`,
+    `🧾 <b>Заявка #${r.number}</b> · ${escapeHtml(what(r))}`,
     `От: ${escapeHtml(r.author ?? "—")}`,
     `Сумма: ${r.fee ? money(r.amount) : `<b>${money(r.amount)}</b>`}${total}`,
     `Сеть: ${r.network}`,
@@ -123,7 +131,7 @@ async function refresh(r: Topup): Promise<void> {
 
 // Автору — общим ботом, в его привязки с уведомлением «Пополнения».
 async function tellAuthor(r: Topup): Promise<void> {
-  const head = `Заявка #${r.number} · ${escapeHtml(r.kind)} · ${money(r.amount + r.fee)} ${r.asset}`;
+  const head = `Заявка #${r.number} · ${escapeHtml(what(r))} · ${money(r.amount + r.fee)} ${r.asset}`;
   const text =
     r.status === "paid" ? `✅ ${head} — оплачено.${r.tx_hash ? `\n<a href="${txUrl(r.network, r.tx_hash)}">Транзакция</a> · <code>${r.tx_hash}</code>` : ""}` :
     r.status === "rejected" ? `✖️ ${head} — отклонено.` :
@@ -132,28 +140,32 @@ async function tellAuthor(r: Topup): Promise<void> {
 }
 
 export interface TopupInput {
-  kind?: string; amount?: number; fee?: number; network?: string; asset?: string;
+  kind?: string; target?: string; amount?: number; fee?: number; network?: string; asset?: string;
   address?: string; comment?: string; minutes?: number | null;
 }
 
 export async function createTopup(userId: string, input: TopupInput): Promise<Topup> {
-  const kind = (input.kind ?? "").trim();
+  const kind = (input.kind ?? "").trim(), target = (input.target ?? "").trim();
+  const comment = (input.comment ?? "").trim();
   const address = (input.address ?? "").trim();
   const amount = Number(input.amount), fee = Number(input.fee ?? 0);
   const net = NETWORKS.find((n) => n.network === input.network && n.asset === input.asset);
-  if (!kind) throw new Error("Что пополняем?");
+  // Все поля обязательны: механика для баеров новая, пропуск поля — потерянная оплата.
+  if (!CATEGORIES[kind]?.includes(target)) throw new Error("Выбери категорию и куда именно пополняем");
   if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
-  if (!(fee >= 0)) throw new Error("Комиссия не может быть отрицательной");
+  if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
+  if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
+  if (target === OTHER && comment === "-") throw new Error("Для «Другое» напиши в комментарии, что именно пополняем");
   if (!net) throw new Error("Выбери сеть");
   if (!addressFits(net.network, address)) throw new Error(`Адрес не похож на адрес сети ${net.network}`);
-  const minutes = input.minutes ? Number(input.minutes) : null;
-  if (minutes !== null && !(minutes > 0)) throw new Error("Время на оплату — больше нуля минут");
+  if (input.minutes === undefined || input.minutes === null) throw new Error("Выбери время на оплату");
+  const minutes = Number(input.minutes) || null;   // 0 — осознанно «без срока»
 
   const chat = await topupChat();
   if (!chat) throw new Error("Платёжный чат ещё не привязан — заявку некуда отправить");
   const { data, error } = await db().from("topup_requests").insert({
-    user_id: userId, kind, amount, fee, network: net.network, asset: net.asset, address,
-    comment: input.comment?.trim() || null,
+    user_id: userId, kind, target, amount, fee, network: net.network, asset: net.asset, address,
+    comment: comment === "-" ? null : comment,
     expires_at: minutes ? new Date(Date.now() + minutes * 60_000).toISOString() : null,
   }).select("id").single();
   if (error) throw new Error(error.message);
@@ -223,8 +235,9 @@ export async function reject(id: string, by: string | null): Promise<string | nu
 
 // Ответ хэшем на сообщение заявки в чате.
 export async function topupByMessage(chatId: number, messageId: number): Promise<Topup | null> {
+  // JSON строкой: массив supabase-js превращает в литерал массива Postgres, а не в jsonb.
   const { data } = await db().from("topup_requests").select("id")
-    .contains("messages", [{ chat_id: chatId, message_id: messageId }]).maybeSingle();
+    .filter("messages", "cs", JSON.stringify([{ chat_id: chatId, message_id: messageId }])).maybeSingle();
   return data ? getTopup(data.id as string) : null;
 }
 

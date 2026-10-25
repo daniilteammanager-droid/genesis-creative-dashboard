@@ -32,14 +32,16 @@ const stamp = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-d
 interface View { admin: boolean; chat: { title: string | null } | null; topups: Topup[] }
 type Net = { network: string; asset: string; label: string };
 
-export default function Topups({ kinds, networks }: { kinds: string[]; networks: Net[] }) {
+export default function Topups({ categories, networks }: { categories: Record<string, string[]>; networks: Net[] }) {
   const [view, setView] = useState<View | null>(null);
-  const [kind, setKind] = useState(kinds[0]);
-  const [net, setNet] = useState(0);
+  // Ничего не выбрано заранее: сеть или «куда» по умолчанию — путь к оплате не туда.
+  const [kind, setKind] = useState("");
+  const [target, setTarget] = useState("");
+  const [net, setNet] = useState(-1);
   const [amount, setAmount] = useState("");
   const [fee, setFee] = useState("");
   const [address, setAddress] = useState("");
-  const [minutes, setMinutes] = useState(0);
+  const [minutes, setMinutes] = useState(-1);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -61,14 +63,14 @@ export default function Topups({ kinds, networks }: { kinds: string[]; networks:
       const n = networks[net];
       const res = await fetch("/api/topups", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, amount: Number(amount.replace(",", ".")), fee: Number(fee.replace(",", ".") || 0),
-          network: n.network, asset: n.asset, address, minutes: minutes || null, comment }),
+        body: JSON.stringify({ kind, target, amount: Number(amount.replace(",", ".")), fee: fee.trim() === "" ? null : Number(fee.replace(",", ".")),
+          network: n?.network, asset: n?.asset, address, minutes: minutes < 0 ? null : minutes, comment }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.topups) throw new Error(d?.error ?? "Не получилось — попробуй ещё раз");
       setView(d);
       setMsg({ ok: true, text: "Заявка ушла в платёжный чат. Ответ придёт сюда и в Telegram (уведомление «Пополнения»)" });
-      setAmount(""); setFee(""); setAddress(""); setComment("");
+      setAmount(""); setFee(""); setAddress(""); setComment(""); setMinutes(-1);
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "Сеть не ответила" });
     } finally {
@@ -105,20 +107,28 @@ export default function Topups({ kinds, networks }: { kinds: string[]; networks:
       )}
 
       <form onSubmit={submit} className={`${card} grid gap-2.5 sm:grid-cols-2`}>
-        <select value={kind} onChange={(e) => setKind(e.target.value)} className={field}>
-          {kinds.map((k) => <option key={k}>{k}</option>)}
+        <select value={kind} onChange={(e) => { setKind(e.target.value); setTarget(""); }} className={field}>
+          <option value="" disabled>Категория</option>
+          {Object.keys(categories).map((k) => <option key={k}>{k}</option>)}
+        </select>
+        <select value={target} onChange={(e) => setTarget(e.target.value)} disabled={!kind} className={`${field} disabled:opacity-50`}>
+          <option value="" disabled>Куда именно</option>
+          {(categories[kind] ?? []).map((t) => <option key={t}>{t}</option>)}
         </select>
         <select value={net} onChange={(e) => setNet(Number(e.target.value))} className={field}>
+          <option value={-1} disabled>Сеть и монета</option>
           {networks.map((n, i) => <option key={n.label} value={i}>{n.label}</option>)}
         </select>
-        <input inputMode="decimal" placeholder={`Сумма, ${networks[net].asset}`} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
-        <input inputMode="decimal" placeholder="Комиссия (агент, платёжка) — необязательно" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
-        <input placeholder="Адрес получателя" value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`${field} sm:col-span-2 font-mono`} />
+        <input inputMode="decimal" placeholder={`Сумма${net >= 0 ? `, ${networks[net].asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
+        <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
         <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className={field}>
+          <option value={-1} disabled>Время на оплату</option>
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
         </select>
-        <input placeholder="Комментарий — необязательно" value={comment} onChange={(e) => setComment(e.target.value)} className={field} />
-        <button type="submit" disabled={busy || !amount || !address}
+        <input placeholder="Адрес получателя" value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`${field} sm:col-span-2 font-mono`} />
+        <input placeholder={target === "Другое" ? "Комментарий: что именно пополняем" : "Комментарий (нечего добавить — «-»)"} value={comment}
+               onChange={(e) => setComment(e.target.value)} className={`${field} sm:col-span-2`} />
+        <button type="submit" disabled={busy || !target || net < 0 || !amount || fee.trim() === "" || !address || minutes < 0 || !comment.trim()}
                 className="sm:col-span-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
           {busy ? "Отправляю…" : "Отправить заявку"}
         </button>
@@ -147,7 +157,7 @@ export default function Topups({ kinds, networks }: { kinds: string[]; networks:
               <div key={r.id} className="py-3 flex gap-3 flex-wrap items-start">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200">
-                    <span className="text-zinc-500">#{r.number}</span> {r.kind} · <b>{money(r.amount + r.fee)} {r.asset}</b>
+                    <span className="text-zinc-500">#{r.number}</span> {r.kind}{r.target && ` · ${r.target}`} · <b>{money(r.amount + r.fee)} {r.asset}</b>
                     {r.fee > 0 && <span className="text-zinc-500"> ({money(r.amount)} + {money(r.fee)})</span>}
                     <span className="text-zinc-500"> · {r.network}</span>
                   </p>
