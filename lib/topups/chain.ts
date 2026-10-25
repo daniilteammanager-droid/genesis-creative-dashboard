@@ -2,7 +2,7 @@
 //
 // Ходим только в открытые API без ключей — кошельков и ключей не нужно: смотрим
 // входящие на адрес из заявки после её создания и берём перевод на сумму заявки
-// (с комиссией или без).
+// (комиссия агента в перевод не входит).
 //   TRC20 — TronGrid; TON (USDT и GRAM) — toncenter;
 //   BEP20 — публичный узел BSC (publicnode), логи Transfer на адрес;
 //   ERC20 — Ethplorer с открытым ключом freekey (публичные узлы Ethereum
@@ -106,15 +106,15 @@ export async function incoming(network: Network, asset: Asset, address: string, 
   return [];
 }
 
-// Сумма совпала: ровно сумма или сумма с комиссией, с допуском на копейки и
-// округление (0,1%, но не меньше 0,02).
-export function matches(paid: number, amount: number, fee: number): boolean {
-  return [amount, amount + fee].some((want) => Math.abs(paid - want) <= Math.max(0.02, want * 0.001));
+// Сумма совпала с суммой заявки, с допуском на копейки и округление (0,1%, но не
+// меньше 0,02). Комиссия агента и платёжки в перевод не входит.
+export function matches(paid: number, amount: number): boolean {
+  return Math.abs(paid - amount) <= Math.max(0.02, amount * 0.001);
 }
 
 // Самый ранний подходящий перевод, ещё не записанный за другой заявкой.
 export async function findPayment(
-  req: { network: Network; asset: Asset; address: string; amount: number; fee: number; createdAt: string },
+  req: { network: Network; asset: Asset; address: string; amount: number; createdAt: string },
   taken: (hash: string) => Promise<boolean>,
   recentMs?: number,   // крон: только последние N мс — на BSC полное окно это десятки запросов
 ): Promise<Transfer | null> {
@@ -123,7 +123,7 @@ export async function findPayment(
   let since = Date.parse(req.createdAt) - 10 * 60_000;
   if (recentMs && req.network === "BEP20") since = Math.max(since, Date.now() - recentMs);
   const list = await incoming(req.network, req.asset, req.address, since);
-  for (const t of list.filter((t) => matches(t.amount, req.amount, req.fee)).sort((a, b) => a.at - b.at)) {
+  for (const t of list.filter((t) => matches(t.amount, req.amount)).sort((a, b) => a.at - b.at)) {
     if (!(await taken(t.hash))) return t;
   }
   return null;

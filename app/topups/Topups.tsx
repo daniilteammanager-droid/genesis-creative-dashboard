@@ -97,7 +97,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
   const rows = useMemo(() => (view?.topups ?? []).filter((r) => filter === "all" || r.status === filter), [view, filter]);
   const paidTotal = useMemo(() => {
     const by = new Map<string, number>();
-    for (const r of rows) if (r.status === "paid") by.set(r.asset, (by.get(r.asset) ?? 0) + r.amount + r.fee);
+    for (const r of rows) if (r.status === "paid") by.set(r.asset, (by.get(r.asset) ?? 0) + r.amount);
     return [...by].map(([a, s]) => `${money(s)} ${a}`).join(" · ");
   }, [rows]);
 
@@ -130,7 +130,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
           {networks.map((n, i) => <option key={n.label} value={i}>{n.label}</option>)}
         </select>
         <input inputMode="decimal" placeholder={`Сумма${net >= 0 ? `, ${networks[net].asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
-        <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
+        <input inputMode="decimal" placeholder="Комиссия — справкой, в сумму не входит (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
         <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className={field}>
           <option value={-1} disabled>Время на оплату</option>
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
@@ -167,8 +167,8 @@ export default function Topups({ categories, networks }: { categories: Record<st
               <div key={r.id} className="py-3 flex gap-3 flex-wrap items-start">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200">
-                    <span className="text-zinc-500">#{r.number}</span> {r.kind}{r.target && ` · ${r.target}`} · <b>{money(r.amount + r.fee)} {r.asset}</b>
-                    {r.fee > 0 && <span className="text-zinc-500"> ({money(r.amount)} + {money(r.fee)})</span>}
+                    <span className="text-zinc-500">#{r.number}</span> {r.kind}{r.target && ` · ${r.target}`} · <b>{money(r.amount)} {r.asset}</b>
+                    {r.fee > 0 && <span className="text-zinc-500"> · комиссия {money(r.fee)}</span>}
                     <span className="text-zinc-500"> · {r.network}</span>
                   </p>
                   <p className="text-[11px] text-zinc-500 mt-0.5 break-all">

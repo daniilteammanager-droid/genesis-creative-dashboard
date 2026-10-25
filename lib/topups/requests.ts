@@ -81,12 +81,21 @@ const when = (iso: string) => {
 };
 
 // Текст заявки в чате. Адрес виден, только пока заявку можно оплатить.
+// Шапка бросается в глаза, пока заявку надо оплатить, и сменяется итогом, когда закрыта.
+const HEAD: Record<Topup["status"], string> = {
+  pending: "🚨💸 <b>НОВАЯ ЗАЯВКА",
+  paid: "✅ <b>ОПЛАЧЕНО",
+  rejected: "✖️ <b>ОТКЛОНЕНО",
+  expired: "⌛ <b>ВРЕМЯ ВЫШЛО",
+};
+
 export function topupText(r: Topup): string {
-  const total = r.fee ? ` + комиссия ${money(r.fee)} = <b>${money(r.amount + r.fee)} ${r.asset}</b>` : ` ${r.asset}`;
+  const head = r.status === "pending" && r.searching_since ? "🔎 <b>ИЩУ ПЕРЕВОД" : HEAD[r.status];
   const lines = [
-    `🧾 <b>Заявка #${r.number}</b> · ${escapeHtml(what(r))}`,
+    `${head} #${r.number}</b> · ${escapeHtml(what(r))}`,
     `От: ${escapeHtml(r.author ?? "—")}`,
-    `Сумма: ${r.fee ? money(r.amount) : `<b>${money(r.amount)}</b>`}${total}`,
+    // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
+    `Сумма: <b>${money(r.amount)} ${r.asset}</b>${r.fee ? ` · комиссия ${money(r.fee)} (не входит в перевод)` : ""}`,
     `Сеть: ${r.network}`,
     r.status === "expired" || r.status === "rejected" ? "Адрес: скрыт" : `Адрес: <code>${escapeHtml(r.address)}</code>`,
   ];
@@ -191,7 +200,7 @@ export async function markPaid(id: string, pay: { hash: string; amount?: number 
 
 // recentMs — для крона: при «Оплачено» окно уже просмотрено целиком, дальше хватит свежих минут.
 async function trySearch(r: Topup, recentMs?: number): Promise<Transfer | null> {
-  return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, fee: r.fee, createdAt: r.created_at }, hashTaken, recentMs);
+  return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, createdAt: r.created_at }, hashTaken, recentMs);
 }
 
 // «Оплачено»: сразу ищем перевод; не нашли — заявка ждёт его в поиске (крон раз в минуту).
