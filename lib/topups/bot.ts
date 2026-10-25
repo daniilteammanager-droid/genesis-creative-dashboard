@@ -65,6 +65,9 @@ export async function handleTopupUpdate(u: TopupUpdate): Promise<void> {
   if (!m?.text) return;
   const start = /^\/start(?:@\w+)?\s+(\S+)/.exec(m.text.trim());
   if (start) return bind(m, start[1]);
+  if (/^\/start(?:@\w+)?$/.test(m.text.trim()) && m.chat.id !== chat?.chat_id) {
+    return void (await say(m, "Чтобы сделать этот чат платёжным, владелец жмёт «Привязать чат» в дашборде: Пополнения — и выбирает этот чат."));
+  }
   if (m.chat.id !== chat?.chat_id || !m.reply_to_message) return;
 
   const r = await topupByMessage(m.chat.id, m.reply_to_message.message_id);
