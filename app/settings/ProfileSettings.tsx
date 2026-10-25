@@ -44,6 +44,12 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
     if (!error) router.refresh();
   }
 
+  // Сброс отметки — оболочка увидит пустой onboarded_at и откроет обучалку (Decision 077).
+  async function restartTour() {
+    await createClient().from("profiles").update({ onboarded_at: null }).eq("id", profile.id);
+    router.refresh();
+  }
+
   async function changePassword(e: React.FormEvent) {
     e.preventDefault();
     setPwdMsg(null);
@@ -190,6 +196,12 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
         <p className="text-[11px] text-zinc-600 leading-relaxed mt-4">
           Восстановления пароля по почте пока нет. Забыл — владелец заведёт новое приглашение.
         </p>
+      </div>
+
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-white mb-2">Обучение</h2>
+        <p className="text-sm text-zinc-400 leading-relaxed mb-4">Короткий тур по разделам дашборда — откроется поверх страницы.</p>
+        <button onClick={restartTour} className={button}>Пройти обучение ещё раз</button>
       </div>
 
       <div className={card}>

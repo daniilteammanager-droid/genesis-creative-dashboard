@@ -4,6 +4,7 @@ import { createContext, useContext, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
+import Onboarding from "./Onboarding";
 
 // Оболочка приложения: рабочие области, аккаунт и содержимое страницы.
 //
@@ -149,6 +150,9 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
       </div>
 
       <div className="flex-1 min-w-0"><ProfileContext.Provider value={profile}>{children}</ProfileContext.Provider></div>
+
+      {/* Обучалка — пока в профиле нет отметки, что пройдена (Decision 077). */}
+      {profile && profile.status === "active" && !profile.onboarded_at && <Onboarding key={profile.id} profile={profile} />}
 
       {/* Кнопка в углу — только на телефоне. Внизу, а не вверху: сверху она попала
           бы под липкие шапки страниц, а до низа ещё и большой палец дотягивается.
