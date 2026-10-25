@@ -16,8 +16,9 @@ function token(): string {
   return t;
 }
 
-export async function tg<T = unknown>(method: string, body: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(`https://api.telegram.org/bot${token()}/${method}`, {
+// bot — токен другого бота (Top-Up, lib/topups); по умолчанию общий бот команды.
+export async function tg<T = unknown>(method: string, body: Record<string, unknown> = {}, bot = token()): Promise<T> {
+  const res = await fetch(`https://api.telegram.org/bot${bot}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

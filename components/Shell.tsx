@@ -21,6 +21,7 @@ const WORK_AREAS = [
   { href: "/reports", label: "Reports" },
   { href: "/general-report", label: "General 3.0" },
   { href: "/general-report-4", label: "General 4.0" },
+  { href: "/topups", label: "Пополнения" },
 ];
 
 export default function Shell({ profile, children }: { profile: Profile | null; children: React.ReactNode }) {

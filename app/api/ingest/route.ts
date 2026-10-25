@@ -7,6 +7,7 @@ import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { runAutocheck } from "@/lib/alerts/autocheck";
 import { runDailySummary } from "@/lib/alerts/summary";
 import { runPairs } from "@/lib/warehouse/torroPairs";
+import { tickTopups } from "@/lib/topups/requests";
 
 // Точка входа для крона. Дёргает её VPS, на которой уже крутится воркер: у
 // бесплатного тарифа Vercel крон запускается раз в сутки, а нам нужен час и чаще.
@@ -41,6 +42,14 @@ export async function POST(req: Request) {
     try {
       const runs = await runPairs(240_000);
       return NextResponse.json({ kind: "pairs", runs });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
+    }
+  }
+  // Заявки на пополнение — раз в минуту: срок оплаты и поиск перевода (Decision 072).
+  if (raw === "topups") {
+    try {
+      return NextResponse.json({ kind: "topups", ...(await tickTopups()) });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
     }
