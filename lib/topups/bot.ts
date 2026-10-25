@@ -1,7 +1,7 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/api";
 import { parseHash } from "./chain";
-import { markPaid, pressPaid, reject, topupByMessage, topupChat, topupTg } from "./requests";
+import { manualPaid, pressPaid, reject, topupByMessage, topupChat, topupTg } from "./requests";
 
 // Top-Up бот — отдельный от общего (Decision 072). Живёт в одном платёжном чате
 // владельцев:
@@ -74,6 +74,8 @@ export async function handleTopupUpdate(u: TopupUpdate): Promise<void> {
   if (!r) return;
   const hash = parseHash(m.text);
   if (!hash) return void (await say(m, "Не вижу хэша в ответе. Пришли хэш транзакции или ссылку на неё."));
-  const res = await markPaid(r.id, { hash }, who(m.from));
-  await say(m, typeof res === "string" ? escapeHtml(res) : `✅ Заявка #${r.number} закрыта этим хэшем, автору ушёл ответ.`);
+  const { result, seen } = await manualPaid(r, hash, who(m.from));
+  await say(m, typeof result === "string" ? escapeHtml(result) : seen
+    ? `✅ Заявка #${r.number} закрыта: перевод ${result.paid_amount} ${r.asset} на адрес заявки найден.`
+    : `✅ Заявка #${r.number} закрыта этим хэшем. Перевода на адрес заявки в блокчейне не вижу — проверь хэш${["BEP20", "ERC20"].includes(r.network) ? ` (для ${r.network} бот сам не проверяет)` : ""}.`);
 }

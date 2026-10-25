@@ -29,6 +29,16 @@ const TX: Record<string, string> = {
 const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 6 });
 const stamp = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
 
+// Что с заявкой сейчас — словами, со временем и тем, кто закрыл.
+function detail(r: Topup): string {
+  const by = r.closed_by ? ` · ${r.closed_by}` : "";
+  if (r.status === "paid") return `Оплачено ${r.paid_at ? stamp(r.paid_at) : ""}${by}${r.paid_amount ? ` · пришло ${money(r.paid_amount)} ${r.asset}` : ""}`;
+  if (r.status === "rejected") return `Отклонено${by}`;
+  if (r.status === "expired") return `Время на оплату вышло${r.expires_at ? ` ${stamp(r.expires_at)}` : ""}`;
+  if (r.searching_since) return `Отмечено оплаченным ${stamp(r.searching_since)}${by} — ищем перевод в блокчейне`;
+  return r.expires_at ? `Ждёт оплаты до ${stamp(r.expires_at)}` : "Ждёт оплаты, без срока";
+}
+
 interface View { admin: boolean; chat: { title: string | null } | null; topups: Topup[] }
 type Net = { network: string; asset: string; label: string };
 
@@ -69,7 +79,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.topups) throw new Error(d?.error ?? "Не получилось — попробуй ещё раз");
       setView(d);
-      setMsg({ ok: true, text: "Заявка ушла в платёжный чат. Ответ придёт сюда и в Telegram (уведомление «Пополнения»)" });
+      setMsg({ ok: true, text: "Заявка ушла на оплату. Статус, хэш и ссылка на транзакцию появятся здесь в списке" });
       setAmount(""); setFee(""); setAddress(""); setComment(""); setMinutes(-1);
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "Сеть не ответила" });
@@ -126,7 +136,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
         </select>
         <input placeholder="Адрес получателя" value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`${field} sm:col-span-2 font-mono`} />
-        <input placeholder={target === "Другое" ? "Комментарий: что именно пополняем" : "Комментарий (нечего добавить — «-»)"} value={comment}
+        <input placeholder="Комментарий (нечего добавить — «-»)" value={comment}
                onChange={(e) => setComment(e.target.value)} className={`${field} sm:col-span-2`} />
         <button type="submit" disabled={busy || !target || net < 0 || !amount || fee.trim() === "" || !address || minutes < 0 || !comment.trim()}
                 className="sm:col-span-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
@@ -164,10 +174,12 @@ export default function Topups({ categories, networks }: { categories: Record<st
                   <p className="text-[11px] text-zinc-500 mt-0.5 break-all">
                     {view.admin && `${r.author} · `}{stamp(r.created_at)} · {r.address}{r.comment && ` · ${r.comment}`}
                   </p>
+                  <p className="text-[11px] text-zinc-400 mt-1">{detail(r)}</p>
                   {r.tx_hash && (
-                    <a href={TX[r.network] + r.tx_hash} target="_blank" rel="noreferrer" className="text-[11px] text-violet-300 hover:underline break-all">
-                      {r.tx_hash}
-                    </a>
+                    <p className="text-[11px] mt-0.5 break-all">
+                      <a href={TX[r.network] + r.tx_hash} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">Транзакция ↗</a>
+                      <span className="text-zinc-500"> · {r.tx_hash}</span>
+                    </p>
                   )}
                 </div>
                 <span className={`${pill} shrink-0 ${STATUS[r.status].cls}`}>

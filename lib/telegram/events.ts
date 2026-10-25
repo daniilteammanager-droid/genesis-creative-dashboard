@@ -19,7 +19,6 @@ export const EVENTS: TelegramEvent[] = [
   { key: "autocheck", label: "Чек по расписанию", hint: "живой чек за сегодня в выбранное время", ready: true },
   { key: "daily_summary", label: "Сводка за вчера", hint: "в 10:00 МСК: расход, доход и ROMI по баерам, блокировки и отклонения — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
   { key: "autoupload", label: "Автозалив", hint: "ход и итог заливки", ready: false },
-  { key: "topup_status", label: "Пополнения", hint: "ответ на твою заявку: оплачено с хэшем, отклонено или время вышло", ready: true },
   { key: "connection_broken", label: "Слетевшие подключения", hint: "аккаунт FB Tool разлогинился или снова в строю", ready: true },
 ];
 

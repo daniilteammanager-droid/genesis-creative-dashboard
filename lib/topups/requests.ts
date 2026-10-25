@@ -1,15 +1,14 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml, tg, TelegramError } from "@/lib/telegram/api";
-import { notify } from "@/lib/telegram/links";
 import { mskDay, mskStamp, mskTime } from "@/lib/day";
-import { addressFits, AUTO_SEARCH, findPayment, txUrl, type Asset, type Network, type Transfer } from "./chain";
+import { addressFits, AUTO_SEARCH, findPayment, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
 // закрыть оплатой, отказом или по сроку. Таблицы закрыты от браузера — всё
 // сервисным ключом, доступ проверяют роуты.
 
 // Что пополняем: категория → куда именно. «Другое» — для того, чего нет в списке
-// (провайдеров прокси всех не впишешь): тогда что именно — обязательно в комментарии.
+// (провайдеров прокси всех не впишешь).
 export const OTHER = "Другое";
 export const CATEGORIES: Record<string, string[]> = {
   "Расходники": ["Кабинеты/БМ/Кинги/ФП", "Прокси", "Домены", "Почты", "Антик", "Сервера/хостинг", "Подписки/сервисы", "Кошелёк USDT", "Склад кабинетов", OTHER],
@@ -129,16 +128,6 @@ async function refresh(r: Topup): Promise<void> {
   }
 }
 
-// Автору — общим ботом, в его привязки с уведомлением «Пополнения».
-async function tellAuthor(r: Topup): Promise<void> {
-  const head = `Заявка #${r.number} · ${escapeHtml(what(r))} · ${money(r.amount + r.fee)} ${r.asset}`;
-  const text =
-    r.status === "paid" ? `✅ ${head} — оплачено.${r.tx_hash ? `\n<a href="${txUrl(r.network, r.tx_hash)}">Транзакция</a> · <code>${r.tx_hash}</code>` : ""}` :
-    r.status === "rejected" ? `✖️ ${head} — отклонено.` :
-    `⌛ ${head} — время на оплату истекло. Если пополнение ещё нужно, создай новую заявку.`;
-  await notify(r.user_id, "topup_status", text).catch((e) => console.warn("topup_status:", e instanceof Error ? e.message : e));
-}
-
 export interface TopupInput {
   kind?: string; target?: string; amount?: number; fee?: number; network?: string; asset?: string;
   address?: string; comment?: string; minutes?: number | null;
@@ -155,7 +144,6 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
   if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
   if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
-  if (target === OTHER && comment === "-") throw new Error("Для «Другое» напиши в комментарии, что именно пополняем");
   if (!net) throw new Error("Выбери сеть");
   if (!addressFits(net.network, address)) throw new Error(`Адрес не похож на адрес сети ${net.network}`);
   if (input.minutes === undefined || input.minutes === null) throw new Error("Выбери время на оплату");
@@ -200,7 +188,6 @@ export async function markPaid(id: string, pay: { hash: string; amount?: number 
   if (!data?.length) return "Заявка уже закрыта.";
   const r = (await getTopup(id))!;
   await refresh(r);
-  await tellAuthor(r);
   return r;
 }
 
@@ -229,8 +216,13 @@ export async function reject(id: string, by: string | null): Promise<string | nu
   if (!data?.length) return "Заявка уже закрыта.";
   const r = (await getTopup(id))!;
   await refresh(r);
-  await tellAuthor(r);
   return null;
+}
+
+// Хэш, присланный руками: сумму перевода берём из блокчейна, если он пришёл на адрес заявки.
+export async function manualPaid(r: Topup, hash: string, by: string | null): Promise<{ result: Topup | string; seen: boolean }> {
+  const t = await transferByHash(r.network, r.asset, r.address, hash, Date.parse(r.created_at)).catch(() => null);
+  return { result: await markPaid(r.id, { hash: t?.hash ?? hash, amount: t?.amount }, by), seen: Boolean(t) };
 }
 
 // Ответ хэшем на сообщение заявки в чате.
@@ -254,8 +246,7 @@ export async function tickTopups(): Promise<{ expired: number; found: number; er
     try {
       const r = (await getTopup(g.id as string))!;
       await refresh(r);
-      await tellAuthor(r);
-    } catch (e) {
+        } catch (e) {
       out.errors.push(e instanceof Error ? e.message : String(e));
     }
   }

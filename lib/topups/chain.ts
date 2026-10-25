@@ -75,6 +75,13 @@ export async function findPayment(
   return null;
 }
 
+// Перевод по хэшу среди входящих на адрес — сутки до заявки и всё после.
+// BEP20/ERC20 и не найденный — null: хэш тогда пишется как есть.
+export async function transferByHash(network: Network, asset: Asset, address: string, hash: string, createdMs: number): Promise<Transfer | null> {
+  const h = hash.toLowerCase().replace(/^0x/, "");
+  return (await incoming(network, asset, address, createdMs - 24 * 3600_000)).find((t) => t.hash.toLowerCase() === h) ?? null;
+}
+
 export function txUrl(network: Network, hash: string): string {
   switch (network) {
     case "TRC20": return `https://tronscan.org/#/transaction/${hash}`;
