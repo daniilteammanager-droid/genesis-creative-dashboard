@@ -54,7 +54,8 @@ export async function GET() {
 
     // Возвращаем медиафайлы (без thumbnails/), для видео добавляем posterUrl
     const mediaFiles = allFiles
-      .filter((f) => !f.key.startsWith("thumbnails/"))
+      // variants/ — результаты уникализации (Decision 076), не крео библиотеки.
+      .filter((f) => !f.key.startsWith("thumbnails/") && !f.key.startsWith("variants/"))
       .map((f) => {
         const isVideo = /\.(mov|mp4)$/i.test(f.key);
         const posterUrl = isVideo ? thumbnailMap.get(fileBasename(f.key)) : undefined;

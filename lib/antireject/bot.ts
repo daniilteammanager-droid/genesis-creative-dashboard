@@ -7,12 +7,14 @@ import { escapeHtml, linksInPlace } from "@/lib/telegram/links";
 import { sendMessage, tg } from "@/lib/telegram/api";
 import { accountPages, adDetail, applyChange, currentLink, REJECTED, type AdDetail, type Change, type Preview } from "./meta";
 import { host, landingChoices, makeLink } from "./landings";
+import { startUniq } from "@/lib/uniq/bot";
 
 // Кнопки антиотклона под алертом об отклонении (Decision 067).
 //
 //   ar:l|p|m:<ad>         — открыть выбор: ссылка, страница, Multi-advertiser
 //   ar:L|P|M:<ad>:<что>   — выбрано: собрать изменение и спросить подтверждение
 //   ar:ok|no:<код>        — подтвердить и записать в Meta / отменить
+//   ar:u:<ad>             — уникализация видео: меню и задание (lib/uniq/bot.ts)
 //
 // Нажать может любой в чате, но только в чате, привязанном к владельцу кабинета:
 // баер сам выбрал, куда слать свои алерты. Пишем ключом Meta владельца с
@@ -20,8 +22,8 @@ import { host, landingChoices, makeLink } from "./landings";
 
 const PENDING_TTL_MS = 3600_000;
 
-interface Place { chatId: number; threadId: number | null }
-interface Ctx { place: Place; adId: string; accountId: string; ownerId: string }
+export interface Place { chatId: number; threadId: number | null }
+export interface Ctx { place: Place; adId: string; accountId: string; ownerId: string }
 
 const say = (p: Place, text: string, extra: Record<string, unknown> = {}) => sendMessage(p.chatId, text, p.threadId, extra);
 const keyboard = (rows: { text: string; data: string }[][]) =>
@@ -30,13 +32,14 @@ const keyboard = (rows: { text: string; data: string }[][]) =>
 // Кнопки под алертом. Только для кабинетов на Meta: у Dolphin и FB Tool писать нечем.
 export function actionButtons(adId: string) {
   return [
+    [{ text: "🎬 Уникализация", callback_data: `ar:u:${adId}` }],
     [{ text: "🔗 Заменить ссылку", callback_data: `ar:l:${adId}` }],
     [{ text: "📄 Поменять ФП", callback_data: `ar:p:${adId}` }, { text: "🔁 Multi-advertiser", callback_data: `ar:m:${adId}` }],
   ];
 }
 
 // Чьё объявление и можно ли тут жать. Ответ — контекст или текст отказа.
-async function context(place: Place, adId: string): Promise<Ctx | string> {
+export async function context(place: Place, adId: string): Promise<Ctx | string> {
   const db = warehouse();
   const { data: ad } = await db.from("wh_rejected_ads").select("account_id").eq("ad_id", adId).maybeSingle();
   if (!ad) return "Этого объявления уже нет среди отклонённых — возможно, его одобрили или уже поправили.";
@@ -49,7 +52,7 @@ async function context(place: Place, adId: string): Promise<Ctx | string> {
 }
 
 // Ключ владельца, которым это объявление видно и можно менять.
-async function writer(ctx: Ctx): Promise<{ token: string; detail: AdDetail } | string> {
+export async function writer(ctx: Ctx): Promise<{ token: string; detail: AdDetail } | string> {
   const keys = (await metaTokensOf(ctx.ownerId)).filter((k) => k.canWrite);
   if (keys.length === 0) {
     const c = await getConnection(ctx.ownerId).catch(() => null);
@@ -154,7 +157,7 @@ async function confirm(nonce: string, place: Place, ok: boolean): Promise<void> 
 export interface CallbackQuery {
   id: string;
   data?: string;
-  message?: { chat: { id: number }; message_thread_id?: number; is_topic_message?: boolean };
+  message?: { message_id: number; chat: { id: number }; message_thread_id?: number; is_topic_message?: boolean };
 }
 
 export async function handleAntiReject(q: CallbackQuery): Promise<void> {
@@ -169,6 +172,7 @@ export async function handleAntiReject(q: CallbackQuery): Promise<void> {
     if (!/^\d+$/.test(a ?? "")) return;
     const ctx = await context(place, a);
     if (typeof ctx === "string") return void (await say(place, ctx));
+    if (kind === "u") return await startUniq(ctx);
     if (["l", "p", "m"].includes(kind)) return await openMenu(kind, ctx);
     if (["L", "P", "M"].includes(kind) && b) return await pick(kind, b, ctx);
   } catch (e) {

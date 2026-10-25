@@ -1,13 +1,15 @@
 import { botUsername, sendMessage, tg, escapeHtml } from "./api";
 import { consumeLinkCode, deleteLinksById, dropChat, linksInPlace, moveChat, type ChatPlace } from "./links";
 import { handleAntiReject, type CallbackQuery } from "@/lib/antireject/bot";
+import { handleUniq } from "@/lib/uniq/bot";
 
 // Что бот понимает:
 //   /start <код>  — привязать этот чат (личка, группа или тема) к профилю.
 //                   В группу код приезжает сам по ссылке ?startgroup=<код>.
 //   /link <код>   — то же самое руками, например в нужной теме форума.
 //   /stop         — отвязать этот чат или тему.
-//   кнопки ar:…   — антиотклон под алертом об отклонении (lib/antireject/bot.ts).
+//   кнопки ar:…   — антиотклон под алертом об отклонении (lib/antireject/bot.ts),
+//   кнопки uv:…   — меню уникализации видео (lib/uniq/bot.ts).
 // Остальное бот не слушает: он шлёт уведомления, а не болтает.
 
 export function parseCommand(text: string, bot: string): { cmd: string; arg: string } | null {
@@ -63,6 +65,7 @@ async function isChatAdmin(chatId: number, userId: number): Promise<boolean> {
 export async function handleUpdate(update: TgUpdate): Promise<void> {
   if (update.callback_query) {
     if (update.callback_query.data?.startsWith("ar:")) await handleAntiReject(update.callback_query);
+    else if (update.callback_query.data?.startsWith("uv:")) await handleUniq(update.callback_query);
     return;
   }
 

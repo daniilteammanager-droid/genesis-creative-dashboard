@@ -12,7 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // заголовке — проверка внутри самого роута.
 // /api/telegram/webhook зовёт Telegram, вход в нём закрыт своим секретом.
 // Именно webhook, а не весь /api/telegram: привязки рядом — под сессией.
-const PUBLIC_PATHS = ["/login", "/api/auth/register", "/api/ingest", "/api/telegram/webhook", "/api/topups/webhook"];
+const PUBLIC_PATHS = ["/login", "/api/auth/register", "/api/ingest", "/api/telegram/webhook", "/api/topups/webhook", "/api/uniq"];
 
 // Статус читается на каждой навигации, и это второй поход в Supabase поверх
 // getUser(). Пара сотен миллисекунд на каждый клик — заметно руками.

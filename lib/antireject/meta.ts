@@ -34,7 +34,7 @@ const CREATIVE_FIELDS = "id,name,object_story_spec,asset_feed_spec,contextual_mu
 type Story = {
   page_id?: string; instagram_user_id?: string; instagram_actor_id?: string;
   link_data?: { link?: string; [k: string]: unknown };
-  video_data?: { image_url?: string; call_to_action?: { value?: { link?: string } }; [k: string]: unknown };
+  video_data?: { video_id?: string; image_url?: string; image_hash?: string; call_to_action?: { value?: { link?: string } }; [k: string]: unknown };
   [k: string]: unknown;
 };
 export interface Creative {
@@ -50,7 +50,8 @@ export interface AdDetail {
 export type Change =
   | { type: "link"; newUrl: string }
   | { type: "page"; pageId: string }
-  | { type: "multi"; enrollStatus: "OPT_IN" | "OPT_OUT" };
+  | { type: "multi"; enrollStatus: "OPT_IN" | "OPT_OUT" }
+  | { type: "video"; videoId: string; imageUrl: string };   // уникализация (Decision 076)
 
 export const REJECTED = ["DISAPPROVED", "WITH_ISSUES"];
 
@@ -81,6 +82,12 @@ export function creativeForChange(c: Creative, change: Change): Record<string, u
   } else if (change.type === "page") {
     if (!/^\d+$/.test(change.pageId)) throw new Error("Неверный ID страницы");
     story.page_id = change.pageId;
+  } else if (change.type === "video") {
+    if (!story.video_data?.video_id || !/^\d+$/.test(change.videoId)) throw new Error("Это не видеокреатив — видео не заменить");
+    story.video_data.video_id = change.videoId;
+    delete story.video_data.image_hash;
+    // Превью нового видео: при записи Meta его требует (чтение его же отдаёт только для чтения).
+    story.video_data.image_url = change.imageUrl;
   } else {
     if (!c.contextual_multi_ads) throw new Error("В этом креативе нет настройки Multi-advertiser");
     (out.contextual_multi_ads as Record<string, unknown>).enroll_status = change.enrollStatus;
@@ -125,6 +132,31 @@ export async function accountPages(token: string, accountId: string): Promise<{ 
   return [...pages].map(([id, name]) => ({ id, name: name || "название недоступно" }));
 }
 
+// Видео в кабинет по ссылке (Meta сама скачает файл), дождаться обработки и взять превью.
+// ponytail: ждём до ~4 минут — дольше функции Vercel не живут; не успело — ошибка, задание можно повторить.
+export async function uploadVideo(token: string, accountId: string, fileUrl: string, title: string): Promise<{ videoId: string; imageUrl: string }> {
+  const { id } = await graph<{ id: string }>(token, `act_${accountId}/advideos`, "POST", { file_url: fileUrl, title });
+  const status = (v: unknown): string => {
+    const o = (v ?? {}) as { video_status?: string; processing_phase?: { status?: string } };
+    return String(o.video_status ?? o.processing_phase?.status ?? v ?? "").toLowerCase();
+  };
+  for (let i = 0; i < 48; i++) {
+    const v = await graph<{ status?: unknown }>(token, id, "GET", { fields: "status" });
+    const st = status(v.status);
+    if (/error|fail/.test(st)) throw new Error(`Meta не обработала видео: ${st}`);
+    if (/ready|complete|published/.test(st)) break;
+    if (i === 47) throw new Error("Meta обрабатывает видео дольше 4 минут — повтори замену позже");
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  for (let i = 0; i < 12; i++) {
+    const t = await graph<{ data?: { uri?: string; is_preferred?: boolean }[] }>(token, `${id}/thumbnails`, "GET", { fields: "uri,is_preferred" }).catch(() => ({ data: [] }));
+    const uri = (t.data ?? []).find((x) => x.is_preferred)?.uri ?? t.data?.[0]?.uri;
+    if (uri) return { videoId: id, imageUrl: uri };
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  throw new Error("Meta не отдала превью нового видео");
+}
+
 export interface Preview {
   adId: string; accountId: string; creativeId: string;
   adName: string; campaignName: string;
@@ -144,7 +176,7 @@ export async function applyChange(token: string, p: Preview): Promise<{ status: 
   // С Instagram-аккаунтом Meta иногда принимает только то же поле, что прочитала:
   // пробуем как было, потом как actor, потом без него — как у Артёма.
   const ig = before.creative.object_story_spec?.instagram_user_id;
-  const bodies = p.change.type === "link" && ig
+  const bodies = (p.change.type === "link" || p.change.type === "video") && ig
     ? [withIg(body, "instagram_user_id", ig), withIg(body, "instagram_actor_id", ig), body]
     : [body];
 
@@ -156,6 +188,7 @@ export async function applyChange(token: string, p: Preview): Promise<{ status: 
       const s = after.creative.object_story_spec ?? {};
       const ok = p.change.type === "link" ? currentLink(after.creative) === p.change.newUrl
         : p.change.type === "page" ? s.page_id === p.change.pageId
+        : p.change.type === "video" ? s.video_data?.video_id === p.change.videoId
         : after.creative.contextual_multi_ads?.enroll_status === p.change.enrollStatus;
       if (ok) return { status: after.ad.effective_status, newCreativeId: after.creative.id };
       last = new Error("Meta приняла запрос, но изменение не видно в объявлении");
