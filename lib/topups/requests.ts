@@ -95,7 +95,7 @@ export function topupText(r: Topup): string {
     `${head} #${r.number}</b> · ${escapeHtml(what(r))}`,
     `От: ${escapeHtml(r.author ?? "—")}`,
     // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
-    `Сумма: <b>${money(r.amount)} ${r.asset}</b>${r.fee ? ` · комиссия ${money(r.fee)} (не входит в перевод)` : ""}`,
+    `Сумма: <b>${money(r.amount)} ${r.asset}</b>${r.fee ? ` · комиссия ${money(r.fee)}` : ""}`,
     `Сеть: ${r.network}`,
     r.status === "expired" || r.status === "rejected" ? "Адрес: скрыт" : `Адрес: <code>${escapeHtml(r.address)}</code>`,
   ];

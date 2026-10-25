@@ -130,7 +130,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
           {networks.map((n, i) => <option key={n.label} value={i}>{n.label}</option>)}
         </select>
         <input inputMode="decimal" placeholder={`Сумма${net >= 0 ? `, ${networks[net].asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
-        <input inputMode="decimal" placeholder="Комиссия — справкой, в сумму не входит (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
+        <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
         <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className={field}>
           <option value={-1} disabled>Время на оплату</option>
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
