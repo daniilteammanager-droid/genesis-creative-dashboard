@@ -40,15 +40,15 @@ export default async function IntegrationsPage() {
 
   return (
     <div className="space-y-4">
-      <MetaKeys />
+      <div data-tour="int-facebook"><MetaKeys /></div>
       <TgadsKeys />
-      <ConnectionsForm
+      <div data-tour="int-torro"><ConnectionsForm
         initial={view}
         loadError={error}
         grSheetId={profile.gr_spreadsheet_id ?? null}
         isMain={isMain}
-      />
-      <TelegramLinks />
+      /></div>
+      <div data-tour="int-telegram"><TelegramLinks /></div>
       {isMain && <GrSheets sheets={sheets} serviceAccount={serviceAccount} />}
     </div>
   );

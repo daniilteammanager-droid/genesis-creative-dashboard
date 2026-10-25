@@ -108,7 +108,7 @@ export default function ReportTree() {
         <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
         <span className="text-zinc-600">—</span>
         <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
-        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+        <div data-tour="reports-periods" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}

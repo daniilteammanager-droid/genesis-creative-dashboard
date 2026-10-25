@@ -179,7 +179,7 @@ export default function CreativesView() {
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+        <div data-tour="creatives-views" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
           <button onClick={() => setView("cards")} className={tab(view === "cards")}>Плитка</button>
           <button onClick={() => setView("table")} className={tab(view === "table")}>Таблица</button>
           <button onClick={() => setView("analytics")} className={tab(view === "analytics")}>Аналитика</button>

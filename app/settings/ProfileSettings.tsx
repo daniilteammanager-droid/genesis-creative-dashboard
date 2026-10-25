@@ -44,7 +44,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
     if (!error) router.refresh();
   }
 
-  // Сброс отметки — оболочка увидит пустой onboarded_at и откроет обучалку (Decision 077).
+  // Сброс отметки — оболочка увидит пустой onboarded_at и откроет обучалку (Decision 078).
   async function restartTour() {
     await createClient().from("profiles").update({ onboarded_at: null }).eq("id", profile.id);
     router.refresh();

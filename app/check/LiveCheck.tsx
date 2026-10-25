@@ -176,7 +176,7 @@ export default function LiveCheck() {
           </div>
 
           {/* Готовый текст — то, ради чего раздел и существует */}
-          <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5 mb-5">
+          <div data-tour="check-text" className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5 mb-5">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h2 className="text-lg font-semibold text-white">Готовый чек</h2>
               <button onClick={copy}

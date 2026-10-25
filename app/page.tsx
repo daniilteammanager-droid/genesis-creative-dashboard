@@ -372,7 +372,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto">
 
         {/* Вкладки этой страницы */}
-        <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+        <div data-tour="legacy-tabs" className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
           {(["creatives", "analytics"] as const).map((t) => (
             <button
               key={t}
@@ -393,6 +393,7 @@ export default function Home() {
             {/* Sticky controls */}
             <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-[#0a080f]/90 backdrop-blur-md border-b border-violet-900/30">
               <input
+                data-tour="legacy-search"
                 type="text"
                 placeholder="Поиск крео..."
                 value={search}
@@ -401,6 +402,7 @@ export default function Home() {
               />
 
               <div className="flex items-center gap-2 flex-wrap">
+                <div data-tour="legacy-filters" className="flex items-center gap-2 flex-wrap">
                 {(["all", "win", "lose", "test", "favorites"] as const).map((tab) => {
                   const labels: Record<typeof tab, string> = {
                     all: "All", win: "Win", lose: "Lose", test: "Test", favorites: "★ Fav",
@@ -424,8 +426,9 @@ export default function Home() {
                     </button>
                   );
                 })}
+                </div>
 
-                <div className="ml-auto flex items-center gap-2 flex-wrap">
+                <div data-tour="legacy-tools" className="ml-auto flex items-center gap-2 flex-wrap">
                   <select
                     value={activeSort}
                     onChange={(e) => setActiveSort(e.target.value as typeof activeSort)}
@@ -489,7 +492,7 @@ export default function Home() {
             )}
 
             <>
-              <SummaryPanel summary={summary} />
+              <div data-tour="legacy-summary"><SummaryPanel summary={summary} /></div>
 
               {/* Virtual grid — only visible rows are rendered */}
               <div
@@ -503,6 +506,7 @@ export default function Home() {
                     <div
                       key={virtualRow.key}
                       data-index={virtualRow.index}
+                      data-tour={virtualRow.index === 0 ? "legacy-card" : undefined}
                       ref={virtualizer.measureElement}
                       style={{
                         position:              "absolute",

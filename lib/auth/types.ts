@@ -23,7 +23,7 @@ export interface Profile {
   // Таблица баера General 4.0 — отдельно от 3.0, оба отчёта живут рядом.
   gr4_spreadsheet_id: string | null;
   status: "active" | "disabled";
-  // Прошёл обучалку; null — покажем при входе (Decision 077).
+  // Прошёл обучалку; null — покажем при входе (Decision 078).
   onboarded_at: string | null;
 }
 

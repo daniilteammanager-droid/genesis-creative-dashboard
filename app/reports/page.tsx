@@ -27,7 +27,7 @@ export default function ReportsPage() {
       <div className="max-w-screen-2xl mx-auto">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Reports</h1>
 
-        <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+        <div data-tour="reports-views" className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
           {VIEWS.map((v) => (
             <button
               key={v.id}

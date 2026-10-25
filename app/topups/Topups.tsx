@@ -116,7 +116,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
         </div>
       )}
 
-      <form onSubmit={submit} className={`${card} grid gap-2.5 sm:grid-cols-2`}>
+      <form data-tour="topups-form" onSubmit={submit} className={`${card} grid gap-2.5 sm:grid-cols-2`}>
         <select value={kind} onChange={(e) => { setKind(e.target.value); setTarget(""); }} className={field}>
           <option value="" disabled>Категория</option>
           {Object.keys(categories).map((k) => <option key={k}>{k}</option>)}
@@ -149,7 +149,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
         )}
       </form>
 
-      <div className={card}>
+      <div data-tour="topups-list" className={card}>
         <div className="flex items-center gap-2 flex-wrap mb-3">
           {(["all", "pending", "paid", "rejected", "expired"] as const).map((s) => (
             <button key={s} type="button" onClick={() => setFilter(s)}

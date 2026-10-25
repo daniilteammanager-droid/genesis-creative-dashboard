@@ -20,7 +20,7 @@ const WORK_AREAS = [
   { href: "/creatives", label: "Креативы" },
   { href: "/check", label: "Checks" },
   { href: "/reports", label: "Reports" },
-  { href: "/general-report", label: "General 3.0" },
+  // General 3.0 из панели убран: им больше не пользуются (Daniil 26.10.2026). Роут живой.
   { href: "/general-report-4", label: "General 4.0" },
   { href: "/topups", label: "Пополнения" },
 ];
@@ -101,6 +101,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
             return (
               <Link
                 key={a.href}
+                data-tour={`nav:${a.href}`}
                 href={a.href}
                 prefetch
                 onClick={closeIfNarrow}
@@ -121,6 +122,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         <div className="px-2.5 pb-3 pt-2 border-t border-violet-900/25">
           {profile ? (
             <Link
+              data-tour="account"
               href="/settings"
               onClick={closeIfNarrow}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition ${
@@ -151,7 +153,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
 
       <div className="flex-1 min-w-0"><ProfileContext.Provider value={profile}>{children}</ProfileContext.Provider></div>
 
-      {/* Обучалка — пока в профиле нет отметки, что пройдена (Decision 077). */}
+      {/* Обучалка — пока в профиле нет отметки, что пройдена (Decision 078). */}
       {profile && profile.status === "active" && !profile.onboarded_at && <Onboarding key={profile.id} profile={profile} />}
 
       {/* Кнопка в углу — только на телефоне. Внизу, а не вверху: сверху она попала
