@@ -2,6 +2,7 @@ import { warehouse, selectAll } from "./read";
 import { NO_CABINETS, resolveScope } from "./accounts";
 import { parseCreativeCode, geoOf, approachOf, buyerOf } from "@/lib/creatives/code";
 import type { Profile } from "@/lib/auth/types";
+import type { Quals } from "./reportTree";
 
 // Раздел «Креативы»: что крутилось за период и что оно принесло.
 //
@@ -43,6 +44,7 @@ export interface CreativeRow {
   depSum: number | null;
   redepCount: number | null;
   redepSum: number | null;
+  quals: Quals | null;       // A–E, сегменты CRM
 }
 
 export interface CreativesResult {
@@ -149,10 +151,11 @@ export async function loadCreatives(
     clicks: number | null; subscribers: number | null; dialogs: number | null;
     registrations: number | null; dep_count: number | null; dep_sum: number | string | null;
     redep_count: number | null; redep_sum: number | string | null;
+    qual_a: number | null; qual_b: number | null; qual_c: number | null; qual_d: number | null; qual_e: number | null;
   };
   const crm = await selectAll<CrmPeriod>((from, to) =>
     db.from("wh_crm_ad_periods")
-      .select("user_id, ad_name, period_start, period_end, clicks, subscribers, dialogs, registrations, dep_count, dep_sum, redep_count, redep_sum")
+      .select("user_id, ad_name, period_start, period_end, clicks, subscribers, dialogs, registrations, dep_count, dep_sum, redep_count, redep_sum, qual_a, qual_b, qual_c, qual_d, qual_e")
       .in("user_id", scope).gte("period_end", since).lte("period_start", until)
       .order("user_id").order("period_start").order("ad_name")
       .range(from, to)
@@ -182,7 +185,7 @@ export async function loadCreatives(
       owners: [],
       spend: 0, clicks: 0, impressions: 0, adCount: 0, campaigns: 0,
       crmClicks: null, subscribers: null, dialogs: null, registrations: null,
-      depCount: null, depSum: null, redepCount: null, redepSum: null,
+      depCount: null, depSum: null, redepCount: null, redepSum: null, quals: null,
     };
   }
 
@@ -234,6 +237,10 @@ export async function loadCreatives(
     row.depSum = addNullable(row.depSum, c.dep_sum === null ? null : num(c.dep_sum));
     row.redepCount = addNullable(row.redepCount, c.redep_count);
     row.redepSum = addNullable(row.redepSum, c.redep_sum === null ? null : num(c.redep_sum));
+    if (c.qual_a !== null) {
+      const q: Quals = [c.qual_a ?? 0, c.qual_b ?? 0, c.qual_c ?? 0, c.qual_d ?? 0, c.qual_e ?? 0];
+      row.quals = row.quals ? (row.quals.map((v, i) => v + q[i]) as Quals) : q;
+    }
     if (!row.owners.includes(c.user_id)) row.owners.push(c.user_id);
     rows.set(code, row);
   }

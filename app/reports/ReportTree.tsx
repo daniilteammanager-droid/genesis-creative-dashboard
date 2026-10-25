@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ReportTreeResult, TreeNode } from "@/lib/warehouse/reportTree";
 import { mskDaysAgo } from "@/lib/day";
+import { COLS, money, n, romi } from "./columns";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -14,53 +15,7 @@ const field =
   "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none " +
   "focus:border-violet-600/50 transition text-white";
 
-const n = (v: number | null, d = 0) =>
-  v === null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
-const money = (v: number | null) => (v === null ? "—" : `$${n(v, 2)}`);
-
-function romi(spend: number, revenue: number | null): string {
-  if (revenue === null) return "—";
-  if (spend <= 0) return revenue > 0 ? "∞" : "—";
-  return `${(((revenue - spend) / spend) * 100).toFixed(0)}%`;
-}
-
 const daysAgo = (days: number) => mskDaysAgo(days);
-
-// Столбцы — как в General 4.0, кроме CPA/IB: тут просто число депов и доход.
-// Производные — из сумм узла, а не средним детей (Decision 024).
-const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
-const pct = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(1)}%`);
-const quals = (x: TreeNode) => (x.quals ? x.quals.reduce((s, v) => s + v, 0) : null);
-const QUAL = ["A", "B", "C", "D", "E"];
-type Col = { label: string; cell: (x: TreeNode) => string; strong?: boolean };
-const COLS: Col[] = [
-  { label: "Расход", cell: (x) => money(x.spend), strong: true },
-  { label: "Доход", cell: (x) => money(x.depSum), strong: true },
-  { label: "Net Profit", cell: (x) => (x.depSum === null ? "—" : money(x.depSum - x.spend)) },
-  { label: "ROMI", cell: (x) => romi(x.spend, x.depSum) },
-  { label: "ROAS", cell: (x) => { const v = ratio(x.depSum, x.spend); return v === null ? "—" : v.toFixed(2); } },
-  { label: "Показы", cell: (x) => n(x.impressions) },
-  { label: "Клики", cell: (x) => n(x.clicks) },
-  { label: "CPM", cell: (x) => money(x.impressions ? (x.spend / x.impressions) * 1000 : null) },
-  { label: "CPC", cell: (x) => money(ratio(x.spend, x.clicks)) },
-  { label: "CTR", cell: (x) => pct(ratio(x.clicks, x.impressions)) },
-  { label: "Клики на ленде", cell: (x) => n(x.lpClicks) },
-  { label: "CR% клик → ленд", cell: (x) => pct(ratio(x.lpClicks, x.clicks)) },
-  { label: "CR% ленд → канал", cell: (x) => pct(ratio(x.subscribers, x.lpClicks)) },
-  { label: "Подписки", cell: (x) => n(x.subscribers) },
-  { label: "Общая CR", cell: (x) => pct(ratio(x.subscribers, x.clicks)) },
-  { label: "Цена подписки", cell: (x) => money(ratio(x.spend, x.subscribers)), strong: true },
-  { label: "Диалоги", cell: (x) => n(x.dialogs) },
-  { label: "CR% в диалог", cell: (x) => pct(ratio(x.dialogs, x.subscribers)) },
-  { label: "Цена диалога", cell: (x) => money(ratio(x.spend, x.dialogs)), strong: true },
-  { label: "Депы", cell: (x) => n(x.depCount) },
-  { label: "CR% диалог → деп", cell: (x) => pct(ratio(x.depCount, x.dialogs)) },
-  { label: "CAC", cell: (x) => money(ratio(x.spend, x.depCount)) },
-  { label: "Квалы", cell: (x) => n(quals(x)) },
-  { label: "Неквалы", cell: (x) => { const q = quals(x); return q === null || x.dialogs === null ? "—" : n(x.dialogs - q); } },
-  ...QUAL.map((k, i): Col => ({ label: `Квал ${k}`, cell: (x) => n(x.quals ? x.quals[i] : null) })),
-  ...QUAL.map((k, i): Col => ({ label: `% ${k}`, cell: (x) => pct(x.quals ? ratio(x.quals[i], quals(x)) : null) })),
-];
 
 // Пресеты периодов. Раздел открывается на сегодня: раньше по умолчанию было
 // 14 дней, и каждый раз приходилось переключаться руками.

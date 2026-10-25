@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { mskDaysAgo } from "@/lib/day";
+import { COLS, money, n, romi, type Metrics } from "@/app/reports/columns";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -14,18 +15,14 @@ const field =
   "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none " +
   "focus:border-violet-600/50 transition text-white";
 
-// Прочерк вместо нуля, когда колонки не было в выгрузке: «не выгружали» и
-// «выгрузили ноль» — разные утверждения (Decision 039).
-const n = (v: number | null, digits = 0) =>
-  v === null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-
-const money = (v: number | null) => (v === null ? "—" : `$${n(v, 2)}`);
-
-// ROMI считается из сумм, а не усреднением по строкам (Decision 024).
-function romi(spend: number, revenue: number): string {
-  if (spend <= 0) return revenue > 0 ? "∞" : "—";
-  return `${(((revenue - spend) / spend) * 100).toFixed(0)}%`;
-}
+// Строка креатива в виде строки отчёта: те же столбцы, что в дереве кампаний.
+// Доход и депы — вместе с повторными, как в дереве.
+const both = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+const metrics = (r: CreativeRow): Metrics => ({
+  spend: r.spend, clicks: r.clicks, impressions: r.impressions, lpClicks: r.crmClicks,
+  subscribers: r.subscribers, dialogs: r.dialogs, depCount: both(r.depCount, r.redepCount),
+  depSum: both(r.depSum, r.redepSum), quals: r.quals,
+});
 
 const daysAgo = (days: number) => mskDaysAgo(days);
 
@@ -84,7 +81,6 @@ export default function CreativesTable() {
   const stale = Boolean(data) && (data!.since !== since || data!.until !== until);
 
   const rows: CreativeRow[] = data?.rows ?? [];
-  const revenue = (r: CreativeRow) => (r.depSum ?? 0) + (r.redepSum ?? 0);
 
   return (
     <div>
@@ -210,8 +206,8 @@ export default function CreativesTable() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-violet-900/25">
-                  {["Код креатива", "Страны", "Подход", "Расход", "Клики", "Показы",
-                    "Подписки", "Диалоги", "Депозиты", "Доход", "ROMI"].map((h) => (
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#111118] z-10">Код креатива</th>
+                  {["Страны", "Подход", ...COLS.map((c) => c.label)].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -221,7 +217,7 @@ export default function CreativesTable() {
               <tbody className="divide-y divide-violet-900/15">
                 {rows.map((r) => (
                   <tr key={r.code} className="hover:bg-violet-900/10 transition">
-                    <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[280px] truncate" title={r.code}>
+                    <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[48vw] sm:max-w-[280px] truncate sticky left-0 bg-[#111118] z-10" title={r.code}>
                       {r.code}
                       {/* Старый формат помечен, но не спрятан: сейчас все деньги
                           именно на нём (Decision 043). */}
@@ -242,18 +238,13 @@ export default function CreativesTable() {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-zinc-400">{r.approach}</td>
-                    <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">{money(r.spend)}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{n(r.clicks)}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{n(r.impressions)}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{n(r.subscribers)}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{n(r.dialogs)}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{n(r.depCount === null && r.redepCount === null ? null : (r.depCount ?? 0) + (r.redepCount ?? 0))}</td>
-                    <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">
-                      {r.depSum === null && r.redepSum === null ? "—" : money(revenue(r))}
-                    </td>
-                    <td className={`px-3 py-2.5 whitespace-nowrap ${revenue(r) > r.spend ? "text-green-400" : "text-zinc-400"}`}>
-                      {romi(r.spend, revenue(r))}
-                    </td>
+                    {COLS.map((c) => {
+                      const m = metrics(r);
+                      return (
+                        <td key={c.label} className={`px-3 py-2.5 whitespace-nowrap ${c.strong ? "text-zinc-200" : "text-zinc-400"} ${
+                          c.label === "ROMI" && (m.depSum ?? 0) > m.spend ? "text-green-400" : ""}`}>{c.cell(m)}</td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
