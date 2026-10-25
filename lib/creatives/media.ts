@@ -8,6 +8,7 @@ export type MediaFile = {
   url: string;
   size?: number; // байты, из R2 ListObjectsV2
   posterUrl?: string; // thumbnail из папки thumbnails/, только для видео
+  own?: boolean; // можно ли трогать: у баера — своя папка, у владельца и тимлида — всё (Decision 077)
 };
 
 export function isVideo(url: string) {

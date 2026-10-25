@@ -1,5 +1,7 @@
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
+import { getProfile } from "@/lib/auth/server";
+import { mayManageKey, maySeeKey } from "@/lib/creatives/access";
 
 const s3 = new S3Client({
   region: "auto",
@@ -18,6 +20,11 @@ function fileBasename(key: string): string {
 
 export async function GET() {
   try {
+    // Баер не видит папок других баеров (Decision 077). Middleware пускает только
+    // вошедших, но роль он не знает — её проверяем здесь.
+    const me = await getProfile();
+    if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
+
     const allFiles: { key: string; url: string; size: number }[] = [];
     let continuationToken: string | undefined;
 
@@ -55,17 +62,19 @@ export async function GET() {
     // Возвращаем медиафайлы (без thumbnails/), для видео добавляем posterUrl
     const mediaFiles = allFiles
       // variants/ — результаты уникализации (Decision 076), не крео библиотеки.
-      .filter((f) => !f.key.startsWith("thumbnails/") && !f.key.startsWith("variants/"))
+      .filter((f) => !f.key.startsWith("thumbnails/") && !f.key.startsWith("variants/") && maySeeKey(me, f.key))
       .map((f) => {
         const isVideo = /\.(mov|mp4)$/i.test(f.key);
         const posterUrl = isVideo ? thumbnailMap.get(fileBasename(f.key)) : undefined;
-        return posterUrl ? { ...f, posterUrl } : f;
+        const own = mayManageKey(me, f.key);
+        return posterUrl ? { ...f, posterUrl, own } : { ...f, own };
       });
 
     return NextResponse.json(mediaFiles, {
       headers: {
-        // Браузер кешует 5 минут, CDN/прокси — до 10 минут
-        "Cache-Control": "public, max-age=300, s-maxage=600, stale-while-revalidate=60",
+        // Только браузер, 5 минут. Не public: список свой у каждого баера, и общий
+        // кэш CDN отдал бы один список всем.
+        "Cache-Control": "private, max-age=300",
       },
     });
   } catch (error) {

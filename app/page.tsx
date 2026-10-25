@@ -11,6 +11,7 @@ import CreativeModal from "@/components/CreativeModal";
 import RomiBadge from "@/components/RomiBadge";
 import { MediaWide, MediaSquare } from "@/components/CreativeMedia";
 import MediaLibrary from "@/components/MediaLibrary";
+import { useProfile } from "@/components/Shell";
 import CreativeUploadModal from "./CreativeUploadModal";
 
 type CreativeCardProps = {
@@ -48,6 +49,7 @@ export default function Home() {
   const [topTab,     setTopTab]     = useState<"creatives" | "analytics">("creatives");
   const [showUpload, setShowUpload] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const isBuyer = useProfile()?.role === "buyer";
   const [notes,      setNotes]      = useState<Record<string, CreativeNote>>({});
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState<string | null>(null);
@@ -455,12 +457,13 @@ export default function Home() {
                     </button>
                   )}
 
-                  <button
+                  {/* Медиатека легаси — вся команда, баеру не показываем: его — в Креативах (Decision 077). */}
+                  {!isBuyer && <button
                     onClick={() => setShowLibrary(true)}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5"
                   >
                     📁 Медиатека
-                  </button>
+                  </button>}
 
                   <button
                     onClick={() => setShowUpload(true)}
@@ -560,7 +563,7 @@ export default function Home() {
         <CreativeUploadModal onClose={() => setShowUpload(false)} onUploaded={() => loadMedia(true)} />
       )}
 
-      {showLibrary && (
+      {showLibrary && !isBuyer && (
         <MediaLibrary
           rows={rows}
           media={media}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CreativeCards from "./CreativeCards";
 import CreativeAnalytics from "./CreativeAnalytics";
 import CreativesTable from "./CreativesTable";
@@ -144,6 +144,8 @@ export default function CreativesView() {
 
   // Список крео для Медиатеки берём только когда её открывают: лишний запрос
   // на каждое открытие раздела ни к чему.
+  const ownMedia = useMemo(() => media.filter((f) => f.own), [media]);
+
   async function openLibrary() {
     setShowLibrary(true);
     try {
@@ -251,7 +253,9 @@ export default function CreativesView() {
       {showLibrary && (
         <MediaLibrary
           rows={libraryRows.map(toLegacy)}
-          media={media}
+          // Баеру в Медиатеке — только его папка (Decision 077). Плитке нужен весь
+          // список: там файл ищется и среди легаси (Decision 036).
+          media={ownMedia}
           notes={notes}
           matchSuffixes={suffixes}
           supabaseAvailable={isSupabaseConfigured}

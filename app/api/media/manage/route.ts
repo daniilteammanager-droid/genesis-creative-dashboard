@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { S3Client, CopyObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { getProfile, createClient } from "@/lib/auth/server";
-import { getFileBaseName } from "@/lib/creatives/naming";
+import { getProfile } from "@/lib/auth/server";
+import { mayManageKey } from "@/lib/creatives/access";
 
 // Rename / delete an already-uploaded R2 object. R2 has no native rename,
 // so rename = copy to the new key + delete the old one (thumbnail moved the same way).
@@ -57,22 +57,14 @@ async function copyAndDelete(fromKey: string, toKey: string) {
 // кто вошёл. Пока дашборд был на одного человека, это было терпимо; с баерами —
 // нет: удаление в R2 необратимо, а библиотека общая.
 //
-// Правило: баер распоряжается тем, что загрузил сам (Decision 034), владелец и
-// тимлид — чем угодно. Легаси-файлы загрузчика не имеют, поэтому баер их не
-// трогает: это общая библиотека команды, а не его папка.
+// Правило: баер распоряжается своей папкой (Decision 077), владелец и тимлид —
+// чем угодно. Раньше владение читалось из creative_uploads по коду крео, а её
+// строку переписывает любой, кто запросил ссылку на загрузку с тем же кодом, —
+// так можно было удалить чужой или легаси-файл.
 async function mayManage(key: string): Promise<string | null> {
   const me = await getProfile();
   if (!me) return "Нужно войти";
-  if (me.role !== "buyer") return null;
-
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("creative_uploads")
-    .select("user_id")
-    .eq("creative_code", getFileBaseName(key))
-    .maybeSingle();
-
-  return data?.user_id === me.id
+  return mayManageKey(me, key)
     ? null
     : "Этот файл загружал не ты — переименовать или удалить его может владелец";
 }

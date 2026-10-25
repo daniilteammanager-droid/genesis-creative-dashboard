@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
@@ -23,6 +23,11 @@ const WORK_AREAS = [
   { href: "/general-report-4", label: "General 4.0" },
   { href: "/topups", label: "Пополнения" },
 ];
+
+// Профиль для клиентских страниц — без второго похода в Supabase: layout его уже
+// прочитал. Только для интерфейса: доступ проверяют роуты, а не скрытая кнопка.
+const ProfileContext = createContext<Profile | null>(null);
+export const useProfile = () => useContext(ProfileContext);
 
 export default function Shell({ profile, children }: { profile: Profile | null; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -143,7 +148,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         <button onClick={toggle} className={iconBtn} aria-label="Показать панель">☰</button>
       </div>
 
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="flex-1 min-w-0"><ProfileContext.Provider value={profile}>{children}</ProfileContext.Provider></div>
 
       {/* Кнопка в углу — только на телефоне. Внизу, а не вверху: сверху она попала
           бы под липкие шапки страниц, а до низа ещё и большой палец дотягивается.
