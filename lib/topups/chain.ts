@@ -1,9 +1,12 @@
 // Поиск оплаты заявки в блокчейне по адресу получателя (Decision 072).
 //
-// Ходим только в открытые API обозревателей (TronGrid, toncenter) — ключей и
-// кошельков не нужно: смотрим входящие на адрес из заявки после её создания и
-// берём перевод на сумму заявки (с комиссией или без). BEP20/ERC20 пока без
-// автопоиска — хэш присылают ответом на сообщение.
+// Ходим только в открытые API без ключей — кошельков и ключей не нужно: смотрим
+// входящие на адрес из заявки после её создания и берём перевод на сумму заявки
+// (с комиссией или без).
+//   TRC20 — TronGrid; TON (USDT и GRAM) — toncenter;
+//   BEP20 — публичный узел BSC (publicnode), логи Transfer на адрес;
+//   ERC20 — Ethplorer с открытым ключом freekey (публичные узлы Ethereum
+//           ищут логи максимум по 25–50 блоков).
 
 export type Network = "TRC20" | "TON" | "BEP20" | "ERC20";
 export type Asset = "USDT" | "GRAM";
@@ -12,8 +15,17 @@ export interface Transfer { hash: string; amount: number; at: number }   // at �
 
 const USDT_TRC20 = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const USDT_TON = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs";
+const USDT_BEP20 = "0x55d398326f99059ff775485246999027b3197955";   // 18 знаков
+const USDT_ERC20 = "0xdac17f958d2ee523a2206206994597c13d831ec7";   // 6 знаков
+const BSC_RPC = "https://bsc-rpc.publicnode.com";        // логи Transfer по адресу
+const BSC_RECEIPTS = "https://bsc-dataseed.bnbchain.org"; // квитанции по хэшу, любой давности
+const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+// BSC: блок ~0,45 с. Без ключа publicnode отдаёт логи только за последние ~10 000
+// блоков (~75 минут), шагом до 4000. ponytail: перевод раньше этого окна бот не
+// найдёт — тогда хэш ответом; глубже — личный ключ publicnode.
+const BSC_BLOCK_S = 0.45, BSC_DEPTH = 9000, BSC_STEP = 3000;
 
-export const AUTO_SEARCH: Network[] = ["TRC20", "TON"];
+export const AUTO_SEARCH: Network[] = ["TRC20", "TON", "BEP20", "ERC20"];
 
 // Без ключа у TronGrid и toncenter жёсткий лимит в секунду — на 429 одна пауза и повтор.
 async function getJson<T>(url: string, retry = true): Promise<T> {
@@ -28,7 +40,36 @@ async function getJson<T>(url: string, retry = true): Promise<T> {
 
 const b64ToHex = (s: string) => Buffer.from(s, "base64").toString("hex");
 
-async function incoming(network: Network, asset: Asset, address: string, sinceMs: number): Promise<Transfer[]> {
+async function bsc<T>(method: string, params: unknown[], rpc = BSC_RPC): Promise<T> {
+  const res = await fetch(rpc, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(20_000),
+  });
+  const d = (await res.json().catch(() => null)) as { result?: T; error?: { message?: string } } | null;
+  if (!d || d.error || d.result === undefined) throw new Error(`BSC ${method}: ${d?.error?.message ?? `HTTP ${res.status}`}`);
+  return d.result;
+}
+const hexNum = (h: string) => Number(BigInt(h));
+const topicOf = (address: string) => `0x${address.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`;
+interface Log { transactionHash: string; data: string; blockNumber: string; address: string; topics: string[] }
+
+async function bscIncoming(address: string, sinceMs: number): Promise<Transfer[]> {
+  const latest = hexNum(await bsc<string>("eth_blockNumber", []));
+  const back = Math.min(BSC_DEPTH, Math.ceil((Date.now() - sinceMs) / 1000 / BSC_BLOCK_S));
+  const out: Transfer[] = [];
+  for (let from = latest - back; from <= latest; from += BSC_STEP) {
+    const logs = await bsc<Log[]>("eth_getLogs", [{
+      fromBlock: `0x${from.toString(16)}`, toBlock: `0x${Math.min(latest, from + BSC_STEP - 1).toString(16)}`,
+      address: USDT_BEP20, topics: [TRANSFER, null, topicOf(address)],
+    }]);
+    for (const l of logs) {
+      out.push({ hash: l.transactionHash, amount: Number(BigInt(l.data) / BigInt(1e12)) / 1e6, at: Date.now() - (latest - hexNum(l.blockNumber)) * BSC_BLOCK_S * 1000 });
+    }
+  }
+  return out;
+}
+
+export async function incoming(network: Network, asset: Asset, address: string, sinceMs: number): Promise<Transfer[]> {
   const since = Math.floor(sinceMs / 1000);
   if (network === "TRC20") {
     const q = new URLSearchParams({ only_to: "true", limit: "50", contract_address: USDT_TRC20, min_timestamp: String(sinceMs) });
@@ -51,6 +92,14 @@ async function incoming(network: Network, asset: Asset, address: string, sinceMs
       `https://toncenter.com/api/v3/transactions?${q}`);
     return (d.transactions ?? []).filter((t) => t.in_msg?.source && Number(t.in_msg.value) > 0)
       .map((t) => ({ hash: b64ToHex(t.hash), amount: Number(t.in_msg!.value) / 1e9, at: t.now * 1000 }));
+  }
+  if (network === "BEP20") return bscIncoming(address, sinceMs);
+  if (network === "ERC20") {
+    const q = new URLSearchParams({ apiKey: "freekey", token: USDT_ERC20, type: "transfer", limit: "50" });
+    const d = await getJson<{ operations?: { transactionHash: string; value: string; timestamp: number; to: string }[] }>(
+      `https://api.ethplorer.io/getAddressHistory/${address}?${q}`);
+    return (d.operations ?? []).filter((o) => o.to.toLowerCase() === address.toLowerCase() && o.timestamp * 1000 >= sinceMs)
+      .map((o) => ({ hash: o.transactionHash, amount: Number(o.value) / 1e6, at: o.timestamp * 1000 }));
   }
   return [];
 }
@@ -79,6 +128,18 @@ export async function findPayment(
 // BEP20/ERC20 и не найденный — null: хэш тогда пишется как есть.
 export async function transferByHash(network: Network, asset: Asset, address: string, hash: string, createdMs: number): Promise<Transfer | null> {
   const h = hash.toLowerCase().replace(/^0x/, "");
+  // EVM — прямо по хэшу: окно истории тут не нужно.
+  if (network === "BEP20") {
+    const r = await bsc<{ logs: Log[] } | null>("eth_getTransactionReceipt", [`0x${h}`], BSC_RECEIPTS);
+    const l = r?.logs.find((l) => l.address.toLowerCase() === USDT_BEP20 && l.topics[0] === TRANSFER && l.topics[2]?.toLowerCase() === topicOf(address));
+    return l ? { hash: `0x${h}`, amount: Number(BigInt(l.data) / BigInt(1e12)) / 1e6, at: Date.now() } : null;
+  }
+  if (network === "ERC20") {
+    const d = await getJson<{ timestamp?: number; operations?: { to: string; value: string; type: string; tokenInfo?: { address: string } }[] }>(
+      `https://api.ethplorer.io/getTxInfo/0x${h}?apiKey=freekey`).catch(() => null);
+    const o = d?.operations?.find((o) => o.type === "transfer" && o.tokenInfo?.address.toLowerCase() === USDT_ERC20 && o.to.toLowerCase() === address.toLowerCase());
+    return o ? { hash: `0x${h}`, amount: Number(o.value) / 1e6, at: (d!.timestamp ?? 0) * 1000 } : null;
+  }
   return (await incoming(network, asset, address, createdMs - 24 * 3600_000)).find((t) => t.hash.toLowerCase() === h) ?? null;
 }
 

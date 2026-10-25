@@ -101,9 +101,7 @@ export function topupText(r: Topup): string {
   } else if (r.status === "rejected") {
     lines.push(`✖️ Отклонено${r.closed_by ? ` · ${escapeHtml(r.closed_by)}` : ""}`);
   } else if (r.searching_since) {
-    lines.push(AUTO_SEARCH.includes(r.network)
-      ? `🔎 Отмечено оплаченным${r.closed_by ? ` (${escapeHtml(r.closed_by)})` : ""} — ищу перевод в блокчейне. Хэш можно прислать ответом на это сообщение.`
-      : `🔎 Отмечено оплаченным — пришли хэш ответом на это сообщение (для ${r.network} бот сам не ищет).`);
+    lines.push(`🔎 Отмечено оплаченным${r.closed_by ? ` (${escapeHtml(r.closed_by)})` : ""} — ищу перевод в блокчейне. Хэш можно прислать ответом на это сообщение.`);
   }
   return lines.join("\n");
 }

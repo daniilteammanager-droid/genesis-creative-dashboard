@@ -77,5 +77,5 @@ export async function handleTopupUpdate(u: TopupUpdate): Promise<void> {
   const { result, seen } = await manualPaid(r, hash, who(m.from));
   await say(m, typeof result === "string" ? escapeHtml(result) : seen
     ? `✅ Заявка #${r.number} закрыта: перевод ${result.paid_amount} ${r.asset} на адрес заявки найден.`
-    : `✅ Заявка #${r.number} закрыта этим хэшем. Перевода на адрес заявки в блокчейне не вижу — проверь хэш${["BEP20", "ERC20"].includes(r.network) ? ` (для ${r.network} бот сам не проверяет)` : ""}.`);
+    : `✅ Заявка #${r.number} закрыта этим хэшем. Перевода на адрес заявки в блокчейне не вижу — проверь хэш.`);
 }

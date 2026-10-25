@@ -35,6 +35,18 @@ if (process.env.LIVE) {
   // Тот же перевод уже записан за другой заявкой — не берём.
   assert.equal(await findPayment({ network: "TRC20", asset: "USDT", address: "TNXoiAJ3dct8Fjg4M9fkLFh9S2v9TXc32G",
     amount: 38131315.653804, fee: 0, createdAt: new Date(1792862424000 - 60_000).toISOString() }, async () => true), null);
+  // BEP20 и ERC20: свежий входящий на горячие кошельки Binance — найти по сумме и по хэшу.
+  const { incoming, transferByHash } = await import("./chain");
+  for (const [network, address] of [["BEP20", "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"], ["ERC20", "0x28C6c06298d514Db089934071355E5743bf21d60"]] as const) {
+    const since = Date.now() - 30 * 60_000;
+    const list = await incoming(network, "USDT", address, since);
+    assert.ok(list.length > 0, `${network}: входящих за 30 минут нет`);
+    const t = list[list.length - 1];
+    const found = await findPayment({ network, asset: "USDT", address, amount: t.amount, fee: 0, createdAt: new Date(since + 10 * 60_000).toISOString() }, none);
+    assert.ok(found && matches(found.amount, t.amount, 0));
+    assert.equal((await transferByHash(network, "USDT", address, t.hash, Date.now()))?.amount, t.amount);
+    console.log(network, list.length, "входящих,", t.amount, "USDT", t.hash);
+  }
   console.log("live ok");
 }
 console.log("ok");
