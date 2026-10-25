@@ -17,13 +17,15 @@ const USDT_TRC20 = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const USDT_TON = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs";
 const USDT_BEP20 = "0x55d398326f99059ff775485246999027b3197955";   // 18 знаков
 const USDT_ERC20 = "0xdac17f958d2ee523a2206206994597c13d831ec7";   // 6 знаков
-const BSC_RPC = "https://bsc-rpc.publicnode.com";        // логи Transfer по адресу
+// Логи Transfer по адресу. BSC_RPC_URL — ссылка publicnode с личным токеном.
+const BSC_RPC = process.env.BSC_RPC_URL || "https://bsc-rpc.publicnode.com";
 const BSC_RECEIPTS = "https://bsc-dataseed.bnbchain.org"; // квитанции по хэшу, любой давности
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-// BSC: блок ~0,45 с. Без ключа publicnode отдаёт логи только за последние ~10 000
-// блоков (~75 минут), шагом до 4000. ponytail: перевод раньше этого окна бот не
-// найдёт — тогда хэш ответом; глубже — личный ключ publicnode.
-const BSC_BLOCK_S = 0.45, BSC_DEPTH = 9000, BSC_STEP = 3000;
+// BSC: блок ~0,45 с. Без токена publicnode отдаёт логи только за последние ~10 000
+// блоков (~75 минут), шагом до 4000; с токеном — глубже, шагом 10 000: ищем до
+// суток назад (~20 запросов). Перевод раньше окна — хэш ответом.
+const BSC_TOKEN = Boolean(process.env.BSC_RPC_URL);
+const BSC_BLOCK_S = 0.45, BSC_DEPTH = BSC_TOKEN ? 192_000 : 9000, BSC_STEP = BSC_TOKEN ? 10_000 : 3000;
 
 export const AUTO_SEARCH: Network[] = ["TRC20", "TON", "BEP20", "ERC20"];
 
@@ -114,10 +116,13 @@ export function matches(paid: number, amount: number, fee: number): boolean {
 export async function findPayment(
   req: { network: Network; asset: Asset; address: string; amount: number; fee: number; createdAt: string },
   taken: (hash: string) => Promise<boolean>,
+  recentMs?: number,   // крон: только последние N мс — на BSC полное окно это десятки запросов
 ): Promise<Transfer | null> {
   if (!AUTO_SEARCH.includes(req.network)) return null;
   // Минуты до заявки — запас на расхождение часов и «заплатил, потом оформил».
-  const list = await incoming(req.network, req.asset, req.address, Date.parse(req.createdAt) - 10 * 60_000);
+  let since = Date.parse(req.createdAt) - 10 * 60_000;
+  if (recentMs && req.network === "BEP20") since = Math.max(since, Date.now() - recentMs);
+  const list = await incoming(req.network, req.asset, req.address, since);
   for (const t of list.filter((t) => matches(t.amount, req.amount, req.fee)).sort((a, b) => a.at - b.at)) {
     if (!(await taken(t.hash))) return t;
   }

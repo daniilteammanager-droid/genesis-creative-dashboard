@@ -189,8 +189,9 @@ export async function markPaid(id: string, pay: { hash: string; amount?: number 
   return r;
 }
 
-async function trySearch(r: Topup): Promise<Transfer | null> {
-  return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, fee: r.fee, createdAt: r.created_at }, hashTaken);
+// recentMs — для крона: при «Оплачено» окно уже просмотрено целиком, дальше хватит свежих минут.
+async function trySearch(r: Topup, recentMs?: number): Promise<Transfer | null> {
+  return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, fee: r.fee, createdAt: r.created_at }, hashTaken, recentMs);
 }
 
 // «Оплачено»: сразу ищем перевод; не нашли — заявка ждёт его в поиске (крон раз в минуту).
@@ -255,7 +256,7 @@ export async function tickTopups(): Promise<{ expired: number; found: number; er
   for (const o of open ?? []) {
     try {
       const r = (await getTopup(o.id as string))!;
-      const t = await trySearch(r);
+      const t = await trySearch(r, 15 * 60_000);
       if (t && typeof (await markPaid(r.id, t, r.closed_by)) !== "string") out.found++;
     } catch (e) {
       out.errors.push(e instanceof Error ? e.message : String(e));
