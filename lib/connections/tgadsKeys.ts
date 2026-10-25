@@ -23,6 +23,16 @@ export async function listTgadsKeys(userId: string): Promise<TgadsKeyView[]> {
   }));
 }
 
+// Все ключи команды с владельцем — для антиотклона: проверка идёт по всем кабинетам разом.
+export async function allTgadsKeys(): Promise<{ token: string; accountId: string; accountTitle: string; userId: string }[]> {
+  const { data, error } = await warehouse().from("tgads_keys").select("user_id, token_enc, account_id, account_title, name");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((k) => ({
+    userId: k.user_id as string, token: decryptSecret(k.token_enc as string),
+    accountId: k.account_id as string, accountTitle: (k.account_title as string) || (k.name as string),
+  }));
+}
+
 // Расшифрованные ключи — только серверному коду, который идёт в Telegram Ads.
 export async function tgadsKeysOf(userId: string): Promise<{ id: string; token: string; accountId: string; accountTitle: string }[]> {
   const { data, error } = await warehouse().from("tgads_keys").select("id, token_enc, account_id, account_title, name")

@@ -54,7 +54,7 @@ export async function troubleByOwner(since: string, label: Map<string, string>):
   const db = warehouse();
   const [{ data: cabs }, { data: ads }] = await Promise.all([
     db.from("wh_cabinet_states").select("account_id").in("status", PROBLEM).gte("alerted_at", since),
-    db.from("wh_rejected_ads").select("account_id").gte("alerted_at", since),
+    db.from("wh_rejected_ads").select("account_id, owner_user_id").gte("alerted_at", since),
   ]);
   const ids = [...new Set([...(cabs ?? []), ...(ads ?? [])].map((r) => r.account_id as string))];
   const { data: owners } = ids.length
@@ -62,15 +62,15 @@ export async function troubleByOwner(since: string, label: Map<string, string>):
     : { data: [] };
   const ownerOf = new Map((owners ?? []).map((o) => [o.account_id as string, o.owner_user_id as string | null]));
   const by = new Map<string, TroubleLine>();
-  const bump = (accountId: string, k: "cabinets" | "rejected") => {
-    const owner = ownerOf.get(accountId);
+  const bump = (accountId: string, k: "cabinets" | "rejected", direct?: string | null) => {
+    const owner = direct ?? ownerOf.get(accountId);
     const name = owner ? label.get(owner) ?? owner : NO_OWNER;
     const t = by.get(name) ?? { label: name, cabinets: 0, rejected: 0 };
     t[k]++;
     by.set(name, t);
   };
   for (const c of cabs ?? []) bump(c.account_id as string, "cabinets");
-  for (const a of ads ?? []) bump(a.account_id as string, "rejected");
+  for (const a of ads ?? []) bump(a.account_id as string, "rejected", a.owner_user_id as string | null);
   return [...by.values()];
 }
 

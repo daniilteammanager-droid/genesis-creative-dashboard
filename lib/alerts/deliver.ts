@@ -10,6 +10,7 @@ export interface Alert {
   accountId: string;
   text: string;                       // HTML
   extra?: Record<string, unknown>;    // reply_markup и прочее для sendMessage
+  ownerId?: string;                   // кабинет вне wh_account_owners (TG Ads — владелец ключа)
 }
 
 export async function deliver(alerts: Alert[], event: string): Promise<number> {
@@ -20,7 +21,7 @@ export async function deliver(alerts: Alert[], event: string): Promise<number> {
 
   let sent = 0;
   for (const a of alerts) {
-    const owner = ownerOf.get(a.accountId);
+    const owner = a.ownerId ?? ownerOf.get(a.accountId);
     if (!owner) continue;
     try {
       sent += await notify(owner, event, a.text, a.extra);

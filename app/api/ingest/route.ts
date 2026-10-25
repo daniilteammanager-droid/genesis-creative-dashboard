@@ -4,6 +4,7 @@ import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { getConnection } from "@/lib/connections/store";
 import { checkCabinets } from "@/lib/alerts/cabinets";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
+import { allTgadsKeys } from "@/lib/connections/tgadsKeys";
 import { runAutocheck } from "@/lib/alerts/autocheck";
 import { runDailySummary } from "@/lib/alerts/summary";
 import { runPairs } from "@/lib/warehouse/torroPairs";
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
         const { tokenFor, dolphinFor, fbtoolFor, ...summary } = await checkCabinets(tokens, dolphin, fbtool);
         cabinets = summary;
         try {
-          rejected = await checkRejectedAds(tokenFor, dolphinFor, fbtoolFor);
+          rejected = await checkRejectedAds(tokenFor, dolphinFor, fbtoolFor, await allTgadsKeys());
         } catch (e) {
           rejected = { error: e instanceof Error ? e.message : String(e) };
         }
