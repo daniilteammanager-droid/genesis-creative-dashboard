@@ -3,6 +3,8 @@ import { NO_CABINETS, resolveScope } from "./accounts";
 import { parseCreativeCode, geoOf, approachOf, buyerOf } from "@/lib/creatives/code";
 import type { Profile } from "@/lib/auth/types";
 import type { Quals } from "./reportTree";
+import { parseName } from "@/lib/creatives/code";
+import { faceInName } from "./check";
 
 // Раздел «Креативы»: что крутилось за период и что оно принесло.
 //
@@ -45,6 +47,7 @@ export interface CreativeRow {
   redepCount: number | null;
   redepSum: number | null;
   quals: Quals | null;       // A–E, сегменты CRM
+  faces: string[];           // лица из имён кампаний, где крутился
 }
 
 export interface CreativesResult {
@@ -130,13 +133,13 @@ export async function loadCreatives(
 
   // ─── Meta: дни объявлений ────────────────────────────────────────────────
   type AdDay = {
-    user_id: string; ad_name: string; ad_id: string; campaign_id: string | null;
+    user_id: string; ad_name: string; ad_id: string; campaign_id: string | null; campaign_name: string | null;
     adset_id: string | null; account_id: string | null; date: string;
     spend: number | string; clicks: number; impressions: number;
   };
   const adDays = await selectAll<AdDay>((from, to) => {
     const q = db.from("wh_ad_days")
-      .select("user_id, ad_name, ad_id, campaign_id, adset_id, account_id, date, spend, clicks, impressions")
+      .select("user_id, ad_name, ad_id, campaign_id, campaign_name, adset_id, account_id, date, spend, clicks, impressions")
       .gte("date", since).lte("date", until);
     return (accountIds ? q.in("account_id", accountIds) : q)
       .order("user_id").order("date").order("ad_id")
@@ -185,7 +188,7 @@ export async function loadCreatives(
       owners: [],
       spend: 0, clicks: 0, impressions: 0, adCount: 0, campaigns: 0,
       crmClicks: null, subscribers: null, dialogs: null, registrations: null,
-      depCount: null, depSum: null, redepCount: null, redepSum: null, quals: null,
+      depCount: null, depSum: null, redepCount: null, redepSum: null, quals: null, faces: [],
     };
   }
 
@@ -209,6 +212,8 @@ export async function loadCreatives(
     row.clicks += num(d.clicks);
     row.impressions += num(d.impressions);
     if (!row.owners.includes(d.user_id)) row.owners.push(d.user_id);
+    const face = parseName(d.campaign_name ?? "").face ?? faceInName(d.campaign_name ?? "");
+    if (face && !row.faces.includes(face)) row.faces.push(face);
 
     if (!adIds.has(code)) adIds.set(code, new Set());
     adIds.get(code)!.add(d.ad_id);

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, type Metrics } from "@/app/reports/columns";
+import { mergeVersions, toCsv } from "@/lib/creatives/merge";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -42,6 +43,8 @@ export default function CreativesTable() {
   const [until, setUntil] = useState(daysAgo(0));
   const [buyer, setBuyer] = useState<string>("all");
   const [country, setCountry] = useState<string>("all");
+  const [face, setFace] = useState<string>("all");
+  const [merge, setMerge] = useState(false);
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +83,21 @@ export default function CreativesTable() {
   // принять данные за прошлый период за текущие.
   const stale = Boolean(data) && (data!.since !== since || data!.until !== until);
 
-  const rows: CreativeRow[] = data?.rows ?? [];
+  // Лицо и склейка версий — поверх ответа, без нового запроса (как у Артёма в «Дашборде»).
+  const all: CreativeRow[] = data?.rows ?? [];
+  const faces = [...new Set(all.flatMap((r) => r.faces))].sort();
+  const byFace = face === "all" ? all : all.filter((r) => (face === "none" ? r.faces.length === 0 : r.faces.includes(face)));
+  const rows: (CreativeRow & { versions?: number })[] = merge ? mergeVersions(byFace) : byFace;
+  const totals = rows.reduce((t, r) => ({ spend: t.spend + r.spend, rev: t.rev + (r.depSum ?? 0) + (r.redepSum ?? 0) }), { spend: 0, rev: 0 });
+
+  function downloadCsv() {
+    const head = ["Код креатива", "Страны", "Лица", "Подход", ...COLS.map((c) => c.label)];
+    const body = rows.map((r) => [r.code, r.countries.join(" "), r.faces.join(" "), r.approach, ...COLS.map((c) => c.cell(metrics(r)))]);
+    const url = URL.createObjectURL(new Blob([toCsv([head, ...body])], { type: "text/csv;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: `creatives_${since}_${until}.csv` });
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div>
@@ -132,6 +149,22 @@ export default function CreativesTable() {
               <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
             ))}
           </div>
+        </div>
+      )}
+
+      {data && all.length > 0 && (
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Лицо</span>
+          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <button onClick={() => setFace("all")} className={chip(face === "all")}>Все</button>
+            {faces.map((f) => <button key={f} onClick={() => setFace(f)} className={chip(face === f)}>{f}</button>)}
+            <button onClick={() => setFace("none")} className={chip(face === "none")}>Без лица</button>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <input type="checkbox" checked={merge} onChange={(e) => setMerge(e.target.checked)} className="accent-violet-500" />
+            Склеить версии v1, v2, v3…
+          </label>
+          <button onClick={downloadCsv} className="px-3 py-1.5 rounded-lg text-sm border border-violet-900/40 text-zinc-300 hover:bg-violet-900/20 ml-auto">↓ CSV</button>
         </div>
       )}
 
@@ -190,9 +223,9 @@ export default function CreativesTable() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {([
-              ["Расход", money(data!.totals.spend)],
-              ["Доход", money(data!.totals.depSum)],
-              ["ROMI", romi(data!.totals.spend, data!.totals.depSum)],
+              ["Расход", money(totals.spend)],
+              ["Доход", money(totals.rev)],
+              ["ROMI", romi(totals.spend, totals.rev)],
               ["Креативов", n(rows.length)],
             ] as const).map(([label, value]) => (
               <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
@@ -223,6 +256,9 @@ export default function CreativesTable() {
                           именно на нём (Decision 043). */}
                       {r.scheme === "legacy" && (
                         <span className="ml-2 text-[10px] text-zinc-600 border border-zinc-700/50 rounded px-1 py-0.5">старый</span>
+                      )}
+                      {(r.versions ?? 1) > 1 && (
+                        <span className="ml-2 text-[10px] text-violet-300 border border-violet-700/40 rounded px-1 py-0.5">версий: {r.versions}</span>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
