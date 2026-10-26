@@ -90,3 +90,20 @@ assert.equal(faceInName("TG ADS Латам"), null);
 
 console.log("check: шаблон для телеги совпадает с образцом, блоки по площадкам и лицам");
 console.log("check: «не знаем» печатается прочерком, а не нулём ✓");
+
+// Общие резы FB: Испания, Латам, весь FB — по гео в имени кампании, креатива или стране разреза.
+import { regionOf, regionTotals } from "./check";
+const mk = (label: string, spend: number, platform: "fb" | "tg" = "fb"): CheckRow => ({ key: label, label, platform, face: "ROMAN", dailyBudget: 10, spend, subscribers: 2, dialogs: 1, revenue: 0, costPdp: null, costDia: null, romi: null });
+assert.equal(regionOf(mk("CAB2074_26.10_TG_EXP_ESP_MTG_ROMAN_3", 1), "campaign"), "es");
+assert.equal(regionOf(mk("ACC6773_26.10_TG_EXP_CHILE_TGR_ROMAN_T37", 1), "campaign"), "latam");
+assert.equal(regionOf(mk("T2A/70 19.08 EXP TG LATAM", 1), "campaign"), "latam");
+assert.equal(regionOf(mk("vid-balance-t30-v9-b3-es-ar", 1), "creative"), "latam");
+assert.equal(regionOf(mk("vid-balance-t30-v9-b3-es-es", 1), "creative"), "es");
+assert.equal(regionOf(mk("videoM17CLst-ar", 1), "creative"), "latam");
+assert.equal(regionOf(mk("ES", 1), "country"), "es");
+assert.equal(regionOf(mk("IT", 1), "country"), null);
+const reg = regionTotals([mk("ES", 100), mk("AR", 50), mk("MX", 50), mk("IT", 10), mk("ES", 999, "tg")], "country");
+assert.deepEqual(reg.map((r) => [r.label, r.spend, r.dailyBudget]), [["🇪🇸 Испания — общие резы", 100, 10], ["🌎 Латам — общие резы", 100, 20], ["Весь FB — общие резы", 210, 40]]);
+const regText = buildCheckText([mk("ES", 100)], faceTotals([mk("ES", 100)]), null, new Date(), undefined, [], reg);
+assert.ok(regText.includes("📊 FB — общие резы\n\n🇪🇸 Испания — общие резы - [10$]\n100,00 / 50,00 / 100,00 / 0,00 / -100%"));
+console.log("check regions: ok");

@@ -35,7 +35,7 @@ const row = (i: number) => ({
 const rows40 = Array.from({ length: 40 }, (_, i) => row(i));
 const result = {
   since: D, until: D, groupBy: "campaign" as const, live: true,
-  rows: rows40, faces: faceTotals(rows40), platforms: [], unmatched: { subscribers: 120, dialogs: 30, revenue: 1500, names: 7 }, totalBudget: 2000,
+  rows: rows40, faces: faceTotals(rows40), regions: [], platforms: [], unmatched: { subscribers: 120, dialogs: 30, revenue: 1500, names: 7 }, totalBudget: 2000,
   totals: { spend: 3220, revenue: 500, romi: -84.5 }, text: "", buyers: [], sources: [],
   buyer: "all", isBuyer: false, generatedAt: "",
 };

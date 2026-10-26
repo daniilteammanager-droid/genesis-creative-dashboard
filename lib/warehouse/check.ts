@@ -14,7 +14,7 @@ import type { Profile } from "@/lib/auth/types";
 import { mskDay, mskStamp } from "@/lib/day";
 import { fetchDay, toCrm } from "@/lib/torro/mcp";
 import { uniqueIds } from "./torroIngest";
-import { parseName } from "@/lib/creatives/code";
+import { parseCreativeCode, parseName } from "@/lib/creatives/code";
 
 // Чек — то, что копируют и отправляют в телегу.
 //
@@ -86,6 +86,7 @@ export interface CheckResult {
   live: boolean;
   rows: CheckRow[];              // сгруппированы по площадкам и лицам в порядке faces
   faces: FaceTotal[];            // по площадкам, внутри — по лицам
+  regions: FaceTotal[];          // Facebook: Испания, Латам, весь FB
   platforms: PlatformTotal[];    // только подключённые
   unmatched: Unmatched | null;
   totalBudget: number | null;
@@ -144,7 +145,8 @@ const budgetOf = (r: CheckRow) => (r.dailyBudget !== null ? ` - [${nf(r.dailyBud
 // строк лица (авточек шлёт верх) — тогда с unit остаток лица печатается одной строкой.
 // Площадок больше одной — над лицами строка площадки с её итогом; подключена, а
 // расхода нет — «расхода нет». Площадка одна — заголовка нет, как раньше.
-export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget: number | null, now: Date, unit?: string, platforms: PlatformTotal[] = []): string {
+// Под блоком Facebook — общие резы: Испания, Латам и весь FB (по просьбе владельца 26.10.2026).
+export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget: number | null, now: Date, unit?: string, platforms: PlatformTotal[] = [], regions: FaceTotal[] = []): string {
   const head = `Отчет по трафу / ${mskStamp(now)}` + (totalBudget !== null ? ` / [${nf(totalBudget, 0)}$]` : "");
 
   const lines = [head, ""];
@@ -165,8 +167,38 @@ export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget
         lines.push(`…и ещё ${hidden} ${unit} на ${nf(spend)}$`, "");
       }
     }
+    if ((p?.platform ?? "fb") === "fb" && regions.length) {
+      lines.push("📊 FB — общие резы", "");
+      for (const r of regions) lines.push(`${r.label}${budgetOf(r)}`, numbers(r), "");
+    }
   }
   return lines.join("\n").trimEnd();
+}
+
+// Регион строки Facebook — по стране разреза или по гео в имени кампании / креатива.
+const LATAM = new Set(["AR", "MX", "CO", "CL", "PE", "PY", "UY", "EC", "PA", "BO", "VE", "CR", "GT", "DO", "HN", "SV", "NI", "LATAM"]);
+export function regionOf(r: Pick<CheckRow, "label">, groupBy: CheckGroup): "es" | "latam" | null {
+  let geo: string | undefined;
+  if (groupBy === "country") geo = r.label.toUpperCase();
+  else if (groupBy === "campaign") geo = parseName(r.label).geo;
+  else {
+    const c = parseCreativeCode(r.label);
+    geo = c.scheme === "v2" ? c.geo.toUpperCase() : /-([a-z]{2})$/i.exec(r.label.trim())?.[1].toUpperCase() ?? parseName(r.label).geo;
+  }
+  if (geo === "ES") return "es";
+  return geo && LATAM.has(geo) ? "latam" : null;
+}
+
+// Испания, Латам и весь Facebook. Строки без узнанного гео идут только во «весь FB».
+export function regionTotals(rows: CheckRow[], groupBy: CheckGroup): FaceTotal[] {
+  const fb = rows.filter((r) => r.platform === "fb");
+  if (!fb.length) return [];
+  const es = fb.filter((r) => regionOf(r, groupBy) === "es"), la = fb.filter((r) => regionOf(r, groupBy) === "latam");
+  return [
+    ...(es.length ? [sum(es, "es", "🇪🇸 Испания — общие резы", "fb", "")] : []),
+    ...(la.length ? [sum(la, "latam", "🌎 Латам — общие резы", "fb", "")] : []),
+    sum(fb, "fb", "Весь FB — общие резы", "fb", ""),
+  ];
 }
 
 const sum = (rows: CheckRow[], key: string, label: string, platform: Platform, face: string): CheckRow & { count: number } => {
@@ -376,7 +408,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    faces: [], platforms: [], unmatched: null, totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
+    faces: [], regions: [], platforms: [], unmatched: null, totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -496,6 +528,17 @@ export async function loadCheck(
       return true;
     };
     let failedAccounts = 0;
+    // Один упавший источник не роняет чек целиком: его цифр нет, и об этом сказано
+    // в предупреждении. Раньше FB Tool Андрея («reduce the amount of data») ронял
+    // живой чек владельцу у всей команды (26.10.2026).
+    const failedSources: string[] = [];
+    const sourceGuard = <T,>(config: LiveSource, what: string, p: Promise<T>, empty: T): Promise<T> =>
+      p.catch((e: unknown) => {
+        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 160);
+        failedSources.push(`${buyerLabel.get(config.userId) ?? config.userId} (${what}): ${msg}`);
+        console.warn("check: источник не прочитался", config.userId, what, msg);
+        return empty;
+      });
 
     // У живого чека таргет спрашивается прямо у Meta. Склад тут не помощник: он
     // собирается по подключениям баеров, а кабинеты владельца в него не попадают
@@ -503,7 +546,8 @@ export async function loadCheck(
     // «страна не определена» (замер 31.08.2026).
     if (groupBy === "country") {
       // Dolphin таргет не отдаёт — его страны приходят из нейминга вместе с расходом ниже.
-      const targeting = await Promise.all(sources.filter((c) => !own(c)).map((c) => fetchAdSetTargeting(c.metaToken, c.accountScope)));
+      const targeting = await Promise.all(sources.filter((c) => !own(c)).map((c) =>
+        sourceGuard(c, "таргет", fetchAdSetTargeting(c.metaToken, c.accountScope), { items: [], failedAccounts: 0 } as Awaited<ReturnType<typeof fetchAdSetTargeting>>)));
       for (const t of targeting) {
         failedAccounts += t.failedAccounts;
         for (const a of t.items) geoByAdset.set(a.adsetId, a.countries);
@@ -513,9 +557,9 @@ export async function loadCheck(
     if (groupBy === "campaign") {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, campaignMeta, crm] = await Promise.all([
-          own(config) ? dolphinCampaigns(config, since) : fetchCampaignInsights(config.metaToken, since, until, config.accountScope),
-          own(config) ? dolphinBudgets(config, since) : fetchCampaignMeta(config.metaToken, config.accountScope),
-          config.torro ? torroForDay(config.torro, since, "campaign_name") : NO_CRM,
+          sourceGuard(config, "расход", own(config) ? dolphinCampaigns(config, since) : fetchCampaignInsights(config.metaToken, since, until, config.accountScope), { items: [], failedAccounts: 0 }),
+          sourceGuard(config, "бюджеты", own(config) ? dolphinBudgets(config, since) : fetchCampaignMeta(config.metaToken, config.accountScope), { statuses: new Map(), dailyBudgets: new Map() } as CampaignMeta),
+          config.torro ? sourceGuard(config, "Torro", torroForDay(config.torro, since, "campaign_name"), NO_CRM) : NO_CRM,
         ]);
         return { meta, campaignMeta, crm };
       }));
@@ -553,10 +597,10 @@ export async function loadCheck(
     } else {
       const parts = await Promise.all(sources.map(async (config) => {
         const [meta, crm] = await Promise.all([
-          own(config) ? dolphinAds(config, since, geoByAdset) : fetchAdInsights(config.metaToken, since, until, config.accountScope),
+          sourceGuard(config, "расход", own(config) ? dolphinAds(config, since, geoByAdset) : fetchAdInsights(config.metaToken, since, until, config.accountScope), { items: [] as MetaAdRow[], failedAccounts: 0 }),
           // TG Ads: доход в Torro — по кампании, а кампания там и есть объявление со
           // страной («Static 2 Mexico»), как в боте-авточекере (Decision 068).
-          config.torro ? torroForDay(config.torro, since, config.tgads ? "campaign_name" : "ad_name") : NO_CRM,
+          config.torro ? sourceGuard(config, "Torro", torroForDay(config.torro, since, config.tgads ? "campaign_name" : "ad_name"), NO_CRM) : NO_CRM,
         ]);
         return { meta, crm };
       }));
@@ -597,6 +641,7 @@ export async function loadCheck(
 
     const notes: string[] = [];
     if (failedAccounts > 0) notes.push(`не прочиталось кабинетов: ${failedAccounts}`);
+    if (failedSources.length) notes.push(`не прочитались — ${[...new Set(failedSources)].join("; ")}`);
     // Torro — один на человека, поэтому и считаем людей, а не ключи.
     const noTorro = [...new Set(sources.map((c) => c.userId))].filter((u) => !sources.some((c) => c.userId === u && c.torro));
     if (noTorro.length > 0) {
@@ -738,6 +783,7 @@ export async function loadCheck(
   const bySpend = [...rows.values()].map(derive).sort((a, b) => b.spend - a.spend);
   const faces = faceTotals(bySpend);
   const platforms = platformTotals(bySpend, platformsOn);
+  const regions = regionTotals(bySpend, groupBy);
   // Строки — блоками по площадкам и лицам, в порядке faces; внутри — по расходу.
   const order = new Map(faces.map((f, i) => [`${f.platform}|${f.face}`, i]));
   const list = [...bySpend].sort((a, b) => order.get(`${a.platform}|${a.face}`)! - order.get(`${b.platform}|${b.face}`)!);
@@ -763,6 +809,7 @@ export async function loadCheck(
     sources: sourceLabels,
     rows: list,
     faces,
+    regions,
     platforms,
     unmatched,
     totalBudget,
@@ -771,7 +818,7 @@ export async function loadCheck(
       revenue,
       romi: revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null,
     },
-    text: buildCheckText(list, faces, totalBudget, new Date(), undefined, platforms) + unmatchedLine(unmatched),
+    text: buildCheckText(list, faces, totalBudget, new Date(), undefined, platforms, regions) + unmatchedLine(unmatched),
     warning,
   };
 }

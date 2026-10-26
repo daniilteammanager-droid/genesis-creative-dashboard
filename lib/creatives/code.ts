@@ -133,7 +133,7 @@ const NAME_GEO: Record<string, string> = {
   PER: "PE", PE: "PE", PRY: "PY", PAR: "PY", PY: "PY", URY: "UY", URU: "UY", UY: "UY",
   ECU: "EC", EC: "EC", PAN: "PA", PA: "PA", COL: "CO", CO: "CO", LATAM: "LATAM",
   // Старые РК писали страну словом: «T2A/72 01.08 EXP TG SPAIN».
-  SPAIN: "ES",
+  SPAIN: "ES", CHILE: "CL", PERU: "PE", MEXICO: "MX", ARGENTINA: "AR", ECUADOR: "EC", COLOMBIA: "CO",
 };
 const FUNNELS = new Set(["TG", "WA"]);
 const MARKERS = new Set(["NEW", "EXP", "MIX"]);
