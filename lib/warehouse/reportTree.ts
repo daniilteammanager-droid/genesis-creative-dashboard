@@ -1,6 +1,8 @@
 import { warehouse, selectAll } from "./read";
 import { NO_CABINETS, resolveScope } from "./accounts";
 import type { Profile } from "@/lib/auth/types";
+import { faceInName } from "./check";
+import { parseName } from "@/lib/creatives/code";
 
 // Reports как аналог FB Tool: кампании, внутри адсеты, внутри объявления.
 //
@@ -32,6 +34,11 @@ export interface TreeNode {
   depSum: number | null;
   quals: Quals | null;
   outside?: boolean;            // только в Torro: кабинет не подключён
+  // Для Live Manager: кабинет (куда писать паузу и бюджет), страны таргета и лицо
+  // из имени кампании — для фильтров GEO и «лицо».
+  accountId?: string;
+  countries?: string[];
+  face?: string | null;
   children?: TreeNode[];
 }
 
@@ -154,6 +161,7 @@ export async function loadReportTree(
 
   // ─── Объявления ──────────────────────────────────────────────────────────
   type AdNode = TreeNode & { adsetId: string; campaignId: string; adsetName: string; campaignName: string };
+  const accountOf = new Map<string, string>();   // кампания / адсет → кабинет
   const ads = new Map<string, AdNode>();
   // Один и тот же день одного объявления мог прийти от двух токенов сразу —
   // считаем один раз (Decision 052).
@@ -169,7 +177,12 @@ export async function loadReportTree(
       spend: 0, clicks: 0, impressions: 0, ...NO_CRM(),
       adsetId: d.adset_id || "—", adsetName: d.adset_name || "Без адсета",
       campaignId: d.campaign_id || "—", campaignName: d.campaign_name || "Без кампании",
+      accountId: d.account_id ?? undefined,
     };
+    if (d.account_id) {
+      if (d.campaign_id) accountOf.set(d.campaign_id, d.account_id);
+      if (d.adset_id) accountOf.set(d.adset_id, d.account_id);
+    }
     node.spend += num(d.spend);
     node.clicks += num(d.clicks);
     node.impressions += num(d.impressions);
@@ -243,14 +256,27 @@ export async function loadReportTree(
   const nameCount = new Map<string, number>();
   for (const name of nameOfCampaign.values()) nameCount.set(name.trim(), (nameCount.get(name.trim()) ?? 0) + 1);
 
+  // Страны — из таргета адсета (Decision 045), как в Креативах.
+  const adsetIds = [...adsetNames.keys()].filter((id) => id !== "—");
+  const geoOf = new Map<string, string[]>();
+  for (let i = 0; i < adsetIds.length; i += 300) {
+    const { data } = await db.from("wh_adsets").select("adset_id, countries").in("adset_id", adsetIds.slice(i, i + 300));
+    for (const a of data ?? []) geoOf.set(a.adset_id as string, (a.countries as string[]) ?? []);
+  }
+
   const nodes: TreeNode[] = [];
   for (const [campaignId, sets] of byCampaign) {
-    const adsetNodes = [...sets.entries()].map(([adsetId, adNodes]) =>
-      fold(adNodes, adsetId, adsetNames.get(adsetId) ?? adsetId, "adset")
-    );
+    const adsetNodes = [...sets.entries()].map(([adsetId, adNodes]) => ({
+      ...fold(adNodes, adsetId, adsetNames.get(adsetId) ?? adsetId, "adset"),
+      accountId: accountOf.get(adsetId), countries: geoOf.get(adsetId) ?? [],
+    }));
     const name = nameOfCampaign.get(campaignId) ?? campaignId;
     const exact = nameCount.get(name.trim()) === 1 ? crmByCampaign.get(name.trim()) : undefined;
-    nodes.push(fold(adsetNodes, campaignId, name, "campaign", exact));
+    nodes.push({
+      ...fold(adsetNodes, campaignId, name, "campaign", exact),
+      accountId: accountOf.get(campaignId), face: parseName(name).face ?? faceInName(name),
+      countries: [...new Set(adsetNodes.flatMap((a) => a.countries))].sort(),
+    });
   }
   nodes.sort((a, b) => b.spend - a.spend);
 

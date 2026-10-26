@@ -76,7 +76,8 @@ export const MANY_FACES = "Несколько лиц";
 
 const faceOf = (campaignName: string | null | undefined) => parseName(campaignName ?? "").face ?? NO_FACE;
 // В именах TG Ads лица нет — оно берётся из названия кабинета, которое дал баер.
-export const faceInName = (name: string) => /\b(ROMAN|RICKY)\b/i.exec(name)?.[1].toUpperCase() ?? null;
+// Подчёркивание — тоже граница: «…_MTG_ROMAN_6» (у \b подчёркивание — часть слова).
+export const faceInName = (name: string) => /(?:^|[^A-Z0-9])(ROMAN|RICKY)(?=$|[^A-Z0-9])/i.exec(name)?.[1].toUpperCase() ?? null;
 
 export interface CheckResult {
   since: string;

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { loadReportTree } from "@/lib/warehouse/reportTree";
+import { ingestForUser } from "@/lib/warehouse/ingest";
+
+// refresh=1 — «Обновить сейчас» в Live Manager (Decision 079): сначала свежий
+// сегодняшний расход в склад, потом дерево. Баеру — свои подключения; владельцу —
+// выбранного баера (всю команду разом не гоняем: это минуты).
+export const maxDuration = 300;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_DAYS = 14;
@@ -19,6 +25,10 @@ export async function GET(req: Request) {
   if (since > until) return NextResponse.json({ error: "Начало диапазона позже конца" }, { status: 400 });
 
   try {
+    const who = me.role === "buyer" ? me.id : p.get("buyer");
+    if (p.get("refresh") === "1" && who) {
+      await ingestForUser(who, "today").catch((e) => console.warn("refresh:", e instanceof Error ? e.message : e));
+    }
     return NextResponse.json(await loadReportTree(me, since, until, p.get("buyer") ?? undefined));
   } catch (e) {
     const message = e instanceof Error ? e.message : "Ошибка";
