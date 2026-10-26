@@ -1,6 +1,7 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml, tg, TelegramError } from "@/lib/telegram/api";
 import { mskDay, mskStamp, mskTime } from "@/lib/day";
+import { paymentUri, qrPng } from "./qr";
 import { addressFits, AUTO_SEARCH, findPayment, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
@@ -31,7 +32,7 @@ export interface Topup {
   amount: number; fee: number; asset: Asset; network: Network; address: string; comment: string | null;
   expires_at: string | null; status: "pending" | "paid" | "rejected" | "expired";
   searching_since: string | null; tx_hash: string | null; paid_amount: number | null; paid_at: string | null;
-  closed_by: string | null; messages: { chat_id: number; message_id: number }[]; created_at: string;
+  closed_by: string | null; messages: { chat_id: number; message_id: number; qr?: boolean }[]; created_at: string;
   author?: string;
 }
 
@@ -121,9 +122,34 @@ function buttons(r: Topup) {
   return { inline_keyboard: [[...row, { text: "✖️ Отклонить", callback_data: `tp:no:${r.id}` }]] };
 }
 
+// QR ответом на заявку (Decision 088). Фото с адресом нельзя оставлять после закрытия —
+// текст заявки адрес прячет, поэтому QR удаляется, как только заявка не ждёт оплаты.
+async function sendQr(r: Topup, chat: { chat_id: number; thread_id: number | null }, replyTo: number): Promise<number | null> {
+  try {
+    const { uri, withAmount } = paymentUri(r);
+    const form = new FormData();
+    form.set("chat_id", String(chat.chat_id));
+    if (chat.thread_id) form.set("message_thread_id", String(chat.thread_id));
+    form.set("reply_parameters", JSON.stringify({ message_id: replyTo }));
+    form.set("caption", `#${r.number} · ${money(r.amount)} ${r.asset} · ${r.network}\n` +
+      (withAmount ? "Сканируй — адрес, сумма и монета подставятся сами." : `Сканируй — подставится адрес. Сумму введи сам: ${money(r.amount)} ${r.asset}.`));
+    form.set("photo", new Blob([new Uint8Array(await qrPng(uri))], { type: "image/png" }), "qr.png");
+    const res = await fetch(`https://api.telegram.org/bot${topupToken()}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(20_000) });
+    const d = (await res.json().catch(() => null)) as { ok: boolean; result?: { message_id: number } } | null;
+    return d?.ok ? d.result!.message_id : null;
+  } catch (e) {
+    console.warn("topups: QR не отправлен", e instanceof Error ? e.message : e);
+    return null; // заявка важнее картинки
+  }
+}
+
 // Перерисовать сообщения заявки в чате по её текущему состоянию.
 async function refresh(r: Topup): Promise<void> {
   for (const m of r.messages) {
+    if (m.qr) {
+      if (r.status !== "pending") await topupTg("deleteMessage", { chat_id: m.chat_id, message_id: m.message_id }).catch(() => undefined);
+      continue;
+    }
     try {
       await topupTg("editMessageText", {
         chat_id: m.chat_id, message_id: m.message_id, text: topupText(r), parse_mode: "HTML",
@@ -171,6 +197,8 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
     text: topupText(r), parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: buttons(r),
   });
   r.messages = [{ chat_id: chat.chat_id, message_id: sent.message_id }];
+  const qr = await sendQr(r, chat, sent.message_id);
+  if (qr) r.messages.push({ chat_id: chat.chat_id, message_id: qr, qr: true });
   await db().from("topup_requests").update({ messages: r.messages }).eq("id", r.id);
   return r;
 }
