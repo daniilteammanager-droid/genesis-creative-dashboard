@@ -93,9 +93,9 @@ async function pairsForUser(userId: string, deadline: number): Promise<PairsRun[
   const { data: oldest } = await db.from("wh_crm_ad_periods").select("period_start").eq("user_id", userId).order("period_start").limit(1);
   const floor = (oldest?.[0]?.period_start as string | undefined) ?? today;
 
-  // Основная загрузка баера сама упёрлась в лимит Torro за последние полчаса — уступаем.
+  // Основная загрузка баера упёрлась в лимит Torro за последние 3 часа — уступаем (как и она сама, ingest.ts).
   const { data: limited } = await db.from("wh_ingest_runs").select("id").eq("user_id", userId)
-    .ilike("error", "%rate_limited%").gte("started_at", new Date(Date.now() - 1800_000).toISOString()).limit(1);
+    .ilike("error", "%rate_limited%").gte("started_at", new Date(Date.now() - 3 * 3600_000).toISOString()).limit(1);
   if (limited?.length) return [{ userId, rows: 0, error: "Torro: основная загрузка недавно упёрлась в лимит — связки ждут" }];
 
   const budget = new Budget();

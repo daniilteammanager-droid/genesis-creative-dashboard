@@ -336,6 +336,8 @@ async function writeTargeting(kind: IngestKind, tokens: { token: string }[], see
 
 // ─── Прогон ─────────────────────────────────────────────────────────────────
 
+const TORRO_PAUSE_MS = 3 * 3600_000;
+
 export async function ingestForUser(
   userId: string, kind: IngestKind, opts: { backfill?: boolean } = {}
 ): Promise<IngestResult> {
@@ -500,7 +502,13 @@ export async function ingestForUser(
     }
 
     // ─── Torro — после расхода: id кампаний и объявлений берутся из него ──
-    if (torro) {
+    // Упёрлись в лимит — три часа Torro этого баера не трогаем. Иначе прогон раз в
+    // 15 минут сам продлевает блокировку: у Артёма 24–26.10.2026 ключ полтора дня
+    // отвечал rate_limited на любой запрос. Расход при этом грузится как обычно.
+    const { data: limited } = torro ? await db().from("wh_ingest_runs").select("id").eq("user_id", userId)
+      .ilike("error", "%rate_limited%").gte("started_at", new Date(Date.now() - TORRO_PAUSE_MS).toISOString()).limit(1) : { data: [] };
+    if (torro && limited?.length) notes.push("Torro на паузе: недавно упёрлись в лимит, пробуем раз в 3 часа");
+    if (torro && !limited?.length) {
       const t = await ingestTorro(db(), userId, torro.token, torro.buyerId, since, until);
       result.crmRows = t.crmRows;
       if (t.unmatchedCampaigns || t.unmatchedAds) {
