@@ -48,6 +48,11 @@ export default function LiveCheck() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // «Отправить в чат» и история чеков (Decision 082).
+  const [sendNote, setSendNote] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ id: string; kind: string; text: string; sent: number; created_at: string }[] | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const loadHistory = () => fetch("/api/check/send").then((r) => r.json()).then((d) => setHistory(d.checks ?? [])).catch(() => undefined);
 
   const isBuyer = data?.isBuyer ?? false;
   // Живая Мета отвечает 4–7 секунд (замер 31.08.2026). Ответ помнит, что у него
@@ -78,6 +83,15 @@ export default function LiveCheck() {
       });
     return () => { alive = false; };
   }, [since, until, group, buyer]);
+
+  async function send() {
+    if (!data?.text) return;
+    setSendNote("Отправляю…");
+    const r = await fetch("/api/check/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: data.text }) }).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : { error: "Сеть не ответила" };
+    setSendNote(d.error ?? `Ушло в чатов: ${d.sent}`);
+    if (!d.error) loadHistory();
+  }
 
   async function copy() {
     if (!data?.text) return;
@@ -179,11 +193,18 @@ export default function LiveCheck() {
           <div data-tour="check-text" className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5 mb-5">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h2 className="text-lg font-semibold text-white">Готовый чек</h2>
-              <button onClick={copy}
-                      className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition">
-                {copied ? "Скопировано" : "Скопировать"}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={send}
+                        className="px-4 py-2 rounded-xl text-sm font-semibold border border-violet-700/50 text-violet-200 hover:bg-violet-900/20 transition">
+                  Отправить в Telegram
+                </button>
+                <button onClick={copy}
+                        className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition">
+                  {copied ? "Скопировано" : "Скопировать"}
+                </button>
+              </div>
             </div>
+            {sendNote && <p className="text-xs text-zinc-400 mb-2">{sendNote}</p>}
             <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
               {data.text}
             </pre>
@@ -233,9 +254,36 @@ export default function LiveCheck() {
           )}
         </div>
       )}
+
+      <div data-tour="check-history" className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5 mt-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-white">История чеков</h2>
+          <button onClick={loadHistory} className="px-3 py-1.5 rounded-lg text-sm border border-violet-900/40 text-zinc-300 hover:bg-violet-900/20">
+            {history ? "↻ Обновить" : "Показать"}
+          </button>
+        </div>
+        {history && (history.length === 0 ? <p className="text-sm text-zinc-500 mt-3">Чеков в Telegram ещё не отправлялось.</p> : (
+          <div className="divide-y divide-violet-900/20 mt-2">
+            {history.map((h) => (
+              <div key={h.id} className="py-2">
+                <button onClick={() => setOpenId(openId === h.id ? null : h.id)} className="text-left w-full text-sm text-zinc-300">
+                  {new Date(h.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" })}
+                  <span className="text-zinc-500"> · {h.kind === "manual" ? "вручную" : "по расписанию"} · чатов: {h.sent}</span>
+                </button>
+                {openId === h.id && (
+                  <pre className="text-xs text-zinc-400 whitespace-pre-wrap font-mono mt-2 max-h-72 overflow-y-auto">{unhtml(h.text)}</pre>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
+
+// Текст ушёл в Telegram как HTML — показываем как читается в чате.
+const unhtml = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
 function CheckLine({ r, level = "row" }: { r: CheckRow; level?: "platform" | "face" | "row" }) {
   const head = level !== "row";

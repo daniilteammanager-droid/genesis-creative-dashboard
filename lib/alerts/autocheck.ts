@@ -108,7 +108,10 @@ export async function runAutocheck(at: Date = new Date()): Promise<{ due: number
       const key = `${me.id}|${link.check_group}`;
       if (!checks.has(key)) checks.set(key, loadCheck(me, day, day, link.check_group));
       try {
-        sent += await sendToLinks([link], checkMessage(await checks.get(key)!), openCheckButton(day, link.check_group));
+        const text = checkMessage(await checks.get(key)!);
+        const n = await sendToLinks([link], text, openCheckButton(day, link.check_group));
+        sent += n;
+        await db.from("check_log").insert({ user_id: me.id, kind: "schedule", text, sent: n });
       } catch (e) {
         // Слот не отмечаем: следующий прогон в пределах получаса попробует снова.
         failed++;
