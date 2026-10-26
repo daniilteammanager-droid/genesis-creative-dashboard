@@ -508,7 +508,11 @@ export async function ingestForUser(
     const { data: limited } = torro ? await db().from("wh_ingest_runs").select("id").eq("user_id", userId)
       .ilike("error", "%rate_limited%").gte("started_at", new Date(Date.now() - TORRO_PAUSE_MS).toISOString()).limit(1) : { data: [] };
     if (torro && limited?.length) notes.push("Torro на паузе: недавно упёрлись в лимит, пробуем раз в 3 часа");
-    if (torro && !limited?.length) {
+    // Torro — раз в 30 минут (Daniil 26.10.2026): прогон «сегодня» идёт каждые 15 минут
+    // ради расхода и алертов, а Torro трогаем только в первой и третьей четверти часа.
+    // Сразу после подключения (backfill) и окно истории — всегда.
+    const torroTurn = kind !== "today" || opts.backfill || Math.floor(new Date().getUTCMinutes() / 15) % 2 === 0;
+    if (torro && !limited?.length && torroTurn) {
       const t = await ingestTorro(db(), userId, torro.token, torro.buyerId, since, until);
       result.crmRows = t.crmRows;
       if (t.unmatchedCampaigns || t.unmatchedAds) {
