@@ -31,17 +31,29 @@ export const STEPS: Step[] = [
   { target: "legacy-card", route: "/", title: "Карточка креатива", text: "Клик по карточке — видео, расшифровка текста, заметка и избранное." },
 
   { target: "nav:/creatives", action: "click", route: "/creatives", title: "Креативы", text: "Новая картотека — только твои креативы за выбранный период. Нажми." },
-  { target: "creatives-views", route: "/creatives", title: "Плитка, таблица, аналитика", text: "Плитка — с превью, таблица — те же цифры столбцами, как в Reports. Сверху — период." },
+  { target: "creatives-views", route: "/creatives", title: "Плитка, таблица, аналитика", text: "Плитка — с превью, таблица — те же цифры столбцами, как в Reports. В таблице — фильтр по лицу, «Склеить версии» (v1, v2, v3 одной строкой) и выгрузка в CSV." },
 
   { target: "nav:/check", action: "click", route: "/check", title: "Checks", text: "Чек за сегодня в пару кликов. Нажми." },
   { target: "check-modes", route: "/check", title: "Живой и ручной", text: "Живой — из подключений, сразу по лицам и площадкам. Ручной — сверка выгрузок XLSX, запасной путь." },
-  { target: "check-text", route: "/check", title: "Готовый чек", text: "Текст для телеги уже собран — «Скопировать» и отправляй." },
+  { target: "check-text", route: "/check", title: "Готовый чек", text: "Текст для телеги уже собран — «Скопировать» или «Отправить в Telegram»: уйдёт в твои чаты с уведомлением о чеке." },
+  { target: "check-history", route: "/check", title: "История чеков", text: "Всё, что ушло в Telegram — кнопкой и по расписанию." },
 
   { target: "nav:/reports", action: "click", route: "/reports", title: "Reports", text: "Отчёт как в FB Tool. Нажми." },
   { target: "reports-views", route: "/reports", title: "Кампании и креативы", text: "Дерево кампания → адсет → объявление или таблица по креативам. Столбцы как в General 4.0: ROMI, цена подписки и диалога, квалы." },
   { target: "reports-periods", route: "/reports", title: "Период", text: "Сегодня, вчера, неделя — или свои даты календарём." },
+  { target: "reports-live", route: "/reports", title: "Live Manager", text: "Статус и бюджет каждой строки — вживую из кабинета. Переключатель у статуса — пауза или запуск, галочки — сразу у нескольких, плюс бюджет. Фильтры GEO и лица, Live-обновление, «Обновить сейчас» — свежий расход, «Столбцы» — что показывать." },
 
   { target: "nav:/general-report-4", action: "click", route: "/general-report-4", title: "General 4.0", text: "Сводная таблица по дням, неделям и месяцам — твоя, её подключает владелец. Нажми." },
+
+  { target: "nav:/autoupload", action: "click", route: "/autoupload", title: "Автозалив", text: "Кампании в Meta по неймингу команды прямо из дашборда. Нажми." },
+  { target: "au-base", route: "/autoupload", title: "Кабинеты и основа", text: "Свои кабинеты и пиксель на каждый, страница, дата, время старта, бюджет. 1‑1‑1 — каждый креатив своей кампанией; «на паузе» — создать, не запуская." },
+  { target: "au-campaigns", route: "/autoupload", title: "Кампании", text: "GEO, лицо, воронка, маркер, лендинг и ссылка MVP из Torro. Имя кампании и трекинг ссылки соберутся сами." },
+  { target: "au-adsets", route: "/autoupload", title: "Адсеты и креативы", text: "Аудитория BROAD / INT / RETARGET и креативы из твоей библиотеки. В Meta уходит исходник без сжатия." },
+  { target: "au-check", route: "/autoupload", title: "Проверить и создать", text: "Сначала «Проверить сборку» — увидишь все имена и ссылки. Потом «Создать». Залив идёт сам, ход — ниже, там же «Отменить и удалить»." },
+
+  { target: "nav:/antireject", action: "click", route: "/antireject", title: "Антиотклон", text: "Что отклонено и уникализация видео. Нажми." },
+  { target: "ar-rejected", route: "/antireject", title: "Отклонённые", text: "Отклонённые объявления твоих кабинетов с причиной. «Уникализировать и заменить» — новое видео встанет в объявление само. Замена ссылки и ФП — кнопками в боте." },
+  { target: "ar-library", route: "/antireject", title: "Из библиотеки", text: "Любое своё видео — в уникальную версию для скачивания." },
 
   { target: "nav:/topups", action: "click", route: "/topups", title: "Пополнения", text: "Кабинеты, карты, агенты, расходники — только через заявку здесь. Нажми." },
   { target: "topups-form", route: "/topups", title: "Заявка", text: "Заполни все поля. Особенно сеть — перевод не в ту сеть не вернуть. Нечего добавить в комментарий — ставь «-»." },

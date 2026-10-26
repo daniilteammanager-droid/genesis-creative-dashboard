@@ -162,13 +162,13 @@ export default function Autoupload() {
         <h2 className={h2}>02 · Кампании</h2>
         <div className="space-y-2">
           {campaigns.map((c, i) => (
-            <div key={i} className="grid grid-cols-2 sm:grid-cols-7 gap-2 items-center">
+            <div key={i} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 items-center">
               <select value={c.geo} onChange={(e) => edit(setCampaigns, i, { geo: e.target.value })} className={field}>{GEOS.map((g) => <option key={g}>{g}</option>)}</select>
               <select value={c.actor} onChange={(e) => edit(setCampaigns, i, { actor: e.target.value })} className={field}><option>ROMAN</option><option>RICKY</option></select>
               <select value={c.funnel} onChange={(e) => edit(setCampaigns, i, { funnel: e.target.value, lander: LANDERS[e.target.value][0] })} className={field}><option>TG</option><option>WA</option></select>
               <select value={c.marker} onChange={(e) => edit(setCampaigns, i, { marker: e.target.value })} className={field}><option>NEW</option><option>EXP</option><option>MIX</option></select>
               <select value={c.lander} onChange={(e) => edit(setCampaigns, i, { lander: e.target.value })} className={field}>{LANDERS[c.funnel].map((l) => <option key={l}>{l}</option>)}</select>
-              <select value={c.landingUrl} onChange={(e) => edit(setCampaigns, i, { landingUrl: e.target.value })} className={`${field} col-span-2 sm:col-span-1`}>
+              <select value={c.landingUrl} onChange={(e) => edit(setCampaigns, i, { landingUrl: e.target.value })} className={`${field} col-span-2 sm:col-span-2 lg:col-span-1`}>
                 <option value="">Ссылка MVP</option>
                 {opt.landings.map((l) => <option key={l.id} value={l.url}>{l.name}</option>)}
               </select>
