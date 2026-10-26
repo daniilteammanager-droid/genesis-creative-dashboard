@@ -72,6 +72,7 @@ export interface Gr4Data {
   rows: Gr4Row[];
   targets: Gr4Targets;
   generatedAt: string;
-  fetchedFrom: "api" | "cache";
+  fetchedFrom: "api" | "db";
+  syncError?: string | null;    // последняя ошибка чтения таблицы; показан прежний снимок
   error?: string;
 }

@@ -8,6 +8,7 @@ import {
 } from "@/components/general-report/shared";
 import { applyFilters, buildGroups, computeTotals4, distinctValues, type Filters, type Gr4Group, type Period } from "@/lib/general-report-4/aggregate";
 import { DIMENSIONS, DIM_LABELS, QUAL_KEYS, type Gr4Data, type Gr4Dim, type Gr4Kind, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
+import Report from "./Report";
 
 // ─── Колонки ──────────────────────────────────────────────────────────────────
 // Порядок и названия — как в General 3.0 и в новой Google-таблице: к ним привыкла
@@ -138,6 +139,8 @@ export default function GeneralReport4Page() {
   const [sources, setSources] = useState<Gr4Data["sources"]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // «Отчёт» — по всей команде (общая + баеры), поэтому только там, где есть общая таблица.
+  const [tab, setTab] = useState<"report" | "table">("report");
 
   const [filters, setFilters] = useState<Filters>({});
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -165,8 +168,12 @@ export default function GeneralReport4Page() {
 
   // «Загружаю» включает тот, кто меняет источник (pickSource), а на старте оно
   // уже включено начальным состоянием — эффект только запускает запрос.
-  const load = useCallback((src: string) => {
-    fetch(`/api/general-report-4${src ? `?source=${encodeURIComponent(src)}` : ""}`)
+  const [refreshing, setRefreshing] = useState(false);
+  const load = useCallback((src: string, fresh = false) => {
+    const q = new URLSearchParams();
+    if (src) q.set("source", src);
+    if (fresh) q.set("refresh", "1");
+    fetch(`/api/general-report-4?${q}`)
       .then((r) => r.json() as Promise<Gr4Data>)
       .then((d) => {
         if (d.sources?.length) setSources(d.sources);
@@ -174,8 +181,9 @@ export default function GeneralReport4Page() {
         setData(d);
       })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
+  const refresh = () => { setRefreshing(true); load(source, true); };
 
   useEffect(() => { load(source); }, [source, load]);
   // Другая таблица — другие значения разрезов, старые фильтры к ней не относятся.
@@ -251,6 +259,14 @@ export default function GeneralReport4Page() {
       <div className="max-w-[1800px] mx-auto">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 4.0</h1>
 
+        {sources.some((x) => x.kind === "main") && (
+          <div data-tour="gr4-tabs" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit mb-6">
+            <button onClick={() => setTab("report")} className={chip(tab === "report")}>Отчёт</button>
+            <button onClick={() => setTab("table")} className={chip(tab === "table")}>Таблица</button>
+          </div>
+        )}
+        {tab === "report" && sources.some((x) => x.kind === "main") ? <Report /> : <>
+
         {sources.length > 1 && (
           <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap mb-6">
             {sources.map((s) => (
@@ -281,8 +297,16 @@ export default function GeneralReport4Page() {
               <span>•</span>
               <span>Последний день: <span className="text-zinc-500">{rows.reduce((m, r) => (r.date > m ? r.date : m), "") || "—"}</span></span>
               <span>•</span>
-              <span>Обновлено: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString()}</span>{data.fetchedFrom === "cache" ? " (кэш, 5 мин)" : ""}</span>
+              <span>Из таблиц: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString("ru-RU")}</span> · сами обновляются раз в 15 минут</span>
+              <button onClick={refresh} disabled={refreshing} className="text-violet-300 hover:text-violet-200 disabled:opacity-50">
+                {refreshing ? "обновляю…" : "↻ Обновить из таблиц"}
+              </button>
             </div>
+            {data.syncError && (
+              <div className="bg-amber-950/30 border border-amber-700/30 rounded-xl px-4 py-2.5 text-amber-200/90 text-xs mb-4">
+                Последнее чтение таблицы не удалось — показан прежний снимок: {data.syncError}
+              </div>
+            )}
 
             {/* Итого за выбранный период — с теми же фильтрами и датами, что и таблица */}
             <div className="flex items-center gap-2 mb-3">
@@ -456,11 +480,12 @@ export default function GeneralReport4Page() {
             </div>
 
             <p className="text-zinc-700 text-xs mt-4 text-right">
-              General Report 4.0 · {kind === "main" ? "общая таблица" : data?.combined ? "сводная по таблицам баеров (доход — как внесли баеры)" : "таблица баера"} · Sheets API, кэш 5 минут
+              General Report 4.0 · {kind === "main" ? "общая таблица" : data?.combined ? "сводная по таблицам баеров (доход — как внесли баеры)" : "таблица баера"} · из базы, таблицы перечитываются раз в 15 минут
               {kind === "main" && " · депы и доход — от хэда, без баера: при фильтре по баеру дохода не будет"}
             </p>
           </>
         )}
+        </>}
       </div>
     </main>
   );

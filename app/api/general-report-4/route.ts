@@ -1,49 +1,28 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
-import { fetchRanges, listSheetTitles } from "@/lib/general-report/googleSheets";
-import { BUYER_RANGE, BUYER_SHEETS, BUYER_TARGETS, MAIN_RANGES, parseBuyer, parseMain } from "@/lib/general-report-4/parse";
 import { COMBINED_ID, collectSources4, publicSources4 } from "@/lib/general-report-4/sources";
-import type { Gr4Kind, Gr4Row, Gr4SourceInfo, Gr4Targets } from "@/lib/general-report-4/types";
+import { snapshot, syncSheet } from "@/lib/general-report-4/store";
+import type { Gr4Kind, Gr4SourceInfo } from "@/lib/general-report-4/types";
 
-// GR 4.0: одна общая таблица или таблица баера, плоский формат. Читается одним
-// batchGet, кэш 5 минут по ключу таблицы — как у GR 3.0.
+// GR 4.0 читает свою базу (Decision 084): снимки таблиц обновляет крон раз в 15
+// минут. refresh=1 — «Обновить из таблиц»: перечитать нужные таблицы по API сейчас.
+// report=1 — для вкладки «Отчёт»: общая таблица и таблицы баеров вместе, чтобы
+// разложить выплаты по баерам (lib/general-report-4/allocate.ts).
 
-const CACHE_TTL_MS = 5 * 60_000;
-const cache = new Map<string, { rows: Gr4Row[]; targets: Gr4Targets; at: number }>();
+export const maxDuration = 120;
 
-async function load(spreadsheetId: string, kind: Gr4Kind) {
-  const hit = cache.get(spreadsheetId);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { ...hit, fromCache: true };
+const get = (id: string, kind: Gr4Kind, refresh: boolean) => (refresh ? syncSheet(id, kind) : snapshot(id, kind));
 
-  let parsed;
-  if (kind === "main") {
-    const [traffic, deps, crm, targets] = await fetchRanges(spreadsheetId, Object.values(MAIN_RANGES));
-    parsed = parseMain({ traffic, deps, crm, targets });
-  } else {
-    // «Истории» нет у новых баеров и в шаблоне. Запрос несуществующего листа
-    // роняет весь batchGet, поэтому сначала смотрим, какие листы есть.
-    const titles = await listSheetTitles(spreadsheetId);
-    const sheets = BUYER_SHEETS.filter((s) => titles.includes(s));
-    if (!sheets.includes("Ввод")) throw new Error("В таблице нет листа «Ввод» — это не таблица баера GR 4.0");
-    const values = await fetchRanges(spreadsheetId, [...sheets.map(BUYER_RANGE), BUYER_TARGETS]);
-    parsed = parseBuyer(values.slice(0, -1), values.at(-1));
-  }
-
-  const entry = { ...parsed, at: Date.now() };
-  cache.set(spreadsheetId, entry);
-  return { ...entry, fromCache: false };
-}
-
-// Сводная по баерам: таблицы всех баеров (каждая — из своего кэша) одной выборкой.
+// Сводная по баерам: таблицы всех баеров одной выборкой.
 // Баер в строке — из колонки «Баер» его таблицы; пусто — имя из профиля.
-async function loadCombined(all: Awaited<ReturnType<typeof collectSources4>>) {
+async function loadCombined(all: Awaited<ReturnType<typeof collectSources4>>, refresh: boolean) {
   const buyers = all.filter((s) => s.kind === "buyer" && !s.combined);
-  const parts = await Promise.all(buyers.map(async (b) => ({ b, d: await load(b.spreadsheetId, "buyer") })));
+  const parts = await Promise.all(buyers.map(async (b) => ({ b, d: await get(b.spreadsheetId, "buyer", refresh) })));
   return {
     rows: parts.flatMap(({ b, d }) => d.rows.map((r) => (r.buyer ? r : { ...r, buyer: b.label }))),
     targets: parts[0]?.d.targets ?? { costPerSub: null, costPerDialog: null, crToDialog: null, crDialogToDep: null },
     at: Math.min(...parts.map(({ d }) => d.at)),
-    fromCache: parts.every(({ d }) => d.fromCache),
+    error: parts.map(({ b, d }) => (d.error ? `${b.label}: ${d.error}` : "")).filter(Boolean).join("; ") || null,
   };
 }
 
@@ -60,11 +39,23 @@ export async function GET(req: Request) {
     if (all.length === 0) {
       return NextResponse.json({ error: "Ни одной таблицы GR 4.0 не подключено", sources }, { status: 403 });
     }
+    const p = new URL(req.url).searchParams;
+    const refresh = p.get("refresh") === "1";
+
+    // Отчёт владельца и тимлида: общая + все баеры.
+    const mainSrc = all.find((s) => s.kind === "main");
+    if (p.get("report") === "1" && mainSrc) {
+      const [main, buyers] = await Promise.all([get(mainSrc.spreadsheetId, "main", refresh), loadCombined(all, refresh)]);
+      return NextResponse.json({
+        sources, report: true, main: main.rows, buyers: buyers.rows, targets: main.targets,
+        generatedAt: new Date(Math.min(main.at, buyers.at)).toISOString(),
+        syncError: [main.error, buyers.error].filter(Boolean).join("; ") || null,
+      });
+    }
 
     // Источник — только из того, что положено этому человеку, а не из запроса.
-    const requested = new URL(req.url).searchParams.get("source");
-    const src = all.find((s) => s.id === requested) ?? all[0];
-    const data = src.id === COMBINED_ID ? await loadCombined(all) : await load(src.spreadsheetId, src.kind);
+    const src = all.find((s) => s.id === p.get("source")) ?? all[0];
+    const data = src.id === COMBINED_ID ? await loadCombined(all, refresh) : await get(src.spreadsheetId, src.kind, refresh);
 
     return NextResponse.json({
       source: src.id,
@@ -74,7 +65,8 @@ export async function GET(req: Request) {
       rows: data.rows,
       targets: data.targets,
       generatedAt: new Date(data.at).toISOString(),
-      fetchedFrom: data.fromCache ? "cache" : "api",
+      fetchedFrom: refresh ? "api" : "db",
+      syncError: data.error,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
