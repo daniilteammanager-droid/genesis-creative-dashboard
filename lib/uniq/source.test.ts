@@ -11,4 +11,6 @@ assert.equal(pickSource("vid-storytell-t26-v9-b1-es-es", keys), "vid/vid-storyte
 // Нет v1 в этом гео — v1 той же съёмки в другом.
 assert.equal(pickSource("vid-balance-t30-v9-b3-es-es", keys), "vid/vid-balance-t30-v1-b3-es-mx.mp4");
 assert.equal(pickSource("vid-other-t1-v2-b1-es-es", keys), null);
+// Есть исходник до сжатия — берём его.
+assert.equal(pickSource("vid-storytell-t26-v9-b1-es-es", [...keys, "originals/vid/vid-storytell-t26-v1-b1-es-es.mov"]), "originals/vid/vid-storytell-t26-v1-b1-es-es.mov");
 console.log("ok");

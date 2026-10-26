@@ -37,6 +37,19 @@ async function findThumbnail(key: string): Promise<string | undefined> {
   return undefined;
 }
 
+// Исходник до сжатия (Decision 080) живёт в originals/ по тому же пути, расширение
+// может отличаться (.mov → сжатый .mp4). Переименование и удаление ведут его следом.
+const ORIGINAL_EXTS = ["mp4", "mov", "jpg", "jpeg", "png", "webp"];
+async function findOriginal(key: string): Promise<string | undefined> {
+  const stem = key.replace(/\.[^./]+$/, "");
+  for (const ext of ORIGINAL_EXTS) {
+    for (const candidate of [`originals/${stem}.${ext}`, `originals/${stem}.${ext.toUpperCase()}`]) {
+      if (await objectExists(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
 async function objectExists(key: string): Promise<boolean> {
   try {
     await s3.send(new HeadObjectCommand({ Bucket, Key: key }));
@@ -82,6 +95,8 @@ export async function POST(req: Request) {
       await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
       const thumb = await findThumbnail(key);
       if (thumb) await s3.send(new DeleteObjectCommand({ Bucket, Key: thumb }));
+      const original = await findOriginal(key);
+      if (original) await s3.send(new DeleteObjectCommand({ Bucket, Key: original }));
       return NextResponse.json({ ok: true });
     }
 
@@ -101,6 +116,8 @@ export async function POST(req: Request) {
       const thumb = await findThumbnail(key);
       // Keep the preview's own extension — only the basename follows the rename.
       if (thumb) await copyAndDelete(thumb, `thumbnails/${baseName(newName)}.${thumb.split(".").pop()}`);
+      const original = await findOriginal(key);
+      if (original) await copyAndDelete(original, `originals/${newKey.replace(/\.[^./]+$/, "")}.${original.split(".").pop()}`);
       return NextResponse.json({ ok: true, key: newKey });
     }
 

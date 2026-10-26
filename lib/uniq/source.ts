@@ -25,13 +25,18 @@ export const v1Name = (adName: string) => normalize(adName).replace(/-v\d+(?=-)/
 // Чистая функция: из списка ключей бакета — исходник v1 для объявления.
 export function pickSource(adName: string, keys: string[]): string | null {
   const want = v1Name(adName);
-  const videos = keys.filter((k) => VIDEO.test(k) && !k.startsWith("thumbnails/") && !k.startsWith("variants/"));
+  const videos = keys.filter((k) => VIDEO.test(k) && !/^(thumbnails|variants|originals)\//.test(k));
   const exact = videos.filter((k) => getFileBaseName(k) === want);
-  if (exact.length) return exact.sort()[0];
   const shoot = shootKey(want);
-  if (!shoot) return null;
-  const same = videos.filter((k) => shootKey(getFileBaseName(k)) === shoot);
-  return same.length ? same.sort()[0] : null;
+  const picked = exact.length ? exact.sort()[0] : shoot ? videos.filter((k) => shootKey(getFileBaseName(k)) === shoot).sort()[0] ?? null : null;
+  return picked ? originalOf(picked, keys) : null;
+}
+
+// Исходник до сжатия, если воркер его сохранил (Decision 080): originals/<тот же путь>,
+// расширение может быть другим (.mov → сжатый .mp4). Нет — сжатый файл.
+export function originalOf(key: string, keys: string[]): string {
+  const stem = (k: string) => k.replace(/\.[^./]+$/, "").toLowerCase();
+  return keys.find((k) => k.startsWith("originals/") && stem(k.slice("originals/".length)) === stem(key)) ?? key;
 }
 
 export async function findSource(adName: string): Promise<string | null> {
