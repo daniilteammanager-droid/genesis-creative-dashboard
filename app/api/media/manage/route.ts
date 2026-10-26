@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { S3Client, CopyObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getProfile } from "@/lib/auth/server";
 import { mayManageKey } from "@/lib/creatives/access";
+import { dropFace, isFace, moveFace, setFace } from "@/lib/creatives/faces";
 
 // Rename / delete an already-uploaded R2 object. R2 has no native rename,
 // so rename = copy to the new key + delete the old one (thumbnail moved the same way).
@@ -84,12 +85,20 @@ async function mayManage(key: string): Promise<string | null> {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { op?: "rename" | "delete"; key?: string; newName?: string };
+    const body = (await req.json()) as { op?: "rename" | "delete" | "face"; key?: string; newName?: string; face?: string };
     const { op, key } = body;
     if (!key) return NextResponse.json({ error: "Не указан key" }, { status: 400 });
 
     const denied = await mayManage(key);
     if (denied) return NextResponse.json({ error: denied }, { status: denied === "Нужно войти" ? 401 : 403 });
+
+    // Лицо файла (Decision 086): у загруженных до него лица нет — ставится здесь.
+    if (op === "face") {
+      if (!isFace(body.face)) return NextResponse.json({ error: "Лицо — ROMAN или RICKY" }, { status: 400 });
+      const me = await getProfile();
+      await setFace(key, body.face, me!.id);
+      return NextResponse.json({ ok: true });
+    }
 
     if (op === "delete") {
       await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
@@ -97,6 +106,7 @@ export async function POST(req: Request) {
       if (thumb) await s3.send(new DeleteObjectCommand({ Bucket, Key: thumb }));
       const original = await findOriginal(key);
       if (original) await s3.send(new DeleteObjectCommand({ Bucket, Key: original }));
+      await dropFace(key);
       return NextResponse.json({ ok: true });
     }
 
@@ -118,6 +128,7 @@ export async function POST(req: Request) {
       if (thumb) await copyAndDelete(thumb, `thumbnails/${baseName(newName)}.${thumb.split(".").pop()}`);
       const original = await findOriginal(key);
       if (original) await copyAndDelete(original, `originals/${newKey.replace(/\.[^./]+$/, "")}.${original.split(".").pop()}`);
+      await moveFace(key, newKey);
       return NextResponse.json({ ok: true, key: newKey });
     }
 

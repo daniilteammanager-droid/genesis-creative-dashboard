@@ -5,7 +5,7 @@ import { mskDay } from "@/lib/day";
 import { originalKey, publicUrl } from "@/lib/uniq/source";
 import { zonedToUtc, type Plan, type PlanCampaign } from "./plan";
 
-// Автозалив (Decision 081): собранный план → кампании, адсеты и объявления в Meta.
+// Автозалив (Decision 081, 087): собранный план → кампании, адсеты и объявления в Meta.
 // Шаги — как у Артёма (meta-launch.cjs): CBO-кампания OUTCOME_LEADS, адсет на
 // конверсию SUBSCRIBE пикселя, мобильные плейсменты FB/IG, креатив видео или
 // картинки с CTA на ссылку MVP, Multi-advertiser выключен.
@@ -19,28 +19,36 @@ const GRAPH = "https://graph.facebook.com/v26.0";
 const INT_TERMS = ["forex", "trading", "investment"];
 
 type Media = { type: "video" | "image"; id: string; imageUrl?: string; ready: boolean };
-interface AdState { id?: string; creativeId?: string }
-interface AdsetState { id?: string; ads: AdState[] }
-interface CampaignState { id?: string; adsets: AdsetState[] }
+// tried — запрос на создание уже уходил: ответа могло не дойти, а объект создаться.
+// Перед повтором ищем его по имени у родителя (как createChildWithRetry у Артёма).
+interface AdState { id?: string; creativeId?: string; tried?: boolean }
+interface AdsetState { id?: string; ads: AdState[]; tried?: boolean }
+interface CampaignState { id?: string; adsets: AdsetState[]; tried?: boolean }
 export interface JobState {
   created: CampaignState[];
   media: Record<string, Media>;     // «кабинет|ключ R2»
   accounts: Record<string, { currency: string; timezone: string }>;
+  instagram?: Record<string, string | null>; // страница → её Instagram
+  retries?: number;                 // подряд временных сбоев Meta
 }
 export interface Job {
   id: string; user_id: string; plan: Plan; status: string; state: JobState | null;
   stage: string | null; error: string | null;
 }
 
-class MetaError extends Error {}
+// Временный сбой Meta (is_transient, коды 1, 2) — задание не падает, продолжит следующий проход.
+export class MetaError extends Error { constructor(msg: string, public transient = false) { super(msg); } }
 async function graph<T>(token: string, path: string, params: Record<string, unknown> = {}, method: "GET" | "POST" = "GET"): Promise<T> {
   const flat = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
   const body = new URLSearchParams({ ...flat, access_token: token });
   const res = method === "GET"
     ? await fetch(`${GRAPH}/${path}?${body}`, { signal: AbortSignal.timeout(60_000) })
     : await fetch(`${GRAPH}/${path}`, { method: "POST", body, signal: AbortSignal.timeout(120_000) });
-  const j = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; error_user_msg?: string; error_user_title?: string } };
-  if (!res.ok || j.error) throw new MetaError(`Meta: ${j.error?.error_user_msg || j.error?.message || `HTTP ${res.status}`}`);
+  const j = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; error_user_msg?: string; code?: number; is_transient?: boolean } };
+  if (!res.ok || j.error) {
+    const transient = Boolean(j.error?.is_transient) || [1, 2].includes(Number(j.error?.code)) || res.status >= 500;
+    throw new MetaError(`Meta: ${j.error?.error_user_msg || j.error?.message || `HTTP ${res.status}`}`, transient);
+  }
   return j;
 }
 
@@ -107,9 +115,24 @@ async function ensureMedia(token: string, accountId: string, key: string, kind: 
   return m;
 }
 
-function storySpec(c: PlanCampaign, text: Plan["text"], m: Media) {
+// Сумма в долларах → минимальные единицы валюты кабинета (центы, а у иены — иены).
+function minor(usd: number, rate: number, currency: string): number {
+  let digits = 2;
+  try { digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2; } catch { /* центы */ }
+  return Math.round((usd / rate) * 10 ** digits);
+}
+
+// Уже созданный объект с этим именем у родителя — после оборванного запроса.
+async function adopt(token: string, edge: string, name: string): Promise<string | undefined> {
+  const r = await graph<{ data?: { id: string; name: string }[] }>(token, edge, { fields: "id,name", limit: "500" });
+  const same = (r.data ?? []).filter((x) => x.name === name);
+  if (same.length > 1) throw new Error(`В Meta уже несколько объектов «${name}» — проверь вручную, повторять не буду`);
+  return same[0]?.id;
+}
+
+function storySpec(c: PlanCampaign, text: Plan["text"], m: Media, instagram: string | null) {
   const cta = { type: text.cta, value: { link: c.landingUrl } };
-  const spec: Record<string, unknown> = { page_id: c.pageId };
+  const spec: Record<string, unknown> = { page_id: c.pageId, ...(instagram ? { instagram_actor_id: instagram } : {}) };
   if (m.type === "video") {
     spec.video_data = { video_id: m.id, image_url: m.imageUrl, call_to_action: cta,
       ...(text.primaryText ? { message: text.primaryText } : {}), ...(text.headline ? { title: text.headline } : {}),
@@ -126,7 +149,8 @@ function storySpec(c: PlanCampaign, text: Plan["text"], m: Media) {
 export async function advance(job: Job, deadline: number): Promise<boolean> {
   const token = await writerToken(job.user_id);
   const plan = job.plan;
-  const state: JobState = job.state ?? { created: [], media: {}, accounts: {} };
+  const state: JobState = (job.state ??= { created: [], media: {}, accounts: {} });
+  state.instagram ??= {};
   const status = plan.paused ? "PAUSED" : "ACTIVE";
   const stage = (s: string) => save(job.id, { stage: s, state });
 
@@ -136,7 +160,16 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
     const a = await graph<{ account_status?: number; disable_reason?: number; currency?: string; timezone_name?: string }>(
       token, `act_${accountId}`, { fields: "account_status,disable_reason,currency,timezone_name" });
     if (a.account_status !== 1 || (a.disable_reason ?? 0) !== 0) throw new Error(`CAB${accountId.slice(-4)} недоступен для автозалива: статус ${a.account_status}${a.disable_reason ? `, ограничение ${a.disable_reason}` : ""}`);
+    const px = await graph<{ data?: { id: string }[] }>(token, `act_${accountId}/adspixels`, { fields: "id", limit: "200" });
+    const pixel = plan.campaigns.find((c) => c.accountId === accountId)!.pixelId;
+    if (!(px.data ?? []).some((x) => x.id === pixel)) throw new Error(`Пиксель ${pixel} не подключён к CAB${accountId.slice(-4)}`);
     state.accounts[accountId] = { currency: a.currency ?? "USD", timezone: a.timezone_name ?? "Europe/Moscow" };
+  }
+  // Instagram страницы — в объявление, как у Артёма. Нет — только Facebook.
+  for (const pageId of [...new Set(plan.campaigns.map((c) => c.pageId))]) {
+    if (pageId in state.instagram) continue;
+    const pg = await graph<{ instagram_business_account?: { id: string } }>(token, pageId, { fields: "instagram_business_account" }).catch(() => ({}) as { instagram_business_account?: { id: string } });
+    state.instagram[pageId] = pg.instagram_business_account?.id ?? null;
   }
 
   // Все видео — в Meta сразу: обрабатываются параллельно, пока создаются кампании.
@@ -150,14 +183,20 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
   for (let ci = 0; ci < plan.campaigns.length; ci++) {
     const c = plan.campaigns[ci], acc = state.accounts[c.accountId];
     const cs = (state.created[ci] ??= { adsets: [] });
+    const rate = await usdRate(acc.currency, mskDay());
+    // Bid cap — у Артёма стратегия на кампании и адсете, сумма — на адсете.
+    const bidStrategy = c.bidCapUsd !== null ? "LOWEST_COST_WITH_BID_CAP" : "LOWEST_COST_WITHOUT_CAP";
     if (!cs.id) {
       if (Date.now() > deadline) return false;
-      const rate = await usdRate(acc.currency, mskDay());
-      const r = await graph<{ id: string }>(token, `act_${c.accountId}/campaigns`, {
-        name: c.name, objective: "OUTCOME_LEADS", status, daily_budget: String(Math.round((c.budgetUsd / rate) * 100)),
-        bid_strategy: "LOWEST_COST_WITHOUT_CAP", special_ad_categories: [],
-      }, "POST");
-      cs.id = r.id;
+      if (cs.tried) cs.id = await adopt(token, `act_${c.accountId}/campaigns`, c.name);
+      if (!cs.id) {
+        cs.tried = true; await stage(`Создаю кампанию ${c.name}`);
+        const r = await graph<{ id: string }>(token, `act_${c.accountId}/campaigns`, {
+          name: c.name, objective: "OUTCOME_LEADS", status, daily_budget: String(minor(c.budgetUsd, rate, acc.currency)),
+          bid_strategy: bidStrategy, special_ad_categories: [],
+        }, "POST");
+        cs.id = r.id;
+      }
       await stage(`Создана кампания ${c.name}`);
     }
     for (let ai = 0; ai < c.adsets.length; ai++) {
@@ -165,14 +204,21 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
       const as = (cs.adsets[ai] ??= { ads: [] });
       if (!as.id) {
         if (Date.now() > deadline) return false;
-        const r = await graph<{ id: string }>(token, `act_${c.accountId}/adsets`, {
-          name: a.name, campaign_id: cs.id, status, billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS",
-          bid_strategy: "LOWEST_COST_WITHOUT_CAP", targeting: await targeting(token, a),
-          promoted_object: { pixel_id: c.pixelId, custom_event_type: "SUBSCRIBE" },
-          ...(c.startLocal ? { start_time: zonedToUtc(c.startLocal, acc.timezone) } : {}),
-          ...(c.dsa ? { dsa_beneficiary: c.dsa, dsa_payor: c.dsa } : {}),
-        }, "POST");
-        as.id = r.id;
+        if (as.tried) as.id = await adopt(token, `${cs.id}/adsets`, a.name);
+        if (!as.id) {
+          const bidAmount = c.bidCapUsd !== null ? minor(c.bidCapUsd, rate, acc.currency) : null;
+          if (bidAmount !== null && !(bidAmount > 0)) throw new Error(`Не рассчитан bid cap кампании ${c.name}`);
+          const body = {
+            name: a.name, campaign_id: cs.id, status, billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS",
+            bid_strategy: bidStrategy, targeting: await targeting(token, a),
+            promoted_object: { pixel_id: c.pixelId, custom_event_type: "SUBSCRIBE" },
+            start_time: zonedToUtc(c.startLocal, acc.timezone),
+            ...(bidAmount !== null ? { bid_amount: String(bidAmount) } : {}),
+            ...(c.dsa ? { dsa_beneficiary: c.dsa, dsa_payor: c.dsa } : {}),
+          };
+          as.tried = true; await stage(`Создаю адсет ${a.name}`);
+          as.id = (await graph<{ id: string }>(token, `act_${c.accountId}/adsets`, body, "POST")).id;
+        }
         await stage(`Создан адсет ${a.name}`);
       }
       for (let di = 0; di < a.ads.length; di++) {
@@ -184,18 +230,22 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
         if (!m) { await stage(`Жду, пока Meta обработает видео ${ad.name}`); return false; }
         if (!ds.creativeId) {
           const cr = await graph<{ id: string }>(token, `act_${c.accountId}/adcreatives`, {
-            name: ad.name, object_story_spec: storySpec(c, plan.text, m), contextual_multi_ads: { enroll_status: "OPT_OUT" },
+            name: ad.name, object_story_spec: storySpec(c, plan.text, m, state.instagram[c.pageId] ?? null), contextual_multi_ads: { enroll_status: "OPT_OUT" },
           }, "POST");
           ds.creativeId = cr.id;
         }
-        const r = await graph<{ id: string }>(token, `act_${c.accountId}/ads`, {
-          name: ad.name, adset_id: as.id, status, creative: { creative_id: ds.creativeId },
-        }, "POST");
-        ds.id = r.id;
+        if (ds.tried) ds.id = await adopt(token, `${as.id}/ads`, ad.name);
+        if (!ds.id) {
+          ds.tried = true; await stage(`Создаю объявление ${ad.name}`);
+          ds.id = (await graph<{ id: string }>(token, `act_${c.accountId}/ads`, {
+            name: ad.name, adset_id: as.id, status, creative: { creative_id: ds.creativeId },
+          }, "POST")).id;
+        }
         await stage(`Создано объявление ${ad.name}`);
       }
     }
   }
+  state.retries = 0;
   await save(job.id, { state, stage: plan.paused ? "Создано на паузе" : "Создано и запущено" });
   return true;
 }

@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getProfile, createClient } from "@/lib/auth/server";
 import { buyerOf } from "@/lib/creatives/code";
 import { getFileBaseName } from "@/lib/creatives/naming";
+import { isFace, setFace } from "@/lib/creatives/faces";
 
 // Generates a presigned R2 PUT URL per file — the browser uploads directly to R2,
 // never through this route, so Vercel's request-body limit never sees the video bytes.
@@ -32,7 +33,9 @@ export async function POST(req: Request) {
     const me = await getProfile();
     if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
-    const { filename, contentType } = (await req.json()) as { filename?: string; contentType?: string };
+    const { filename, contentType, face } = (await req.json()) as { filename?: string; contentType?: string; face?: string };
+    // Лицо крео (Decision 086) — обязательно: по нему вкладки Роман / Рики в автозаливе.
+    if (!isFace(face)) return NextResponse.json({ error: "Выбери лицо — Роман или Рики" }, { status: 400 });
     if (!filename || !ALLOWED_EXT.test(filename)) {
       return NextResponse.json({ error: "Недопустимое имя файла — разрешены mp4, mov, jpg, jpeg, png, webp" }, { status: 400 });
     }
@@ -80,6 +83,7 @@ export async function POST(req: Request) {
     );
     // Не роняем загрузку из-за неудачной записи: файл важнее отметки о нём.
     if (recordError) console.error("Не записан владелец загрузки:", recordError.message);
+    await setFace(key, face, me.id).catch((e) => console.error("Не записано лицо:", e instanceof Error ? e.message : e));
 
     return NextResponse.json({ uploadUrl, key, exists, warning, publicUrl: `${process.env.R2_PUBLIC_URL}/${key}` });
   } catch (error) {

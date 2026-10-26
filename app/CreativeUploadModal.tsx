@@ -71,6 +71,8 @@ export default function CreativeUploadModal({
   const [dragActive, setDragActive] = useState(false);
   const [uploadingAll, setUploadingAll] = useState(false);
   const [showCongrats, setShowCongrats] = useState(false);
+  // Лицо на всю пачку (Decision 086) — обязательно, по нему вкладки в автозаливе.
+  const [face, setFace] = useState<"ROMAN" | "RICKY" | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function patch(id: string, changes: Partial<UploadItem>) {
@@ -95,7 +97,7 @@ export default function CreativeUploadModal({
       const res = await fetch("/api/media/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: item.name, contentType: item.file.type }),
+        body: JSON.stringify({ filename: item.name, contentType: item.file.type, face }),
       });
       const data = (await res.json()) as { uploadUrl?: string; key?: string; exists?: boolean; warning?: string; error?: string };
       if (!res.ok || !data.uploadUrl) throw new Error(data.error ?? "Не удалось получить ссылку на загрузку");
@@ -200,6 +202,17 @@ export default function CreativeUploadModal({
             />
           </div>
 
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-xs text-zinc-500">Лицо:</span>
+            {(["ROMAN", "RICKY"] as const).map((f) => (
+              <button key={f} type="button" onClick={() => setFace(f)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition ${face === f ? "border-violet-500 bg-violet-900/30 text-white" : "border-violet-900/40 text-zinc-400 hover:text-white"}`}>
+                {f === "ROMAN" ? "Роман" : "Рики"}
+              </button>
+            ))}
+            {!face && <span className="text-xs text-amber-400">выбери перед загрузкой</span>}
+          </div>
+
           {items.length > 0 && (
             <div className="mt-5 space-y-2">
               <div className="flex items-center justify-between">
@@ -209,7 +222,8 @@ export default function CreativeUploadModal({
                 {queuedCount > 0 && (
                   <button
                     onClick={uploadAll}
-                    disabled={uploadingAll}
+                    disabled={uploadingAll || !face}
+                    title={face ? undefined : "Сначала выбери лицо"}
                     className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50"
                   >
                     {uploadingAll ? "Загрузка…" : `⬆ Загрузить (${queuedCount})`}

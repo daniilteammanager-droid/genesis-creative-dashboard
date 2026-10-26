@@ -1,5 +1,5 @@
 import { warehouse } from "@/lib/warehouse/read";
-import { advance, cancelCreated, type Job } from "./launch";
+import { advance, cancelCreated, MetaError, type Job } from "./launch";
 import type { Plan } from "./plan";
 
 // Очередь автозалива (Decision 081). Проход берёт задание арендой: пока аренда не
@@ -30,8 +30,17 @@ export async function runJob(id: string, budgetMs = 240_000): Promise<void> {
   try {
     if (await advance(job, Date.now() + budgetMs)) patch.status = "created";
   } catch (e) {
-    patch.status = "failed";
-    patch.error = (e instanceof Error ? e.message : String(e)).slice(0, 1000);
+    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 1000);
+    // Временный сбой Meta: до 3 раз подряд — продолжит крон через минуту (у Артёма 10/20/40 с).
+    const st = job.state;
+    if (e instanceof MetaError && e.transient && st && (st.retries ?? 0) < 3) {
+      st.retries = (st.retries ?? 0) + 1;
+      patch.state = st;
+      patch.stage = `Meta временно не ответила — повторю (${st.retries}/3): ${msg}`;
+    } else {
+      patch.status = "failed";
+      patch.error = msg;
+    }
   }
   await db().from("autoupload_jobs").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
 }

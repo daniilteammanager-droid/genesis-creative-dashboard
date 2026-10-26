@@ -2,11 +2,12 @@ import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { warehouse } from "@/lib/warehouse/read";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { getConnection } from "@/lib/connections/store";
-import { listLandings } from "@/lib/torro/mcp";
+import { callTool, listLandings } from "@/lib/torro/mcp";
 import { accountPages } from "@/lib/antireject/meta";
 import { mayManageKey } from "@/lib/creatives/access";
 import { parseCreativeCode } from "@/lib/creatives/code";
 import { accountsOf, toState } from "@/lib/alerts/cabinets";
+import { facesOf, type Face } from "@/lib/creatives/faces";
 import type { Profile } from "@/lib/auth/types";
 
 // Что можно выбрать в форме автозалива (Decision 081): свои кабинеты, их пиксели и
@@ -63,21 +64,34 @@ export async function accountDetails(me: Profile, accountId: string) {
   return { pixels: px.data ?? [], pages: await accountPages(token, accountId) };
 }
 
-export async function myLandings(me: Profile): Promise<{ id: number; name: string; url: string }[]> {
+// Серия лендинга — по споту Torro, как у Артёма (torro-identities.cjs): Испания и Латам —
+// Роман, Рики — свой спот. Ссылка кампании выбирается из последних пяти своей серии.
+const SPOT_SERIES: Record<number, "spain" | "latam" | "riki"> = { 9796: "spain", 14036: "latam", 14753: "riki" };
+export type Landing = { id: number; name: string; url: string; series: "spain" | "latam" | "riki" | null };
+
+export async function myLandings(me: Profile): Promise<Landing[]> {
   const conn = await getConnection(me.id);
   if (!conn?.torroToken) return [];
-  return (await listLandings(conn.torroToken)).filter((l) => /^https:\/\//i.test(l.url ?? "")).map((l) => ({ id: l.id, name: l.name, url: l.url }));
+  const [rows, spots] = await Promise.all([
+    listLandings(conn.torroToken),
+    callTool<{ id: number; title: string }[]>(conn.torroToken, "get_spots", {}).catch(() => []),
+  ]);
+  const spotId = new Map((Array.isArray(spots) ? spots : []).map((s) => [s.title.trim(), s.id]));
+  return rows.filter((l) => /^https:\/\//i.test(l.url ?? ""))
+    .map((l) => ({ id: l.id, name: l.name, url: l.url, series: SPOT_SERIES[spotId.get((l.spot ?? "").trim()) ?? 0] ?? null }))
+    .sort((a, b) => b.id - a.id);
 }
 
 export interface LibraryItem {
   key: string; code: string; kind: "video" | "image";
   approach: string; version: string; bytes: number; uploadedAt: string; thumb: string | null;
+  face: Face | null;          // Роман / Рики — ставится при загрузке (Decision 086)
 }
 
 // Креативы — только те, что человек сам загрузил в Медиатеку, легаси-библиотеки здесь нет.
 // У баера это его папка bN/ (её задаёт сервер при загрузке, Decision 077), у владельца и
-// тимлида папки нет — их загрузки по creative_uploads. Подход и версия — из кода, как у
-// Артёма в библиотеке: папки «подход → версия». Старое имя — «Без подхода» / «Без версии».
+// тимлида папки нет — их загрузки по creative_uploads. Как в библиотеке Артёма: вкладки по
+// лицу, внутри папки «подход → версия» (подход и версия — из кода). Старое имя — «Без подхода» / «Без версии».
 export async function myCreatives(me: Profile): Promise<LibraryItem[]> {
   let mine: (key: string) => boolean;
   if (me.role === "buyer") mine = (key) => mayManageKey(me, key);
@@ -103,13 +117,15 @@ export async function myCreatives(me: Profile): Promise<LibraryItem[]> {
         key, code, kind: /mp4|mov/i.test(m[1]) ? "video" : "image",
         approach: parsed.scheme === "v2" ? parsed.approach : "",
         version: parsed.scheme === "v2" ? `v${parsed.version}` : (/(?:^|-)(v\d+)(?:-|$)/.exec(code)?.[1] ?? ""),
-        bytes: o.Size ?? 0, uploadedAt: o.LastModified?.toISOString() ?? "", thumb: null,
+        bytes: o.Size ?? 0, uploadedAt: o.LastModified?.toISOString() ?? "", thumb: null, face: null,
       });
     }
     token = r.IsTruncated ? r.NextContinuationToken : undefined;
   } while (token);
   const pub = process.env.R2_PUBLIC_URL;
+  const faces = await facesOf(out.map((c) => c.key));
   for (const c of out) {
+    c.face = faces.get(c.key) ?? null;
     const t = c.kind === "image" ? c.key : thumbs.get(c.code);
     c.thumb = t ? `${pub}/${t}` : null;
   }

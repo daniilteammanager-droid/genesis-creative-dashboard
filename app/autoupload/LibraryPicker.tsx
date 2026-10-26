@@ -2,9 +2,14 @@
 
 import { useMemo, useState } from "react";
 import type { LibraryItem } from "@/lib/autoupload/options";
+import type { Face } from "@/lib/creatives/faces";
 
-// Выбор креативов в адсет — как библиотека в Genesis Manager Артёма: поиск, папки
-// «подход → версия», внутри превью с галочками, уже добавленные помечены.
+type Tab = Face | "NONE";
+const TABS: [Tab, string][] = [["ROMAN", "Роман"], ["RICKY", "Рики"], ["NONE", "Без лица"]];
+
+// Выбор креативов в адсет — как библиотека в Genesis Manager Артёма: вкладки по лицу,
+// поиск, папки «подход → версия», внутри превью с галочками, уже добавленные помечены.
+// Загруженным до лиц (Decision 086) лицо ставится прямо здесь.
 
 const APPROACH: Record<string, string> = { storytell: "Storytell", checklist: "Checklist", balance: "Balance", signal: "Signal", qa: "QA", edit: "Edit", live: "Live", lifestyle: "Lifestyle", "": "Без подхода" };
 const approachLabel = (a: string) => APPROACH[a] ?? a.toUpperCase();
@@ -17,18 +22,30 @@ function groups(items: LibraryItem[], by: (c: LibraryItem) => string) {
   return [...m];
 }
 
-export default function LibraryPicker({ items, added, onAdd, onClose }: {
-  items: LibraryItem[]; added: Set<string>; onAdd: (picked: LibraryItem[]) => void; onClose: () => void;
+export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace, onClose }: {
+  items: LibraryItem[]; added: Set<string>; defaultFace: Face;
+  onAdd: (picked: LibraryItem[]) => void; onFace: (key: string, face: Face) => void; onClose: () => void;
 }) {
+  const [tab, setTab] = useState<Tab>(defaultFace);
   const [q, setQ] = useState("");
   const [approach, setApproach] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
+  const ofTab = (t: Tab) => items.filter((c) => (c.face ?? "NONE") === t);
   const found = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? items.filter((c) => c.code.includes(s)) : items;
-  }, [items, q]);
+    const inTab = items.filter((c) => (c.face ?? "NONE") === tab);
+    return s ? inTab.filter((c) => c.code.includes(s)) : inTab;
+  }, [items, q, tab]);
+  const [faceErr, setFaceErr] = useState<string | null>(null);
+  async function assign(key: string, face: Face) {
+    setFaceErr(null);
+    const r = await fetch("/api/media/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "face", key, face }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) setFaceErr(d.error ?? "Не получилось");
+    else onFace(key, face);
+  }
   const inApproach = approach === null ? [] : found.filter((c) => c.approach === approach);
   const rows = version === null ? [] : inApproach.filter((c) => c.version === version);
 
@@ -46,6 +63,14 @@ export default function LibraryPicker({ items, added, onAdd, onClose }: {
             </span>
             <button type="button" onClick={onClose} className="ml-auto text-zinc-400 hover:text-white">✕</button>
           </div>
+          <div className="flex gap-1">
+            {TABS.filter(([t]) => t !== "NONE" || ofTab("NONE").length > 0).map(([t, label]) => (
+              <button key={t} type="button" onClick={() => { setTab(t); setApproach(null); setVersion(null); setPicked(new Set()); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm border ${tab === t ? "border-violet-500 bg-violet-900/30 text-white" : "border-violet-900/40 text-zinc-400"}`}>
+                {label} <span className="text-zinc-500">{ofTab(t).length}</span>
+              </button>
+            ))}
+          </div>
           <input autoFocus placeholder={`Найти по коду — всего ${items.length}`} value={q} onChange={(e) => setQ(e.target.value)}
                  className="w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white" />
           {approach !== null && (
@@ -56,8 +81,12 @@ export default function LibraryPicker({ items, added, onAdd, onClose }: {
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 space-y-2">
+          {faceErr && <p className="text-xs text-red-300">{faceErr}</p>}
+          {tab === "NONE" && <p className="text-xs text-zinc-500">Загружены до выбора лица — поставь лицо, и креатив переедет во вкладку.</p>}
           {items.length === 0 ? (
             <p className="text-sm text-zinc-400">Ты пока ничего не загрузил. Загрузи креативы в Медиатеку (Креативы → Медиатека) — они появятся здесь.</p>
+          ) : found.length === 0 && !q ? (
+            <p className="text-sm text-zinc-400">У этого лица пока нет креативов.</p>
           ) : approach === null ? (
             groups(found, (c) => c.approach).sort((a, b) => a[0].localeCompare(b[0])).map(([a, n]) => (
               <button key={a} type="button" onClick={() => setApproach(a)} className={folder}>
@@ -79,6 +108,10 @@ export default function LibraryPicker({ items, added, onAdd, onClose }: {
                   : <span className="w-10 h-16 rounded-md bg-black/40 flex items-center justify-center text-zinc-500">{c.kind === "video" ? "▶" : "▣"}</span>}
                 <span className="flex-1 min-w-0"><b className="block text-sm text-zinc-100 truncate">{c.code}</b><small className="text-zinc-500">{c.kind === "video" ? "видео" : "картинка"} · {size(c.bytes)}</small></span>
                 {added.has(c.key) && <em className="text-[11px] text-zinc-500">Уже добавлено</em>}
+                {tab === "NONE" && (["ROMAN", "RICKY"] as const).map((f) => (
+                  <button key={f} type="button" onClick={(e) => { e.preventDefault(); assign(c.key, f); }}
+                          className="text-[11px] px-2 py-1 rounded-lg border border-violet-700/50 text-violet-200">{f === "ROMAN" ? "Роман" : "Рики"}</button>
+                ))}
               </label>
             ))
           )}
