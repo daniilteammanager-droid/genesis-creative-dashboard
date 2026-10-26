@@ -80,8 +80,25 @@ async function stats(key: string, account: string, since: string, until: string,
   })).data ?? [];
 }
 
+// Дневные бюджеты живых кампаний, в долларах. Режим «ads» бюджетов не отдаёт — только
+// «campaigns» (daily_budget в центах валюты кабинета). Нужны чеку за сегодня, а не складу.
+export async function fbtoolBudgets(key: string, account: string, day: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const cabs = (await call<{ data?: { currency?: string; campaigns?: { data?: { id?: string; daily_budget?: string; effective_status?: string }[] } }[] }>(
+    key, "get-statistics", { account, mode: "campaigns", status: "all", dates: `${day} - ${day}` })).data ?? [];
+  for (const cab of cabs) {
+    const rate = await usdRate(cab.currency ?? "USD", day);
+    for (const c of cab.campaigns?.data ?? []) {
+      if (c.effective_status !== "ACTIVE" || !c.id || !(n(c.daily_budget) > 0)) continue;
+      out.set(String(c.id), Math.round((n(c.daily_budget) / 100) * rate * 100) / 100);
+    }
+  }
+  return out;
+}
+
 // Расход по объявлениям по дням — в форме Dolphin, деньги сразу в долларах.
-export async function fbtoolAdDays(key: string, account: string, since: string, until: string): Promise<DolphinAdDay[]> {
+// budgets — бюджеты кампаний (fbtoolBudgets) для живого чека; без них бюджет пустой.
+export async function fbtoolAdDays(key: string, account: string, since: string, until: string, budgets?: Map<string, number>): Promise<DolphinAdDay[]> {
   const out: DolphinAdDay[] = [];
   for (const cab of await stats(key, account, since, until)) {
     const accountId = String(cab.account_id ?? "").replace(/^act_/, "");
@@ -97,7 +114,7 @@ export async function fbtoolAdDays(key: string, account: string, since: string, 
           campaignId: String(a.campaign?.id ?? ""), campaignName: a.campaign?.name ?? "",
           accountId, accountName: cab.name ?? "",
           spend: Math.round(spend * rate * 100) / 100, clicks: linkClicks(r), impressions,
-          campaignDailyBudget: null,
+          campaignDailyBudget: budgets?.get(String(a.campaign?.id ?? "")) ?? null,
           countries: countriesFromNames(a.adset?.name ?? "", a.campaign?.name ?? ""),
         });
       }

@@ -4,7 +4,7 @@ import type { ReportConfig } from "@/lib/reports-live/config";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { dolphinAdDays, type DolphinAdDay } from "@/lib/dolphin/api";
 import { tgadsAdDays } from "@/lib/tgads/api";
-import { fbtoolAccounts, fbtoolAdDays } from "@/lib/fbtool/api";
+import { fbtoolAccounts, fbtoolAdDays, fbtoolBudgets } from "@/lib/fbtool/api";
 import { tgadsKeysOf } from "@/lib/connections/tgadsKeys";
 import type { MetaCampaignRow, MetaAdRow } from "@/lib/reports-live/types";
 import type { CampaignMeta } from "@/lib/reports-live/metaApi";
@@ -286,7 +286,8 @@ function dolphinRows(config: LiveSource, day: string) {
       ? Promise.all(config.tgads.map((k) => tgadsAdDays(k, day, day))).then((x) => x.flat())
       : fbtool
         // FB Tool (Decision 071): по запросу на живой аккаунт, разлогиненные пропускаем.
-        ? fbtoolAccounts(fbtool).then((acc) => Promise.all(acc.filter((a) => a.ok).map((a) => fbtoolAdDays(fbtool, a.id, day, day)))).then((x) => x.flat())
+        ? fbtoolAccounts(fbtool).then((acc) => Promise.all(acc.filter((a) => a.ok).map(async (a) =>
+            fbtoolAdDays(fbtool, a.id, day, day, await fbtoolBudgets(fbtool, a.id, day).catch(() => undefined))))).then((x) => x.flat())
         : dolphinAdDays(config.dolphin!, day, day);
     dolphinDay.set(key, rows.finally(() => setTimeout(() => dolphinDay.delete(key), 60_000)));
   }
