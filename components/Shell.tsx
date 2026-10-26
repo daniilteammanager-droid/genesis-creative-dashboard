@@ -22,6 +22,7 @@ const WORK_AREAS = [
   { href: "/reports", label: "Reports" },
   // General 3.0 из панели убран: им больше не пользуются (Daniil 26.10.2026). Роут живой.
   { href: "/general-report-4", label: "General 4.0" },
+  { href: "/autoupload", label: "Автозалив" },
   { href: "/topups", label: "Пополнения" },
 ];
 
