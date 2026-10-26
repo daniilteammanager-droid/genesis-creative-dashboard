@@ -167,10 +167,15 @@ const FIELDS = "id,name,account_status,disable_reason,currency,balance,is_prepay
 
 // Все кабинеты, которые видит ключ: напрямую и через Business Manager. Статусы
 // любые — в отличие от отчётов, тут нужны именно неактивные.
-async function accountsOf(token: string, withBusinesses: boolean): Promise<MetaAccount[]> {
+export async function accountsOf(token: string, withBusinesses: boolean): Promise<MetaAccount[]> {
   const direct = await fetchEdgePaged<MetaAccount>(token, "me", "adaccounts", FIELDS);
   if (!withBusinesses) return direct;
-  const businesses = await fetchEdgePaged<{ id: string }>(token, "me", "businesses", "id");
+  // Ключ без business_management на /me/businesses отвечает «Missing Permission» —
+  // это не сбой ключа: его прямые кабинеты живы и читаются.
+  const businesses = await fetchEdgePaged<{ id: string }>(token, "me", "businesses", "id").catch((e: unknown) => {
+    if (/Missing Permission|\(#100\)/i.test(e instanceof Error ? e.message : String(e))) return [];
+    throw e;
+  });
   const nested = await Promise.all(businesses.flatMap((b) => [
     fetchEdgePaged<MetaAccount>(token, b.id, "owned_ad_accounts", FIELDS),
     fetchEdgePaged<MetaAccount>(token, b.id, "client_ad_accounts", FIELDS),

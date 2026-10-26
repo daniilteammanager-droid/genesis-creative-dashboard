@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Plan, PlanInput } from "@/lib/autoupload/plan";
+import type { LibraryItem } from "@/lib/autoupload/options";
 import { mskDay } from "@/lib/day";
+import LibraryPicker from "./LibraryPicker";
 
 // Автозалив (Decision 081): форма → «Проверить сборку» → «Создать». Сборку и
 // нейминг считает сервер (lib/autoupload/plan.ts), здесь только ввод и показ.
@@ -17,7 +19,7 @@ const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity
 const primary = "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50";
 const h2 = "text-base font-semibold text-white mb-3";
 
-interface Options { accounts: { id: string; name: string; status: string }[]; landings: { id: number; name: string; url: string }[]; creatives: { key: string; code: string; kind: "video" | "image" }[] }
+interface Options { accounts: { id: string; name: string; status: string }[]; landings: { id: number; name: string; url: string }[]; creatives: LibraryItem[] }
 interface JobView { id: string; status: string; stage: string | null; error: string | null; createdAt: string; summary: Plan["summary"]; names: string[]; done: { campaigns: number; ads: number } }
 type CampaignRow = PlanInput["campaigns"][number];
 type AdsetRow = PlanInput["adsets"][number];
@@ -45,7 +47,8 @@ export default function Autoupload() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState<JobView[]>([]);
-  const [search, setSearch] = useState<Record<number, string>>({});
+  const [pickerFor, setPickerFor] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetch("/api/autoupload?op=options").then((r) => r.json()).then((d) => (d.error ? setErr(d.error) : setOpt(d))).catch(() => setErr("Сеть не ответила"));
@@ -57,6 +60,23 @@ export default function Autoupload() {
     const t = setInterval(loadJobs, 5000);
     return () => clearInterval(t);
   }, [jobs, loadJobs]);
+
+  // Статусы кабинетов вживую из Meta: забаненные и в unsettled пропадут из списка.
+  async function refreshAccounts() {
+    setRefreshing(true);
+    try {
+      const d = await fetch("/api/autoupload?op=accounts").then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      setOpt((o) => (o ? { ...o, accounts: d.accounts } : o));
+      const alive = new Set((d.accounts as { id: string }[]).map((a) => a.id));
+      setAccountIds((ids) => ids.filter((id) => alive.has(id)));
+      setPlan(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // Пиксели и страницы — у каждого выбранного кабинета свои.
   function toggleAccount(id: string) {
@@ -110,13 +130,18 @@ export default function Autoupload() {
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
       <div>
         <h1 className="text-2xl font-semibold text-white">Автозалив</h1>
-        <p className="text-sm text-zinc-500 mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — из твоей библиотеки, в Meta уходит исходник без сжатия.</p>
+        <p className="text-sm text-zinc-500 mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия.</p>
       </div>
 
       <div data-tour="au-base" className={card}>
-        <h2 className={h2}>01 · Кабинеты и основа</h2>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className={`${h2} mb-0`}>01 · Кабинеты и основа</h2>
+          <button type="button" disabled={refreshing} onClick={refreshAccounts} className={`${small} border-violet-700/50 text-violet-200 ml-auto`}>
+            {refreshing ? "Обновляю…" : "↻ Обновить кабинеты"}
+          </button>
+        </div>
         {opt.accounts.length === 0 ? (
-          <p className="text-sm text-zinc-400">За тобой пока нет кабинетов — подключи ключ Meta в Настройках → Интеграции.</p>
+          <p className="text-sm text-zinc-400 mb-4">Живых кабинетов нет. Здесь только ACTIVE без ограничений — бан, unsettled и пропавшие не показываются. Ключ Meta — в Настройках → Интеграции.</p>
         ) : (
           <div className="grid sm:grid-cols-2 gap-2 mb-4">
             {opt.accounts.map((a) => {
@@ -184,8 +209,6 @@ export default function Autoupload() {
         <h2 className={h2}>03 · Адсеты и креативы</h2>
         <div className="space-y-3">
           {adsets.map((a, i) => {
-            const q = (search[i] ?? "").toLowerCase();
-            const list = opt.creatives.filter((c) => !q || c.code.includes(q)).slice(0, 60);
             return (
               <div key={i} className="border border-violet-900/30 rounded-xl p-3">
                 <div className="flex flex-wrap gap-2 items-center mb-2">
@@ -203,20 +226,15 @@ export default function Autoupload() {
                     ))}
                   </div>
                 )}
-                <input placeholder={`Найти креатив — всего ${opt.creatives.length}`} value={search[i] ?? ""} onChange={(e) => setSearch((s) => ({ ...s, [i]: e.target.value }))} className={`${field} w-full mb-2`} />
-                <div className="max-h-44 overflow-y-auto grid sm:grid-cols-2 gap-x-3">
-                  {list.map((c) => (
-                    <label key={c.key} className="flex items-center gap-2 text-xs text-zinc-300 py-0.5 cursor-pointer">
-                      <input type="checkbox" checked={a.creatives.some((x) => x.key === c.key)} className="accent-violet-500"
-                             onChange={(e) => edit(setAdsets, i, { creatives: e.target.checked ? [...a.creatives, c] : a.creatives.filter((x) => x.key !== c.key) })} />
-                      <span className="truncate">{c.kind === "video" ? "🎬" : "🖼"} {c.code}</span>
-                    </label>
-                  ))}
-                </div>
+                <button type="button" onClick={() => setPickerFor(i)} className={`${small} border-violet-700/50 text-violet-200`}>＋ Креативы из медиатеки</button>
               </div>
             );
           })}
         </div>
+        {pickerFor !== null && adsets[pickerFor] && (
+          <LibraryPicker items={opt.creatives} added={new Set(adsets[pickerFor].creatives.map((c) => c.key))} onClose={() => setPickerFor(null)}
+                         onAdd={(picked) => { edit(setAdsets, pickerFor, { creatives: [...adsets[pickerFor].creatives, ...picked.map(({ key, code, kind }) => ({ key, code, kind }))] }); setPickerFor(null); }} />
+        )}
         <button type="button" onClick={() => setAdsets((r) => [...r, newAdset()])} className={`${small} border-violet-700/50 text-violet-200 mt-3`}>＋ Адсет</button>
         <p className="text-[11px] text-zinc-600 mt-2">Набор креативов клонируется во все кампании; у имён по неймингу хвост гео пересоберётся под страну кампании, старые имена уйдут как есть.</p>
       </div>
