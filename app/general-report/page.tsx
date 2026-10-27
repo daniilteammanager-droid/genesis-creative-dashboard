@@ -13,7 +13,7 @@ import { computeTotals, groupByPeriod, computeWaTotals, groupWaByPeriod } from "
 import type { Granularity } from "@/lib/general-report/aggregate";
 import {
   type DatePreset, type CardDef, type ChartDef, type ChartPoint,
-  fmt, fmtMoney, fmtPct, fmtOptMoney, romiClass, presetRange, PRESETS, GRANULARITIES,
+  fmt, fmtMoney, fmtPct, fmtOptMoney, romiClass, presetRange, PRESETS, GRANULARITIES, dateBounds,
   SummaryCard, CARD_DEFS, AXIS_TICK, AXIS_LINE, GRID_STROKE, ChartTooltip, CHART_DEFS,
 } from "@/components/general-report/shared";
 import { DateRange } from "@/components/DatePicker";
@@ -407,13 +407,16 @@ export default function GeneralReportPage() {
     return country === "all" ? rows : rows.filter((r) => groupLabelOf(r) === country);
   }, [data, country]);
 
+  const range = preset === "custom"
+    ? (customFrom && customTo ? { from: customFrom, to: customTo } : null)
+    : presetRange(preset);
   const rangeRows = useMemo(() => {
-    const range = preset === "custom"
-      ? (customFrom && customTo ? { from: customFrom, to: customTo } : null)
-      : presetRange(preset);
     if (!range) return countryRows;
     return countryRows.filter((r) => r.date >= range.from && r.date <= range.to);
-  }, [countryRows, preset, customFrom, customTo]);
+  }, [countryRows, range?.from, range?.to]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Что показывает календарь: выбранный период, при «Всё время» — от первого до последнего дня данных.
+  const bounds = useMemo(() => dateBounds(countryRows), [countryRows]);
+  const shownRange = range ?? bounds ?? { from: mskDay(), to: mskDay() };
 
   // isWa gates which of these two parallel sets is real; the other stays empty.
   const grAll  = useMemo(() => (isWa ? [] : (countryRows as GrDayRow[])), [isWa, countryRows]);
@@ -602,17 +605,13 @@ export default function GeneralReportPage() {
             {/* Filters */}
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Период:</span>
-              {PRESETS.map((p) => (
+              {PRESETS.filter((p) => p.id !== "custom").map((p) => (
                 <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>
                   {p.label}
                 </button>
               ))}
-              {preset === "custom" && (
-                <span className="flex items-center gap-2 ml-1">
-                  <DateRange since={customFrom || customTo || mskDay()} until={customTo || customFrom || mskDay()} max=""
-                             onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); }} />
-                </span>
-              )}
+              <DateRange since={shownRange.from} until={shownRange.to} max="" active={preset === "custom"} className="ml-1"
+                         onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); setPreset("custom"); }} />
             </div>
 
             <div className="flex items-center gap-2 mb-3 flex-wrap">

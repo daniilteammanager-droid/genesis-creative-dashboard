@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CHART_DEFS, PRESETS, fmt, fmtMoney, fmtOptMoney, fmtPct, presetRange, type ChartPoint, type DatePreset } from "@/components/general-report/shared";
+import { CHART_DEFS, PRESETS, dateBounds, fmt, fmtMoney, fmtOptMoney, fmtPct, presetRange, type ChartPoint, type DatePreset } from "@/components/general-report/shared";
 import { applyFilters, buildGroups, computeTotals4, distinctValues, type Filters, type Period } from "@/lib/general-report-4/aggregate";
 import { allocate, NO_BUYER } from "@/lib/general-report-4/allocate";
 import { costTone, romiTone, toneClass, type Tone } from "@/lib/general-report-4/tone";
 import { DIMENSIONS, DIM_LABELS, type Gr4Dim, type Gr4Row, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
 import { DateRange } from "@/components/DatePicker";
-import { mskDay } from "@/lib/day";
 
 // Вкладка «Отчёт» (Decision 084) — как лист «Отчёт» общей таблицы, но по всей
 // команде: общая таблица, выплаты разложены по баерам по их Torro
@@ -126,6 +125,8 @@ export default function Report() {
   const { total: t, prev: p } = view, g = d.targets;
   const deps = t.depCountCpa + t.depCountIb;
   const coefs = [...view.coef].filter(([, v]) => v !== null);
+  // Календарь виден всегда: при «Весь период» — от первого до последнего дня данных.
+  const shown = (preset === "all" && dateBounds(d.main)) || range!;
 
   return (
     <div className="space-y-4">
@@ -138,13 +139,8 @@ export default function Report() {
       <div data-tour="gr4-report-filters" className={card}>
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <span className={label}>Период:</span>
-          {PRESETS.map((x) => <button key={x.id} onClick={() => setPreset(x.id)} className={smallChip(preset === x.id)}>{x.label}</button>)}
-          {preset === "custom" && (
-            <span className="flex items-center gap-2">
-              <DateRange since={from || to || mskDay()} until={to || from || mskDay()} max="" onChange={(a, b) => { setFrom(a); setTo(b); }} />
-            </span>
-          )}
-          {range && <span className="text-xs text-zinc-500">{range.from.slice(8)}.{range.from.slice(5, 7)} — {range.to.slice(8)}.{range.to.slice(5, 7)}</span>}
+          {PRESETS.filter((x) => x.id !== "custom").map((x) => <button key={x.id} onClick={() => setPreset(x.id)} className={smallChip(preset === x.id)}>{x.label}</button>)}
+          <DateRange since={shown.from} until={shown.to} max="" active={preset === "custom"} onChange={(a, b) => { setFrom(a); setTo(b); setPreset("custom"); }} />
         </div>
         <button onClick={() => setFiltersOpen((v) => !v)} className="text-sm text-zinc-300 flex items-center gap-2 mt-1">
           <span className="text-zinc-500">{filtersOpen ? "▾" : "▸"}</span>Фильтры

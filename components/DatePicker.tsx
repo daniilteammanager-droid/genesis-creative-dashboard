@@ -60,8 +60,9 @@ function Month({ y, m, cell, onPick, onHover, nav }: {
 }
 
 // Период: since — until. Первый клик — начало, второй — конец (раньше начала — новое начало).
-export function DateRange({ since, until, onChange, min, max = mskDay(), className = "" }: Common & {
-  since: string; until: string; onChange: (since: string, until: string) => void;
+// active — свой период выбран (подсветка кнопки, как у выбранного пресета рядом).
+export function DateRange({ since, until, onChange, min, max = mskDay(), className = "", active }: Common & {
+  since: string; until: string; onChange: (since: string, until: string) => void; active?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState<string | null>(null);
@@ -92,7 +93,7 @@ export function DateRange({ since, until, onChange, min, max = mskDay(), classNa
   const left = shiftMonth(view.y, view.m, -1);
   return (
     <div ref={ref} className={`relative ${className}`}>
-      <button type="button" onClick={toggle} className={trigger} aria-haspopup="dialog" aria-expanded={open}>
+      <button type="button" onClick={toggle} className={`${trigger} ${active ? "!border-violet-500 !bg-violet-900/30" : ""}`} aria-haspopup="dialog" aria-expanded={open}>
         <Icon />{rangeLabel(since, until)}
       </button>
       {open && (

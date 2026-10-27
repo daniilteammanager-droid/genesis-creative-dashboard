@@ -76,6 +76,15 @@ export function presetRange(preset: DatePreset): { from: string; to: string } | 
   return { from: isoDay(firstPrev), to: isoDay(lastPrev) };
 }
 
+// Первый и последний день данных — чтобы календарь при «Всё время» показывал реальный период.
+export function dateBounds(rows: { date: string }[]): { from: string; to: string } | null {
+  let from = "", to = "";
+  for (const r of rows) { if (!from || r.date < from) from = r.date; if (r.date > to) to = r.date; }
+  return from ? { from, to } : null;
+}
+
+// «Диапазон» в кнопках больше нет: свой период выбирается календарём рядом с ними, и он
+// виден всегда, а не после клика по «Диапазону» (28.10.2026).
 export const PRESETS: { id: DatePreset; label: string }[] = [
   { id: "all",        label: "Всё время" },
   { id: "this_week",  label: "Эта неделя" },

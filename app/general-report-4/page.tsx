@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   type DatePreset, type CardDef, type ChartPoint,
-  fmt, fmtMoney, fmtPct, fmtOptMoney, romiClass, presetRange, PRESETS,
+  fmt, fmtMoney, fmtPct, fmtOptMoney, romiClass, presetRange, PRESETS, dateBounds,
   SummaryCard, CARD_DEFS, CHART_DEFS,
 } from "@/components/general-report/shared";
 import { applyFilters, buildGroups, computeTotals4, distinctValues, type Filters, type Gr4Group, type Period } from "@/lib/general-report-4/aggregate";
@@ -207,6 +207,9 @@ export default function GeneralReport4Page() {
     [rows, kind]);
 
   const range = preset === "custom" ? (customFrom && customTo ? { from: customFrom, to: customTo } : null) : presetRange(preset);
+  // Что показывает календарь: выбранный период, при «Всё время» — от первого до последнего дня данных.
+  const bounds = useMemo(() => dateBounds(rows), [rows]);
+  const shown = range ?? bounds ?? { from: mskDay(), to: mskDay() };
   const filtered = useMemo(() => applyFilters(rows, filters, range), [rows, filters, range?.from, range?.to]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = useMemo(() => computeTotals4(filtered), [filtered]);
   const groups = useMemo(() => buildGroups(filtered, period, by), [filtered, period, by]);
@@ -368,13 +371,9 @@ export default function GeneralReport4Page() {
 
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className={label}>Даты:</span>
-              {PRESETS.map((p) => <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>{p.label}</button>)}
-              {preset === "custom" && (
-                <span className="flex items-center gap-2 ml-1">
-                  <DateRange since={customFrom || customTo || mskDay()} until={customTo || customFrom || mskDay()} max=""
-                             onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); }} />
-                </span>
-              )}
+              {PRESETS.filter((p) => p.id !== "custom").map((p) => <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>{p.label}</button>)}
+              <DateRange since={shown.from} until={shown.to} max="" active={preset === "custom"} className="ml-1"
+                         onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); setPreset("custom"); }} />
             </div>
 
             <div data-tour="gr4-rows" className="flex items-center gap-2 mb-3 flex-wrap">
