@@ -9,6 +9,8 @@ import {
 import { applyFilters, buildGroups, computeTotals4, distinctValues, type Filters, type Gr4Group, type Period } from "@/lib/general-report-4/aggregate";
 import { DIMENSIONS, DIM_LABELS, QUAL_KEYS, type Gr4Data, type Gr4Dim, type Gr4Kind, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
 import Report from "./Report";
+import { DateRange } from "@/components/DatePicker";
+import { mskDay } from "@/lib/day";
 
 // ─── Колонки ──────────────────────────────────────────────────────────────────
 // Порядок и названия — как в General 3.0 и в новой Google-таблице: к ним привыкла
@@ -369,11 +371,8 @@ export default function GeneralReport4Page() {
               {PRESETS.map((p) => <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>{p.label}</button>)}
               {preset === "custom" && (
                 <span className="flex items-center gap-2 ml-1">
-                  <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                    className="bg-[#111118] border border-violet-900/40 text-zinc-300 text-xs rounded-xl px-3 py-1.5 outline-none [color-scheme:dark]" />
-                  <span className="text-zinc-600">—</span>
-                  <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                    className="bg-[#111118] border border-violet-900/40 text-zinc-300 text-xs rounded-xl px-3 py-1.5 outline-none [color-scheme:dark]" />
+                  <DateRange since={customFrom || customTo || mskDay()} until={customTo || customFrom || mskDay()} max=""
+                             onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); }} />
                 </span>
               )}
             </div>

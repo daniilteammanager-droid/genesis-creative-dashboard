@@ -6,6 +6,8 @@ import { applyFilters, buildGroups, computeTotals4, distinctValues, type Filters
 import { allocate, NO_BUYER } from "@/lib/general-report-4/allocate";
 import { costTone, romiTone, toneClass, type Tone } from "@/lib/general-report-4/tone";
 import { DIMENSIONS, DIM_LABELS, type Gr4Dim, type Gr4Row, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
+import { DateRange } from "@/components/DatePicker";
+import { mskDay } from "@/lib/day";
 
 // Вкладка «Отчёт» (Decision 084) — как лист «Отчёт» общей таблицы, но по всей
 // команде: общая таблица, выплаты разложены по баерам по их Torro
@@ -139,9 +141,7 @@ export default function Report() {
           {PRESETS.map((x) => <button key={x.id} onClick={() => setPreset(x.id)} className={smallChip(preset === x.id)}>{x.label}</button>)}
           {preset === "custom" && (
             <span className="flex items-center gap-2">
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-[#0d0b14] border border-violet-900/40 text-zinc-300 text-xs rounded-xl px-3 py-1.5 [color-scheme:dark]" />
-              <span className="text-zinc-600">—</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-[#0d0b14] border border-violet-900/40 text-zinc-300 text-xs rounded-xl px-3 py-1.5 [color-scheme:dark]" />
+              <DateRange since={from || to || mskDay()} until={to || from || mskDay()} max="" onChange={(a, b) => { setFrom(a); setTo(b); }} />
             </span>
           )}
           {range && <span className="text-xs text-zinc-500">{range.from.slice(8)}.{range.from.slice(5, 7)} — {range.to.slice(8)}.{range.to.slice(5, 7)}</span>}

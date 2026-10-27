@@ -599,6 +599,10 @@ Extend existing components whenever possible instead of replacing them.
 
 Do not redesign existing UI without a clear reason.
 
+Даты выбираются только через `components/DatePicker.tsx` (`DateRange` — период, `DatePicker` — день):
+календарь Genesis вместо системного `<input type="date">`, на ПК — два месяца, на телефоне — один шторкой
+снизу. Сетка и подписи периода — `lib/calendar.ts`. Новый выбор даты — этим компонентом, а не input.
+
 ---
 
 # Coding Standards

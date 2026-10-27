@@ -5,6 +5,7 @@ import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
+import { DateRange } from "@/components/DatePicker";
 
 // Сортировка кликом по заголовку — по числу, а не по тексту ячейки.
 const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
@@ -132,9 +133,7 @@ export default function CreativesTable() {
       {/* ─── Период и баер ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
-        <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
-        <span className="text-zinc-600">—</span>
-        <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
+        <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
 
         <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут

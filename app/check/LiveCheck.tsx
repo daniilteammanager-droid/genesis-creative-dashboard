@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
+import { DateRange } from "@/components/DatePicker";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -119,9 +120,7 @@ export default function LiveCheck() {
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
-        <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
-        <span className="text-zinc-600">—</span>
-        <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
+        <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
         <button onClick={() => { setSince(today()); setUntil(today()); }}
                 className={chip(since === today() && until === today())}>Сегодня</button>
         <button onClick={() => { setSince(mskDaysAgo(1)); setUntil(mskDaysAgo(1)); }}

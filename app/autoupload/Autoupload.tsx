@@ -9,6 +9,7 @@ import { mskDay } from "@/lib/day";
 import LibraryPicker from "./LibraryPicker";
 import UploadApp from "./UploadApp";
 import CreativeUploadModal from "../CreativeUploadModal";
+import { DatePicker } from "@/components/DatePicker";
 
 // Автозалив (Decision 081, 087) — форма один в один с Genesis Manager Артёма:
 // 01 кабинеты и основа → общий набор адсетов с креативами → текст → 02 кампании
@@ -262,7 +263,7 @@ export default function Autoupload() {
             <option value="">Facebook Page по умолчанию</option>
             {pages.map(([id, name]) => <option key={id} value={id}>{name} · {id}</option>)}
           </select>
-          <label className="flex items-center gap-2 text-xs text-zinc-500">Дата <input type="date" value={f.date} onChange={(e) => set({ date: e.target.value })} className={`${field} flex-1`} /></label>
+          <label className="flex items-center gap-2 text-xs text-zinc-500">Дата <DatePicker value={f.date} min={mskDay()} onChange={(date) => set({ date })} /></label>
           <label className="flex items-center gap-2 text-xs text-zinc-500">Нумерация с <input type="number" min={1} value={f.campaignNumber} onChange={(e) => set({ campaignNumber: Number(e.target.value) })} className={`${field} w-24`} /></label>
           <label className="flex items-center gap-2 text-xs text-zinc-500">Бюджет по умолчанию, $ <input inputMode="decimal" value={f.budget} onChange={(e) => set({ budget: e.target.value })} className={`${field} w-24`} /></label>
           <div className="flex items-center gap-4 text-sm text-zinc-300">

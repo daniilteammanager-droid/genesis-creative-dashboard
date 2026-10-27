@@ -11,6 +11,7 @@ import type { MediaFile } from "@/lib/creatives/media";
 import { isSupabaseConfigured, supabase, selectAllRows, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult } from "@/lib/warehouse/creatives";
 import { mskDay, mskDaysAgo } from "@/lib/day";
+import { DateRange } from "@/components/DatePicker";
 
 // Оболочка раздела: виды, загрузка крео и Медиатека.
 //
@@ -194,9 +195,7 @@ export default function CreativesView() {
         <>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
-            <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
-            <span className="text-zinc-600">—</span>
-            <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
+            <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
             <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
               {PERIODS.map((p) => (
                 <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}

@@ -5,6 +5,7 @@ import type { ReportTreeResult, TreeNode } from "@/lib/warehouse/reportTree";
 import type { LiveState } from "@/lib/reports-live/manage";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, SORTS, money, n, romi, sortBy, totalsOf } from "./columns";
+import { DateRange } from "@/components/DatePicker";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -338,9 +339,7 @@ export default function ReportTree() {
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
-        <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)} className={field} />
-        <span className="text-zinc-600">—</span>
-        <input type="date" value={until} min={since} onChange={(e) => setUntil(e.target.value)} className={field} />
+        <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
         <div data-tour="reports-periods" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
