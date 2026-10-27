@@ -15,6 +15,7 @@ import { mskDay, mskStamp } from "@/lib/day";
 import { fetchDay, toCrm } from "@/lib/torro/mcp";
 import { uniqueIds } from "./torroIngest";
 import { parseCreativeCode, parseName } from "@/lib/creatives/code";
+import type { ArtemCampaign, ArtemTorro } from "./checkArtem";
 
 // Чек — то, что копируют и отправляют в телегу.
 //
@@ -52,6 +53,8 @@ export interface CheckRow {
   costPdp: number | null;
   costDia: number | null;
   romi: number | null;
+  accountId?: string;           // только в разрезе по кампаниям — для формата Артёма
+  status?: string | null;       // фактический статус кампании (живой из Meta или последний из склада)
 }
 
 // Итог лица — та же строка, плюс сколько в нём строк (для «…и ещё N» в телеге).
@@ -87,6 +90,9 @@ export interface CheckResult {
   rows: CheckRow[];              // сгруппированы по площадкам и лицам в порядке faces
   faces: FaceTotal[];            // по площадкам, внутри — по лицам
   regions: FaceTotal[];          // Facebook: Испания, Латам, весь FB
+  // Вход для формата Артёма (Decision 090), только в разрезе по кампаниям: кампании Facebook и
+  // TG Ads со статусом и баном, включая живые без расхода, и строки Torro без кампании.
+  artem: { campaigns: ArtemCampaign[]; tg: ArtemCampaign[]; torro: ArtemTorro[] } | null;
   platforms: PlatformTotal[];    // только подключённые
   unmatched: Unmatched | null;
   totalBudget: number | null;
@@ -409,7 +415,7 @@ export async function loadCheck(
 
   const base: CheckResult = {
     since, until, groupBy, live, rows: [], totalBudget: null,
-    faces: [], regions: [], platforms: [], unmatched: null, totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
+    faces: [], regions: [], artem: null, platforms: [], unmatched: null, totals: { spend: 0, revenue: null, romi: null }, text: "", buyers, sources: [],
     buyer: buyerFilter && buyers.some((b) => b.id === buyerFilter) ? buyerFilter : "all",
     isBuyer: me.role === "buyer", generatedAt: new Date().toISOString(),
   };
@@ -574,6 +580,8 @@ export async function loadCheck(
           const row = rows.get(c.campaignId) ?? blank(c.campaignId, c.campaignName || c.campaignId, rowFace(platform, c.campaignName, c.accountId), platform);
           row.spend += c.spend;
           row.dailyBudget = campaignMeta.dailyBudgets.get(c.campaignId) ?? null;
+          row.accountId = c.accountId?.replace(/^act_/, "");
+          row.status = campaignMeta.statuses.get(c.campaignId) ?? row.status ?? null;
           rows.set(c.campaignId, row);
         }
         // Кампании, которые есть только в выгрузке, в чек не попадают: имени у
@@ -679,6 +687,7 @@ export async function loadCheck(
         seenDay.add(dayKey);
         const row = rows.get(d.campaign_id) ?? blank(d.campaign_id, d.campaign_name || d.campaign_id, rowFace(platformOfId(d.campaign_id), d.campaign_name, d.account_id));
         row.spend += num(d.spend);
+        row.accountId ??= d.account_id ?? undefined;
         rows.set(d.campaign_id, row);
       }
 
@@ -804,6 +813,7 @@ export async function loadCheck(
     unmatched.names++;
   }
   const revenue = withRevenue.length ? withRevenue.reduce((s, r) => s + (r.revenue as number), 0) : null;
+  const artem = groupBy === "campaign" ? await artemInput(db, list, scope, until === today, crmSeen, crmMatched) : null;
 
   return {
     ...base,
@@ -811,6 +821,7 @@ export async function loadCheck(
     rows: list,
     faces,
     regions,
+    artem,
     platforms,
     unmatched,
     totalBudget,
@@ -822,4 +833,49 @@ export async function loadCheck(
     text: buildCheckText(list, faces, totalBudget, new Date(), undefined, platforms, regions) + unmatchedLine(unmatched),
     warning,
   };
+}
+
+// Вход для формата Артёма (Decision 090). Статус — живой из Meta, а где его нет (Dolphin,
+// FB Tool, прошлые дни) — последний известный из склада (wh_entities). Бан — по кабинету:
+// всё, кроме ACTIVE и grace period, в том числе пропавший. Живые кампании без расхода — в
+// чек за сегодня, как у Артёма: свежая кампания видна до первого цента.
+async function artemInput(
+  db: ReturnType<typeof warehouse>, rows: CheckRow[], scope: string[], today: boolean,
+  crmSeen: Map<string, Map<string, CrmTotals>>, crmMatched: Map<string, Set<string>>,
+): Promise<NonNullable<CheckResult["artem"]>> {
+  const { data: owned } = scope.length ? await db.from("wh_account_owners").select("account_id").in("owner_user_id", scope) : { data: [] };
+  const accounts = new Set([...(owned ?? []).map((o) => o.account_id as string), ...rows.map((r) => r.accountId).filter((a): a is string => Boolean(a))]);
+  const ids = [...accounts];
+  const [{ data: cabs }, { data: ents }] = ids.length ? await Promise.all([
+    db.from("wh_cabinet_states").select("account_id, status").in("account_id", ids),
+    db.from("wh_entities").select("entity_id, account_id, name, effective_status, daily_budget, source").eq("level", "campaign").in("account_id", ids),
+  ]) : [{ data: [] }, { data: [] }];
+  const cab = new Map((cabs ?? []).map((c) => [c.account_id as string, c.status as string]));
+  const ent = new Map((ents ?? []).map((e) => [e.entity_id as string, e]));
+  const banned = (acc?: string) => { const st = acc ? cab.get(acc) : undefined; return Boolean(st && !["ACTIVE", "IN_GRACE_PERIOD"].includes(st)); };
+
+  const one = (r: CheckRow): ArtemCampaign => {
+    const e = ent.get(r.key);
+    const status = r.status ?? (e?.effective_status as string | undefined) ?? null;
+    const budget = r.dailyBudget ?? (status === "ACTIVE" && e?.daily_budget != null ? Number(e.daily_budget) : null);
+    return { name: r.label, spend: r.spend, budget, status, banned: banned(r.accountId ?? (e?.account_id as string | undefined)),
+      subscribers: r.subscribers, dialogs: r.dialogs, revenue: r.revenue };
+  };
+  const campaigns = rows.filter((r) => r.platform === "fb").map(one);
+  const tg = rows.filter((r) => r.platform === "tg").map(one);
+  if (today) {
+    const have = new Set(rows.map((r) => r.key));
+    for (const e of ents ?? []) {
+      if (have.has(e.entity_id as string) || e.effective_status !== "ACTIVE" || banned(e.account_id as string)) continue;
+      const c: ArtemCampaign = { name: (e.name as string) || (e.entity_id as string), spend: 0, budget: e.daily_budget == null ? null : Number(e.daily_budget),
+        status: "ACTIVE", banned: false, subscribers: null, dialogs: null, revenue: null };
+      (e.source === "tgads" ? tg : campaigns).push(c);
+    }
+  }
+  const torro: ArtemTorro[] = [];
+  for (const [who, names] of crmSeen) for (const [name, c] of names) {
+    if (crmMatched.get(who)?.has(name)) continue;
+    torro.push({ name, subscribers: c.subscribers ?? 0, dialogs: c.dialogs ?? 0, revenue: c.revenue ?? 0 });
+  }
+  return { campaigns, tg, torro };
 }

@@ -14,7 +14,7 @@ interface State { bot: string | null; events: TelegramEvent[]; links: TelegramLi
 interface Invite { privateUrl: string; groupUrl: string; command: string }
 
 const GROUP_LABELS: Record<TelegramLink["checkGroup"], string> = {
-  campaign: "по кампаниям", creative: "по креативам", country: "по странам",
+  campaign: "по кампаниям", creative: "по креативам", country: "по странам", artem: "кампании — формат Артёма",
 };
 
 // Время авточека — строкой, как его и говорят: «10:00, 14:00, 18:00».

@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
+import { buildArtemText } from "@/lib/warehouse/checkArtem";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -44,6 +45,9 @@ export default function LiveCheck() {
   const [group, setGroup] = useState<CheckGroup>(() =>
     GROUPS.find((g) => g.id === params.get("group"))?.id ?? "campaign");
   const [buyer, setBuyer] = useState(() => params.get("buyer") || "all");
+  // Формат текста (Decision 090): наш или как у Артёма — только для разреза по кампаниям.
+  const [format, setFormat] = useState<"ours" | "artem">(() => (params.get("format") === "artem" ? "artem" : "ours"));
+  const [activeOnly, setActiveOnly] = useState(false);
   const [data, setData] = useState<CheckResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,19 +88,26 @@ export default function LiveCheck() {
     return () => { alive = false; };
   }, [since, until, group, buyer]);
 
+  const text = useMemo(() => {
+    if (!data) return "";
+    if (format !== "artem" || !data.artem) return data.text;
+    return buildArtemText(data.artem.campaigns, data.artem.torro, { since: data.since, until: data.until, today: today(), activeOnly, tg: data.artem.tg })
+      + (data.warning ? `\n\n⚠️ ${data.warning}` : "");
+  }, [data, format, activeOnly]);
+
   async function send() {
-    if (!data?.text) return;
+    if (!text) return;
     setSendNote("Отправляю…");
-    const r = await fetch("/api/check/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: data.text }) }).catch(() => null);
+    const r = await fetch("/api/check/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : { error: "Сеть не ответила" };
     setSendNote(d.error ?? `Ушло в чатов: ${d.sent}`);
     if (!d.error) loadHistory();
   }
 
   async function copy() {
-    if (!data?.text) return;
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(data.text);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -121,9 +132,18 @@ export default function LiveCheck() {
         <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Разрез</span>
         <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
           {GROUPS.map((g) => (
-            <button key={g.id} onClick={() => setGroup(g.id)} className={chip(group === g.id)}>{g.label}</button>
+            <button key={g.id} onClick={() => { setGroup(g.id); if (g.id !== "campaign") setFormat("ours"); }} className={chip(group === g.id)}>{g.label}</button>
           ))}
         </div>
+        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1" title="Формат текста чека">
+          <button onClick={() => setFormat("ours")} className={chip(format === "ours")}>Наш формат</button>
+          <button onClick={() => { setFormat("artem"); setGroup("campaign"); }} className={chip(format === "artem")}>Формат Артёма</button>
+        </div>
+        {format === "artem" && (
+          <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} className="accent-violet-500" />Только активные
+          </label>
+        )}
         {pending && !loading && (
           <span className="w-4 h-4 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
         )}
@@ -206,7 +226,7 @@ export default function LiveCheck() {
             </div>
             {sendNote && <p className="text-xs text-zinc-400 mb-2">{sendNote}</p>}
             <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
-              {data.text}
+              {text}
             </pre>
           </div>
 

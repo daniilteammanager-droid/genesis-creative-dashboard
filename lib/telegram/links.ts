@@ -15,7 +15,7 @@ export interface TelegramLink {
   threadId: number | null;
   events: string[];
   checkTimes: string[];
-  checkGroup: "campaign" | "creative" | "country";
+  checkGroup: "campaign" | "creative" | "country" | "artem";
   createdAt: string;
 }
 

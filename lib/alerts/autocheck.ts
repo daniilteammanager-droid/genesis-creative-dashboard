@@ -1,5 +1,6 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { buildCheckText, loadCheck, unmatchedLine, type CheckGroup, type CheckResult } from "@/lib/warehouse/check";
+import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { escapeHtml, sendToLinks } from "@/lib/telegram/links";
 import { mskDay, mskTime } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
@@ -7,7 +8,9 @@ import type { Profile } from "@/lib/auth/types";
 // Авточек: живой чек за сегодня в привязанный чат по расписанию привязки.
 // Шлёт прогон склада «сегодня», а он идёт раз в 15 минут — отсюда и шаг времени.
 
-export const CHECK_GROUPS: CheckGroup[] = ["campaign", "creative", "country"];
+// «artem» — кампании в формате Артёма (Decision 090): полный чек с разделами, без обрезки до верха.
+export type ScheduleGroup = CheckGroup | "artem";
+export const CHECK_GROUPS: ScheduleGroup[] = ["campaign", "creative", "country", "artem"];
 // Слот, пропущенный дольше получаса (VPS лежал), не догоняем: вечерний чек,
 // пришедший ночью, уже никому не нужен.
 const LATE_LIMIT_MIN = 30;
@@ -46,6 +49,12 @@ export const TOP_ROWS = 15;
 const money = (v: number) => v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const UNIT: Record<CheckGroup, string> = { campaign: "кампаний", creative: "креативов", country: "стран" };
 
+// Формат Артёма — целиком, как у него в чате: разделы «Активные / Проблемные / Стопнутые».
+export function artemMessage(r: CheckResult): string {
+  const text = r.artem ? buildArtemText(r.artem.campaigns, r.artem.torro, { since: r.since, until: r.until, today: mskDay(), tg: r.artem.tg }) : r.text;
+  return [escapeHtml(text), r.warning ? `\n\n⚠️ ${escapeHtml(r.warning)}` : ""].join("");
+}
+
 export function checkMessage(r: CheckResult, at: Date = new Date()): string {
   if (r.rows.length === 0) return escapeHtml(`${r.text}\n\nСегодня расхода пока нет.`);
 
@@ -70,16 +79,16 @@ export function dashboardUrl(): string | null {
   return (raw.startsWith("http") ? raw : `https://${raw}`).replace(/\/$/, "");
 }
 
-export function openCheckButton(day: string, group: CheckGroup): Record<string, unknown> {
+export function openCheckButton(day: string, group: CheckGroup, format?: "artem"): Record<string, unknown> {
   const base = dashboardUrl();
   if (!base) return {};
-  const q = new URLSearchParams({ since: day, until: day, group });
+  const q = new URLSearchParams({ since: day, until: day, group, ...(format ? { format } : {}) });
   return { reply_markup: { inline_keyboard: [[{ text: "Открыть в дашборде", url: `${base}/check?${q}` }]] } };
 }
 
 interface LinkRow {
   id: string; user_id: string; chat_id: number; thread_id: number | null;
-  check_times: string[]; check_group: CheckGroup; check_sent_slot: string | null;
+  check_times: string[]; check_group: ScheduleGroup; check_sent_slot: string | null;
 }
 
 export async function runAutocheck(at: Date = new Date()): Promise<{ due: number; sent: number; failed: number }> {
@@ -105,11 +114,13 @@ export async function runAutocheck(at: Date = new Date()): Promise<{ due: number
     const me = profileOf.get(link.user_id);
     // Отключённому — ничего, но слот отмечаем, чтобы не перебирать его каждый прогон.
     if (me?.status === "active") {
-      const key = `${me.id}|${link.check_group}`;
-      if (!checks.has(key)) checks.set(key, loadCheck(me, day, day, link.check_group));
+      const group: CheckGroup = link.check_group === "artem" ? "campaign" : link.check_group;
+      const key = `${me.id}|${group}`;
+      if (!checks.has(key)) checks.set(key, loadCheck(me, day, day, group));
       try {
-        const text = checkMessage(await checks.get(key)!);
-        const n = await sendToLinks([link], text, openCheckButton(day, link.check_group));
+        const r = await checks.get(key)!;
+        const text = link.check_group === "artem" ? artemMessage(r) : checkMessage(r);
+        const n = await sendToLinks([link], text, openCheckButton(day, group, link.check_group === "artem" ? "artem" : undefined));
         sent += n;
         await db.from("check_log").insert({ user_id: me.id, kind: "schedule", text, sent: n });
       } catch (e) {
