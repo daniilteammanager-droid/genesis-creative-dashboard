@@ -145,6 +145,36 @@ export async function liveStates(me: Profile, items: Item[]): Promise<{ states: 
   return { states, errors };
 }
 
+// Охват и частота за период — живьём из Meta (Decision 089): дневные охваты склада в период
+// не складываются. Только кабинеты на ключах Meta; Dolphin, FB Tool и TG Ads охвата не дают.
+// Баер — только свои кабинеты, владелец и тимлид — все.
+export async function liveReach(me: Profile, items: Item[], since: string, until: string): Promise<Record<string, { reach: number; frequency: number | null }>> {
+  const own = await owners([...new Set(items.map((i) => i.accountId))]);
+  const out: Record<string, { reach: number; frequency: number | null }> = {};
+  const jobs = [...byAccount(items)].map(([accountId, list]) => async () => {
+    const ownerId = own.get(accountId);
+    if (!ownerId || (me.role === "buyer" && ownerId !== me.id)) return;
+    const w = await writerFor(accountId, ownerId).catch(() => null);
+    if (w?.kind !== "meta") return;
+    await Promise.all((["campaign", "adset", "ad"] as Level[]).map(async (level) => {
+      const ids = list.filter((i) => i.level === level).map((i) => i.id);
+      for (let k = 0; k < ids.length; k += 50) {
+        const r = await graph<{ data: Record<string, string>[] }>(w.token, `act_${accountId}/insights`, {
+          level, fields: `${level}_id,reach,frequency`, time_range: JSON.stringify({ since, until }), limit: "500",
+          filtering: JSON.stringify([{ field: `${level}.id`, operator: "IN", value: ids.slice(k, k + 50) }]),
+        }).catch(() => ({ data: [] }));
+        for (const x of r.data) {
+          const id = x[`${level}_id`];
+          if (id) out[id] = { reach: parseInt(x.reach ?? "0", 10) || 0, frequency: x.frequency ? Number(x.frequency) : null };
+        }
+      }
+    }));
+  });
+  // По 6 кабинетов разом: лимит приложения общий (Decision 042), но и ждать полминуты нельзя.
+  for (let i = 0; i < jobs.length; i += 6) await Promise.all(jobs.slice(i, i + 6).map((j) => j()));
+  return out;
+}
+
 export type Action = { kind: "status"; active: boolean } | { kind: "budget"; usd: number };
 
 // Применить к выбранным. Ответ — по строке: получилось или почему нет.

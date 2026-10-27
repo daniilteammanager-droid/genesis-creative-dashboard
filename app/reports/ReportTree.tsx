@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReportTreeResult, TreeNode } from "@/lib/warehouse/reportTree";
 import type { LiveState } from "@/lib/reports-live/manage";
 import { mskDaysAgo } from "@/lib/day";
-import { COLS, money, n, romi } from "./columns";
+import { COLS, SORTS, money, n, romi, sortBy, totalsOf } from "./columns";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -32,6 +32,15 @@ const PERIODS = [
 // кнопкой «Обновить сейчас» (склад сам обновляется раз в 15 минут).
 const EVERY = [{ ms: 0, label: "Live: выкл" }, { ms: 60_000, label: "Live: 1 мин" }, { ms: 120_000, label: "Live: 2 мин" }, { ms: 300_000, label: "Live: 5 мин" }];
 const HIDDEN_KEY = "reports.hiddenCols";
+// Своё оформление Live Manager — в этом браузере, как у Артёма в рабочем пространстве:
+// закреплённые и скрытые кабинеты, свои названия, закреплённые строки, наборы столбцов.
+const PREFS_KEY = "reports.prefs";
+interface Prefs { pinnedCabs: string[]; hiddenCabs: string[]; alias: Record<string, string>; pinnedRows: string[]; presets: Record<string, string[]> }
+const NO_PREFS: Prefs = { pinnedCabs: [], hiddenCabs: [], alias: {}, pinnedRows: [], presets: {} };
+const LEVELS = [{ id: "tree", label: "Дерево" }, { id: "campaign", label: "Кампании" }, { id: "adset", label: "Адсеты" }, { id: "ad", label: "Объявления" }] as const;
+type LevelId = (typeof LEVELS)[number]["id"];
+const NO_REACH = new Map<string, number>();
+const BAN = new Set(["DISABLED", "UNSETTLED", "CLOSED", "PENDING_CLOSURE", "PENDING_SETTLEMENT"]);
 
 // Отступ задаётся классом, а не вычисленным стилем: Tailwind не собирает
 // классы, собранные из строк на лету.
@@ -49,9 +58,12 @@ interface RowProps {
   node: TreeNode; depth: number; open: Set<string>; toggle: (id: string) => void;
   live: Map<string, LiveState>; selected: Set<string>; select: (id: string) => void;
   flip: (node: TreeNode) => void; cols: typeof COLS;
+  // Охват за период живьём (Decision 089), закреплённые строки.
+  reach: Map<string, number>; pinned: Set<string>; pin: (id: string) => void;
 }
 
-function Row({ node, depth, open, toggle, live, selected, select, flip, cols }: RowProps) {
+function Row({ node: raw, depth, open, toggle, live, selected, select, flip, cols, reach, pinned, pin }: RowProps) {
+  const node = reach.has(raw.id) ? { ...raw, reach: reach.get(raw.id)! } : raw;
   const expandable = Boolean(node.children?.length);
   const isOpen = open.has(node.id);
   const s = live.get(node.id);
@@ -77,6 +89,10 @@ function Row({ node, depth, open, toggle, live, selected, select, flip, cols }: 
                 <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300/90 whitespace-nowrap shrink-0">нет в кабинетах</span>
               )}
             </button>
+            {depth === 0 && !node.outside && (
+              <button type="button" onClick={() => pin(node.id)} title={pinned.has(node.id) ? "Открепить" : "Закрепить наверху"}
+                      className={`shrink-0 text-xs ${pinned.has(node.id) ? "text-amber-300" : "text-zinc-700 hover:text-zinc-400"}`}>★</button>
+            )}
           </div>
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">
@@ -87,7 +103,12 @@ function Row({ node, depth, open, toggle, live, selected, select, flip, cols }: 
                 <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${isOn(s) ? "left-4" : "left-0.5"}`} />
               </button>
             )}
-            {pill(s)}
+            {s ? pill(s) : node.lastStatus ? (
+              // Живого статуса нет (кабинет пропал или не читается) — последний известный из склада.
+              <span className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 whitespace-nowrap" title="Последний известный статус из склада">
+                {node.lastStatus.replace(/_/g, " ")} · история
+              </span>
+            ) : <span className="text-zinc-600">—</span>}
           </div>
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap text-zinc-400">{s?.dailyBudget ? money(s.dailyBudget) : "—"}</td>
@@ -97,7 +118,8 @@ function Row({ node, depth, open, toggle, live, selected, select, flip, cols }: 
         ))}
       </tr>
       {isOpen && node.children?.map((c) => (
-        <Row key={c.id} node={c} depth={depth + 1} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} cols={cols} />
+        <Row key={c.id} node={c} depth={depth + 1} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} cols={cols}
+             reach={reach} pinned={pinned} pin={pin} />
       ))}
     </>
   );
@@ -127,6 +149,23 @@ export default function ReportTree() {
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]") as string[]); } catch { return new Set(); }
   });
+  const [q, setQ] = useState("");
+  const [statusF, setStatusF] = useState<"all" | "active" | "paused">("all");
+  const [sort, setSort] = useState("spend");
+  const [level, setLevel] = useState<LevelId>("tree");
+  const [cab, setCab] = useState("");
+  const [showHiddenCabs, setShowHiddenCabs] = useState(false);
+  const [prefs, setPrefsState] = useState<Prefs>(() => {
+    try { return { ...NO_PREFS, ...(JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<Prefs>) }; } catch { return NO_PREFS; }
+  });
+  const setPrefs = (f: (p: Prefs) => Prefs) => setPrefsState((p) => {
+    const next = f(p);
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)); } catch { /* приватное окно */ }
+    return next;
+  });
+  const toggleIn = (k: "pinnedCabs" | "hiddenCabs" | "pinnedRows", id: string) =>
+    setPrefs((p) => ({ ...p, [k]: p[k].includes(id) ? p[k].filter((x) => x !== id) : [...p[k], id] }));
+  const [reach, setReach] = useState<Map<string, number>>(new Map());
   const isBuyer = data?.isBuyer ?? false;
 
   useEffect(() => {
@@ -162,6 +201,17 @@ export default function ReportTree() {
       .catch(() => setLiveNote("Статусы не прочитались — сеть не ответила"));
   }, [items]);
   useEffect(() => { loadLive(); }, [loadLive]);
+
+  // Охват и частота за период — живьём из Meta: дневные охваты склада не складываются.
+  useEffect(() => {
+    if (!data || data.reachExact || !items.length) return;
+    let alive = true;
+    fetch("/api/report-live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, reach: { since: data.since, until: data.until } }) })
+      .then((r) => r.json() as Promise<{ reach?: Record<string, { reach: number }> }>)
+      .then((d) => { if (alive) setReach(new Map(Object.entries(d.reach ?? {}).map(([id, v]) => [id, v.reach]))); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [data, items]);
 
   useEffect(() => {
     if (!every) return;
@@ -223,9 +273,57 @@ export default function ReportTree() {
 
   const faces = useMemo(() => [...new Set((data?.nodes ?? []).map((x) => x.face).filter((f): f is string => Boolean(f)))].sort(), [data]);
   const geos = useMemo(() => [...new Set((data?.nodes ?? []).flatMap((x) => x.countries ?? []))].sort(), [data]);
-  const shown = useMemo(() => (data?.nodes ?? []).filter((x) =>
-    (face === "all" || (face === "none" ? !x.face : x.face === face)) && (geo === "all" || (x.countries ?? []).includes(geo))), [data, face, geo]);
+  // Строки уровня: дерево — кампании с детьми, остальное — плоским списком, лицо и
+  // страны — от родителя, чтобы фильтры работали и на объявлениях.
+  const statusOf = useCallback((x: TreeNode) => live.get(x.id)?.effective || live.get(x.id)?.status || x.lastStatus || null, [live]);
+  const cabName = useCallback((id?: string) => (id ? prefs.alias[id] || data?.cabinets.find((c) => c.accountId === id)?.name || id : ""), [prefs.alias, data]);
+  const shown = useMemo(() => {
+    const top = data?.nodes ?? [];
+    const flat = (lvl: LevelId): TreeNode[] => {
+      if (lvl === "tree") return top;
+      if (lvl === "campaign") return top.map((c) => ({ ...c, children: undefined }));
+      const sets = top.flatMap((c) => (c.children ?? []).map((a) => ({ ...a, face: c.face, accountId: a.accountId ?? c.accountId })));
+      if (lvl === "adset") return sets.map((a) => ({ ...a, children: undefined }));
+      return sets.flatMap((a) => (a.children ?? []).map((x) => ({ ...x, face: a.face, countries: a.countries, accountId: x.accountId ?? a.accountId })));
+    };
+    const needle = q.trim().toLowerCase();
+    const list = flat(level).filter((x) => {
+      if (face !== "all" && (face === "none" ? x.face : x.face !== face)) return false;
+      if (geo !== "all" && !(x.countries ?? []).includes(geo)) return false;
+      if (cab && x.accountId !== cab) return false;
+      if (!showHiddenCabs && x.accountId && prefs.hiddenCabs.includes(x.accountId)) return false;
+      if (needle && !`${x.name} ${x.id} ${cabName(x.accountId)}`.toLowerCase().includes(needle)) return false;
+      const st = statusOf(x);
+      if (statusF === "active" && st !== "ACTIVE") return false;
+      if (statusF === "paused" && (!st || st === "ACTIVE")) return false;
+      return true;
+    });
+    const sorted = sortBy(list, sort);
+    const pins = new Set(prefs.pinnedRows);
+    return [...sorted.filter((x) => pins.has(x.id)), ...sorted.filter((x) => !pins.has(x.id) && !x.outside), ...sorted.filter((x) => !pins.has(x.id) && x.outside)];
+  }, [data, face, geo, cab, showHiddenCabs, prefs, q, statusF, sort, level, statusOf, cabName]);
+  const totals = useMemo(() => totalsOf(shown.filter((x) => !x.outside)), [shown]);
+  // Лента кабинетов: закреплённые сверху, дальше по расходу; пропавший — с пометкой.
+  const cabinets = useMemo(() => {
+    const spend = new Map<string, number>();
+    for (const x of data?.nodes ?? []) if (x.accountId) spend.set(x.accountId, (spend.get(x.accountId) ?? 0) + x.spend);
+    return [...(data?.cabinets ?? [])]
+      .filter((c) => showHiddenCabs || !prefs.hiddenCabs.includes(c.accountId))
+      .map((c) => ({ ...c, spend: spend.get(c.accountId) ?? 0, pinned: prefs.pinnedCabs.includes(c.accountId), hidden: prefs.hiddenCabs.includes(c.accountId) }))
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.spend - a.spend);
+  }, [data, prefs, showHiddenCabs]);
   const cols = COLS.filter((c) => !hidden.has(c.label));
+  const applyPreset = (name: string) => {
+    const list = prefs.presets[name];
+    if (!list) return;
+    const next = new Set(list);
+    setHidden(next);
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])); } catch { /* приватное окно */ }
+  };
+  const savePreset = () => {
+    const name = window.prompt("Название набора столбцов:")?.trim();
+    if (name) setPrefs((p) => ({ ...p, presets: { ...p.presets, [name]: [...hidden] } }));
+  };
   const setCol = (label: string) => setHidden((prev) => {
     const next = new Set(prev);
     if (next.has(label)) next.delete(label); else next.add(label);
@@ -274,6 +372,16 @@ export default function ReportTree() {
       {/* Live Manager: фильтры, обновление, столбцы. */}
       {data && data.nodes.length > 0 && (
         <div data-tour="reports-live" className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+            {LEVELS.map((l) => <button key={l.id} onClick={() => setLevel(l.id)} className={chip(level === l.id)}>{l.label}</button>)}
+          </div>
+          <input placeholder="Кампания, ID, кабинет…" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} w-56`} />
+          <select value={statusF} onChange={(e) => setStatusF(e.target.value as typeof statusF)} className={field}>
+            <option value="all">Все статусы</option><option value="active">Активные</option><option value="paused">Стопнутые</option>
+          </select>
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className={field}>
+            {SORTS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+          </select>
           <select value={geo} onChange={(e) => setGeo(e.target.value)} className={field}>
             <option value="all">Все GEO</option>
             {geos.map((g) => <option key={g} value={g}>{g}</option>)}
@@ -292,6 +400,13 @@ export default function ReportTree() {
             <button type="button" onClick={() => setShowCols((v) => !v)} className={`${small} border-violet-900/40 text-zinc-300 hover:bg-violet-900/20`}>☷ Столбцы</button>
             {showCols && (
               <div className="absolute z-30 mt-1 w-56 max-h-80 overflow-y-auto bg-[#111118] border border-violet-900/40 rounded-xl p-2 shadow-xl">
+                <div className="flex items-center gap-1 px-1 pb-2 mb-1 border-b border-violet-900/30">
+                  <select value="" onChange={(e) => applyPreset(e.target.value)} className="flex-1 bg-[#0d0b14] border border-violet-900/40 rounded-lg px-2 py-1 text-xs text-white">
+                    <option value="">Наборы…</option>
+                    {Object.keys(prefs.presets).map((k) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                  <button type="button" onClick={savePreset} className="text-xs text-violet-300 px-1" title="Сохранить текущий набор">＋</button>
+                </div>
                 {COLS.map((c) => (
                   <label key={c.label} className="flex items-center gap-2 px-2 py-1 text-sm text-zinc-300 hover:bg-violet-900/15 rounded cursor-pointer">
                     <input type="checkbox" checked={!hidden.has(c.label)} onChange={() => setCol(c.label)} className="accent-violet-500" />{c.label}
@@ -301,6 +416,36 @@ export default function ReportTree() {
             )}
           </div>
           {busy && <span className="text-xs text-zinc-500">{busy}</span>}
+        </div>
+      )}
+
+      {data && data.cabinets.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+          <button type="button" onClick={() => setCab("")} className={`shrink-0 px-3 py-2 rounded-xl border text-sm ${cab === "" ? "border-violet-500 bg-violet-900/25 text-white" : "border-violet-900/40 text-zinc-400"}`}>
+            Все кабинеты <span className="text-zinc-500">{data.cabinets.length}</span>
+          </button>
+          {cabinets.map((c) => {
+            const gone = c.status === "MISSING", ban = c.status ? BAN.has(c.status) : false;
+            return (
+              <div key={c.accountId} className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-sm ${cab === c.accountId ? "border-violet-500 bg-violet-900/25" : "border-violet-900/40"} ${c.hidden ? "opacity-50" : ""}`}>
+                <button type="button" onClick={() => toggleIn("pinnedCabs", c.accountId)} title={c.pinned ? "Открепить" : "Закрепить"} className={c.pinned ? "text-amber-300" : "text-zinc-600 hover:text-zinc-400"}>★</button>
+                <button type="button" onClick={() => setCab(cab === c.accountId ? "" : c.accountId)} className="text-left" title={`${c.accountId}${gone && c.lastStatus ? ` · до пропажи: ${c.lastStatus}` : ""}`}>
+                  <span className="text-zinc-100">{prefs.alias[c.accountId] || c.name}</span>
+                  {gone && <span className="ml-1.5 text-[10px] px-1 rounded border border-red-800/50 text-red-300">ПРОПАЛ</span>}
+                  {ban && <span className="ml-1.5 text-[10px] px-1 rounded border border-red-800/50 text-red-300">{c.status === "UNSETTLED" ? "UNSETTLED" : "БАН"}</span>}
+                  <span className="block text-[10px] text-zinc-500">{money(c.spend)}</span>
+                </button>
+                <button type="button" title="Своё название" className="text-zinc-600 hover:text-zinc-300 text-xs"
+                        onClick={() => { const v = window.prompt("Название кабинета у тебя (пусто — как в Meta):", prefs.alias[c.accountId] ?? ""); if (v !== null) setPrefs((p) => ({ ...p, alias: { ...p.alias, [c.accountId]: v.trim() } })); }}>✎</button>
+                <button type="button" title={c.hidden ? "Показать" : "Скрыть"} onClick={() => toggleIn("hiddenCabs", c.accountId)} className="text-zinc-600 hover:text-zinc-300 text-xs">{c.hidden ? "◉" : "×"}</button>
+              </div>
+            );
+          })}
+          {prefs.hiddenCabs.length > 0 && (
+            <button type="button" onClick={() => setShowHiddenCabs((v) => !v)} className="shrink-0 px-3 py-2 rounded-xl border border-violet-900/40 text-xs text-zinc-400">
+              {showHiddenCabs ? "Спрятать скрытые" : `Скрытые: ${prefs.hiddenCabs.length}`}
+            </button>
+          )}
         </div>
       )}
 
@@ -343,14 +488,23 @@ export default function ReportTree() {
 
       {!loading && !error && (data?.nodes.length ?? 0) > 0 && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          {/* Итоги того, что на экране (с фильтрами), — как карточки у Артёма. */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-5">
             {([
-              ["Расход", money(data!.totals.spend)],
-              ["Доход", money(data!.totals.depSum)],
-              ["ROMI", romi(data!.totals.spend, data!.totals.depSum)],
+              ["Расход", money(totals.spend)],
+              ["Клики FB", n(totals.clicks)],
+              ["Показы", n(totals.impressions)],
+              ["Клики на сайте", n(totals.lpClicks)],
+              ["ПДП", n(totals.subscribers)],
+              ["ДИА", n(totals.dialogs)],
+              ["Депозиты", n(totals.depCount)],
+              ["Сумма депов", money(totals.depSum)],
+              ["Цена ПДП", money(totals.cpaPdp)],
+              ["Цена ДИА", money(totals.cpaDia)],
+              ["ROMI", romi(totals.spend, totals.depSum)],
               data!.outside
                 ? ["Вне подключённых кабинетов", `${money(data!.outside.depSum)} · ${n(data!.outside.campaigns)} РК`]
-                : ["Кампаний", n(data!.nodes.length)],
+                : ["Строк", n(shown.length)],
             ] as const).map(([label, value]) => (
               <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
                 <p className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">{label}</p>
@@ -375,7 +529,8 @@ export default function ReportTree() {
               </thead>
               <tbody>
                 {shown.map((node) => (
-                  <Row key={node.id} node={node} depth={0} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} cols={cols} />
+                  <Row key={node.id} node={node} depth={0} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} cols={cols}
+                       reach={data!.reachExact ? NO_REACH : reach} pinned={new Set(prefs.pinnedRows)} pin={(id) => toggleIn("pinnedRows", id)} />
                 ))}
               </tbody>
             </table>

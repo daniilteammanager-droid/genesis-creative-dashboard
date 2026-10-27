@@ -4,7 +4,9 @@ import type { TreeNode } from "@/lib/warehouse/reportTree";
 // Общие для дерева кампаний и таблицы по креативам. Производные — из сумм строки,
 // а не средним детей (Decision 024). Прочерк — числа не было в выгрузке (Decision 039).
 
-export type Metrics = Pick<TreeNode, "spend" | "clicks" | "impressions" | "lpClicks" | "subscribers" | "dialogs" | "depCount" | "depSum" | "quals">;
+export type Metrics = Pick<TreeNode, "spend" | "clicks" | "impressions" | "lpClicks" | "subscribers" | "dialogs" | "depCount" | "depSum" | "quals">
+  // Decision 089: только у строк склада Reports; в Креативах их нет — там прочерк.
+  & Partial<Pick<TreeNode, "linkClicks" | "results" | "reach">>;
 
 export const n = (v: number | null, d = 0) =>
   v === null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -28,7 +30,13 @@ export const COLS: Col[] = [
   { label: "ROMI", cell: (x) => romi(x.spend, x.depSum) },
   { label: "ROAS", cell: (x) => { const v = ratio(x.depSum, x.spend); return v === null ? "—" : v.toFixed(2); } },
   { label: "Показы", cell: (x) => n(x.impressions) },
+  // Охват — за один день из склада, за период — живьём из Meta (Decision 089).
+  { label: "Охват", cell: (x) => n(x.reach ?? null) },
+  { label: "Частота", cell: (x) => { const v = ratio(x.reach ? x.impressions : null, x.reach ?? null); return v === null ? "—" : v.toFixed(2); } },
   { label: "Клики", cell: (x) => n(x.clicks) },
+  { label: "Клики по ссылке", cell: (x) => n(x.linkClicks ?? null) },
+  { label: "Результаты", cell: (x) => n(x.results ?? null) },
+  { label: "Цена результата", cell: (x) => money(ratio(x.results ? x.spend : null, x.results ?? null)) },
   { label: "CPM", cell: (x) => money(x.impressions ? (x.spend / x.impressions) * 1000 : null) },
   { label: "CPC", cell: (x) => money(ratio(x.spend, x.clicks)) },
   { label: "CTR", cell: (x) => pct(ratio(x.clicks, x.impressions)) },
@@ -50,3 +58,36 @@ export const COLS: Col[] = [
   ...QUAL.map((k, i): Col => ({ label: `% ${k}`, cell: (x) => pct(x.quals ? ratio(x.quals[i], quals(x)) : null) })),
 ];
 
+
+// Итоги того, что сейчас на экране, — для карточек Live Manager (как у Артёма).
+export function totalsOf(list: Metrics[]) {
+  const sum = (f: (x: Metrics) => number | null | undefined) => list.reduce((s, x) => s + (f(x) ?? 0), 0);
+  const spend = sum((x) => x.spend), sub = sum((x) => x.subscribers), dia = sum((x) => x.dialogs);
+  return {
+    spend, clicks: sum((x) => x.clicks), impressions: sum((x) => x.impressions), lpClicks: sum((x) => x.lpClicks),
+    subscribers: sub, dialogs: dia, depCount: sum((x) => x.depCount), depSum: sum((x) => x.depSum),
+    cpaPdp: sub ? spend / sub : null, cpaDia: dia ? spend / dia : null,
+  };
+}
+
+// Сортировки Live Manager — как у Артёма.
+export const SORTS: { id: string; label: string; key: (x: Metrics & { name: string }) => number | string | null; asc?: boolean }[] = [
+  { id: "spend", label: "Spend ↓", key: (x) => x.spend },
+  { id: "pdp", label: "ПДП ↓", key: (x) => x.subscribers },
+  { id: "dia", label: "ДИА ↓", key: (x) => x.dialogs },
+  { id: "cpaPdp", label: "Цена ПДП ↑", key: (x) => ratio(x.subscribers ? x.spend : null, x.subscribers), asc: true },
+  { id: "cpaDia", label: "Цена ДИА ↑", key: (x) => ratio(x.dialogs ? x.spend : null, x.dialogs), asc: true },
+  { id: "romi", label: "ROMI ↓", key: (x) => (x.depSum === null || !x.spend ? null : (x.depSum - x.spend) / x.spend) },
+  { id: "name", label: "Название А→Я", key: (x) => x.name, asc: true },
+];
+export function sortBy<T extends Metrics & { name: string }>(list: T[], id: string): T[] {
+  const s = SORTS.find((x) => x.id === id) ?? SORTS[0];
+  return [...list].sort((a, b) => {
+    const ka = s.key(a), kb = s.key(b);
+    if (ka === null && kb === null) return 0;
+    if (ka === null) return 1;
+    if (kb === null) return -1;
+    const c = typeof ka === "string" ? ka.localeCompare(String(kb), "ru", { numeric: true }) : (ka as number) - (kb as number);
+    return s.asc ? c : -c;
+  });
+}

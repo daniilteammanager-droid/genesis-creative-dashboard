@@ -27,6 +27,12 @@ export interface TreeNode {
   spend: number;
   clicks: number;
   impressions: number;
+  // Decision 089: клики по ссылке и результаты Meta — суммой дней; охват — только за один
+  // день (в период не складывается), за период его отдаёт живой запрос в Meta.
+  linkClicks: number | null;
+  results: number | null;
+  reach: number | null;
+  lastStatus?: string | null;   // последний известный статус из склада (wh_entities)
   lpClicks: number | null;      // клики на ленде — из Torro
   subscribers: number | null;
   dialogs: number | null;
@@ -53,6 +59,9 @@ export interface ReportTreeResult {
   totals: { spend: number; clicks: number; impressions: number; depSum: number };
   // Кампании только из Torro: сколько и что принесли.
   outside: { campaigns: number; subscribers: number; depSum: number } | null;
+  // Кабинеты строк — для ленты Live Manager: имя и состояние, пропавший — с последним статусом.
+  cabinets: { accountId: string; name: string; status: string | null; lastStatus: string | null }[];
+  reachExact: boolean;           // период — один день: охват из склада точный
   // Почему пусто. Пустая таблица без объяснения читается как поломка.
   notice?: string;
   generatedAt: string;
@@ -127,7 +136,7 @@ export async function loadReportTree(
 
   const empty: ReportTreeResult = {
     since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
-    totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 }, outside: null,
+    totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 }, outside: null, cabinets: [], reachExact: since === until,
     generatedAt: new Date().toISOString(),
   };
   if (accountIds !== null && accountIds.length === 0) return { ...empty, notice: NO_CABINETS };
@@ -139,10 +148,11 @@ export async function loadReportTree(
     campaign_id: string | null; campaign_name: string | null;
     account_id: string | null; date: string;
     spend: number | string; clicks: number; impressions: number;
+    link_clicks: number | null; reach: number | null; results: number | null;
   };
   const days = await selectAll<AdDay>((from, to) => {
     const q = db.from("wh_ad_days")
-      .select("ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name, account_id, date, spend, clicks, impressions")
+      .select("ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name, account_id, date, spend, clicks, impressions, link_clicks, reach, results")
       .gte("date", since).lte("date", until);
     return (accountIds ? q.in("account_id", accountIds) : q)
       .order("user_id").order("date").order("ad_id")
@@ -174,7 +184,7 @@ export async function loadReportTree(
     const key = d.ad_id;
     const node = ads.get(key) ?? {
       id: key, name: d.ad_name || key, level: "ad" as const,
-      spend: 0, clicks: 0, impressions: 0, ...NO_CRM(),
+      spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...NO_CRM(),
       adsetId: d.adset_id || "—", adsetName: d.adset_name || "Без адсета",
       campaignId: d.campaign_id || "—", campaignName: d.campaign_name || "Без кампании",
       accountId: d.account_id ?? undefined,
@@ -186,6 +196,9 @@ export async function loadReportTree(
     node.spend += num(d.spend);
     node.clicks += num(d.clicks);
     node.impressions += num(d.impressions);
+    node.linkClicks = add(node.linkClicks, d.link_clicks);
+    node.results = add(node.results, d.results);
+    if (since === until) node.reach = add(node.reach, d.reach);
     ads.set(key, node);
   }
 
@@ -233,6 +246,10 @@ export async function loadReportTree(
       spend: nodes.reduce((s, n) => s + n.spend, 0),
       clicks: nodes.reduce((s, n) => s + n.clicks, 0),
       impressions: nodes.reduce((s, n) => s + n.impressions, 0),
+      linkClicks: nodes.reduce<number | null>((s, n) => add(s, n.linkClicks), null),
+      results: nodes.reduce<number | null>((s, n) => add(s, n.results), null),
+      // Охват родителя из охватов детей не собрать — люди пересекаются. Один ребёнок — его охват.
+      reach: nodes.length === 1 ? nodes[0].reach : null,
       ...(crm ?? sum),
       children: nodes.sort((a, b) => b.spend - a.spend),
     };
@@ -280,22 +297,52 @@ export async function loadReportTree(
   }
   nodes.sort((a, b) => b.spend - a.spend);
 
+  // Охват кампании за один день — из дневной строки кампании (Meta отдаёт его точно).
+  // Последний известный статус — из склада состояний: у пропавшего кабинета живого нет.
+  const allIds = nodes.flatMap((c) => [c.id, ...(c.children ?? []).flatMap((a) => [a.id, ...(a.children ?? []).map((x) => x.id)])]);
+  const lastStatus = new Map<string, string | null>();
+  for (let i = 0; i < allIds.length; i += 300) {
+    const { data } = await db.from("wh_entities").select("entity_id, effective_status").in("entity_id", allIds.slice(i, i + 300));
+    for (const e of data ?? []) lastStatus.set(e.entity_id as string, e.effective_status as string | null);
+  }
+  const campaignReach = new Map<string, number>();
+  if (since === until && nodes.length) {
+    for (let i = 0; i < nodes.length; i += 300) {
+      const { data } = await db.from("wh_campaign_days").select("campaign_id, reach").eq("date", since).in("campaign_id", nodes.slice(i, i + 300).map((n) => n.id));
+      for (const r of data ?? []) if (r.reach !== null) campaignReach.set(r.campaign_id as string, r.reach as number);
+    }
+  }
+  const mark = (n: TreeNode) => { n.lastStatus = lastStatus.get(n.id) ?? null; n.children?.forEach(mark); };
+  for (const n of nodes) { mark(n); if (campaignReach.has(n.id)) n.reach = campaignReach.get(n.id)!; }
+
+  const accounts = [...new Set(nodes.map((n) => n.accountId).filter((a): a is string => Boolean(a)))];
+  const [{ data: cabStates }, { data: cabOwners }] = accounts.length ? await Promise.all([
+    db.from("wh_cabinet_states").select("account_id, name, status, last_status").in("account_id", accounts),
+    db.from("wh_account_owners").select("account_id, account_name").in("account_id", accounts),
+  ]) : [{ data: [] }, { data: [] }];
+  const cabState = new Map((cabStates ?? []).map((c) => [c.account_id as string, c]));
+  const ownerName = new Map((cabOwners ?? []).map((c) => [c.account_id as string, c.account_name as string | null]));
+  const cabinets = accounts.map((id) => {
+    const st = cabState.get(id);
+    return { accountId: id, name: (st?.name as string) || ownerName.get(id) || `act_${id}`, status: (st?.status as string) ?? null, lastStatus: (st?.last_status as string) ?? null };
+  });
+
   // ─── Кампании только из Torro ────────────────────────────────────────────
   const outsideNodes: TreeNode[] = [];
   for (const [name, crm] of crmByCampaign) {
     if (campaignNames.has(name)) continue;
     const children = [...(outsideAds.get(name) ?? new Map<string, Crm>())].map(([ad, c]): TreeNode => ({
-      id: `torro|${name}|${ad}`, name: ad, level: "ad", spend: 0, clicks: 0, impressions: 0, ...c, outside: true,
+      id: `torro|${name}|${ad}`, name: ad, level: "ad", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...c, outside: true,
     })).sort((a, b) => (b.depSum ?? 0) - (a.depSum ?? 0) || (b.subscribers ?? 0) - (a.subscribers ?? 0));
     outsideNodes.push({
-      id: `torro|${name}`, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, ...crm,
+      id: `torro|${name}`, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...crm,
       outside: true, children: children.length ? children : undefined,
     });
   }
   outsideNodes.sort((a, b) => (b.depSum ?? 0) - (a.depSum ?? 0) || (b.subscribers ?? 0) - (a.subscribers ?? 0));
 
   return {
-    since, until, nodes: [...nodes, ...outsideNodes], buyers, isBuyer: me.role === "buyer",
+    since, until, nodes: [...nodes, ...outsideNodes], buyers, isBuyer: me.role === "buyer", cabinets, reachExact: since === until,
     totals: {
       spend: nodes.reduce((s, n) => s + n.spend, 0),
       clicks: nodes.reduce((s, n) => s + n.clicks, 0),
