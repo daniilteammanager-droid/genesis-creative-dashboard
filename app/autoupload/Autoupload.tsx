@@ -7,6 +7,7 @@ import { landingChoices } from "@/lib/autoupload/landings";
 import type { Landing, LibraryItem } from "@/lib/autoupload/options";
 import { mskDay } from "@/lib/day";
 import LibraryPicker from "./LibraryPicker";
+import UploadApp from "./UploadApp";
 import CreativeUploadModal from "../CreativeUploadModal";
 
 // Автозалив (Decision 081, 087) — форма один в один с Genesis Manager Артёма:
@@ -229,6 +230,8 @@ export default function Autoupload() {
           {drafts.length > 0 && <button type="button" title="Удалить сборку" onClick={deleteDraft} className={`${small} border-red-900/40 text-red-300`}>✕</button>}
         </div>
       </div>
+
+      <UploadApp />
 
       <div data-tour="au-base" className={card}>
         <div className="flex items-center gap-2 mb-3">

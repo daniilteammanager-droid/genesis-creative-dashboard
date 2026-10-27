@@ -31,17 +31,17 @@ export const STEPS: Step[] = [
   { target: "legacy-card", route: "/", title: "Карточка креатива", text: "Клик по карточке — видео, расшифровка текста, заметка и избранное." },
 
   { target: "nav:/creatives", action: "click", route: "/creatives", title: "Креативы", text: "Новая картотека — только твои креативы за выбранный период. Нажми." },
-  { target: "creatives-views", route: "/creatives", title: "Плитка, таблица, аналитика", text: "Плитка — с превью, таблица — те же цифры столбцами, как в Reports. В таблице — фильтр по лицу, «Склеить версии» (v1, v2, v3 одной строкой) и выгрузка в CSV." },
+  { target: "creatives-views", route: "/creatives", title: "Плитка, таблица, аналитика", text: "Плитка — с превью, таблица — те же цифры столбцами, как в Live Manager. В таблице — фильтр по лицу, «Склеить версии» (v1, v2, v3 одной строкой) и выгрузка в CSV." },
 
   { target: "nav:/check", action: "click", route: "/check", title: "Checks", text: "Чек за сегодня в пару кликов. Нажми." },
   { target: "check-modes", route: "/check", title: "Живой и ручной", text: "Живой — из подключений, сразу по лицам и площадкам. Ручной — сверка выгрузок XLSX, запасной путь." },
   { target: "check-text", route: "/check", title: "Готовый чек", text: "Текст для телеги уже собран — «Скопировать» или «Отправить в Telegram»: уйдёт в твои чаты с уведомлением о чеке." },
   { target: "check-history", route: "/check", title: "История чеков", text: "Всё, что ушло в Telegram — кнопкой и по расписанию." },
 
-  { target: "nav:/reports", action: "click", route: "/reports", title: "Reports", text: "Отчёт как в FB Tool. Нажми." },
-  { target: "reports-views", route: "/reports", title: "Кампании и креативы", text: "Дерево кампания → адсет → объявление или таблица по креативам. Столбцы как в General 4.0: ROMI, цена подписки и диалога, квалы." },
-  { target: "reports-periods", route: "/reports", title: "Период", text: "Сегодня, вчера, неделя — или свои даты календарём." },
-  { target: "reports-live", route: "/reports", title: "Live Manager", text: "Статус и бюджет каждой строки — вживую из кабинета. Переключатель у статуса — пауза или запуск, галочки — сразу у нескольких, плюс бюджет. Фильтры GEO и лица, Live-обновление, «Обновить сейчас» — свежий расход, «Столбцы» — что показывать." },
+  { target: "nav:/live-manager", action: "click", route: "/live-manager", title: "Live Manager", text: "Все кампании, адсеты и объявления с цифрами — и управление ими прямо отсюда. Нажми." },
+  { target: "reports-views", route: "/live-manager", title: "Кампании и креативы", text: "Дерево кампания → адсет → объявление или таблица по креативам. Столбцы как в General 4.0: ROMI, цена подписки и диалога, квалы." },
+  { target: "reports-periods", route: "/live-manager", title: "Период", text: "Сегодня, вчера, неделя — или свои даты календарём." },
+  { target: "reports-live", route: "/live-manager", title: "Live Manager", text: "Статус и бюджет каждой строки — вживую из кабинета. Переключатель у статуса — пауза или запуск, галочки — сразу у нескольких, плюс бюджет. Фильтры GEO и лица, Live-обновление, «Обновить сейчас» — свежий расход, «Столбцы» — что показывать." },
 
   { target: "nav:/general-report-4", action: "click", route: "/general-report-4", title: "General 4.0", text: "Сводная таблица по дням, неделям и месяцам — твоя, её подключает владелец. Нажми." },
 
@@ -70,7 +70,7 @@ export const STEPS: Step[] = [
 
   {
     title: "👑 Для владельца и тимлида",
-    text: "Reports и Checks — сводно по всей команде. В 10:00 МСК — сводка за вчера по баерам. Команда и приглашения — в настройках.",
+    text: "Live Manager и Checks — сводно по всей команде. В 10:00 МСК — сводка за вчера по баерам. Команда и приглашения — в настройках.",
     roles: ["main", "teamlead"],
   },
   { title: "🚀 Готово", text: "Начни с подключений — остальное заполнится само. Пройти обучение ещё раз: Настройки → Профиль." },

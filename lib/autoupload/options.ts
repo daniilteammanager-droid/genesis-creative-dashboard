@@ -1,6 +1,8 @@
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { warehouse } from "@/lib/warehouse/read";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
+import { uploadCred } from "./key";
+import { proofFor } from "@/lib/meta/proof";
 import { getConnection } from "@/lib/connections/store";
 import { callTool, listLandings } from "@/lib/torro/mcp";
 import { accountPages } from "@/lib/antireject/meta";
@@ -51,15 +53,17 @@ export async function myAccounts(me: Profile, live = false): Promise<{ id: strin
 }
 
 export async function writerToken(userId: string): Promise<string | null> {
-  return (await metaTokensOf(userId)).find((k) => k.canWrite)?.token ?? null;
+  return (await uploadCred(userId))?.token ?? null;
 }
 
 export async function accountDetails(me: Profile, accountId: string) {
   if (!(await myAccounts(me)).some((a) => a.id === accountId)) throw new Error("Это не твой кабинет");
   const token = await writerToken(me.id);
-  if (!token) throw new Error("Нужен ключ Meta с правом ads_management — Настройки → Интеграции");
-  const res = await fetch(`https://graph.facebook.com/v26.0/act_${accountId}/adspixels?fields=id,name&limit=100&access_token=${token}`, { signal: AbortSignal.timeout(30_000) });
+  if (!token) throw new Error("Нужен ключ Meta с правом ads_management — подключи приложение для автозалива");
+  const q = new URLSearchParams({ fields: "id,name", limit: "100", access_token: token, ...proofFor(token) });
+  const res = await fetch(`https://graph.facebook.com/v26.0/act_${accountId}/adspixels?${q}`, { signal: AbortSignal.timeout(30_000) });
   const px = (await res.json().catch(() => ({}))) as { data?: { id: string; name: string }[]; error?: { message?: string } };
+  // Кабинет закреплён за тобой по ключам статистики, а заливает приложение автозалива — ему нужен доступ к этому БМ.
   if (px.error) throw new Error(`Meta: ${px.error.message}`);
   return { pixels: px.data ?? [], pages: await accountPages(token, accountId) };
 }

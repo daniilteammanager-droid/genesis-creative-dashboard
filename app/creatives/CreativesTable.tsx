@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { mskDaysAgo } from "@/lib/day";
-import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/reports/columns";
+import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
 
 // Сортировка кликом по заголовку — по числу, а не по тексту ячейки.

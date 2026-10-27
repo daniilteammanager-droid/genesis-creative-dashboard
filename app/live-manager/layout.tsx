@@ -20,7 +20,7 @@ export default async function ReportsLayout({ children }: { children: React.Reac
     if (keys && keys.length === 0 && !conn?.spendSource && tg && tg.length === 0) {
       return (
         <NoConnections
-          title="Reports"
+          title="Live Manager"
           what="Отчёт собирается по твоим интеграциям. Подключи источник расхода (Meta, Dolphin или Telegram Ads) в Настройках → Интеграции — история догрузится сама."
         />
       );

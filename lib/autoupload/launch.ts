@@ -1,5 +1,6 @@
 import { warehouse } from "@/lib/warehouse/read";
-import { metaTokensOf } from "@/lib/connections/metaKeys";
+import { uploadCred } from "./key";
+import { proofFor } from "@/lib/meta/proof";
 import { usdRate } from "@/lib/fx";
 import { mskDay } from "@/lib/day";
 import { originalKey, publicUrl } from "@/lib/uniq/source";
@@ -40,7 +41,7 @@ export interface Job {
 export class MetaError extends Error { constructor(msg: string, public transient = false) { super(msg); } }
 async function graph<T>(token: string, path: string, params: Record<string, unknown> = {}, method: "GET" | "POST" = "GET"): Promise<T> {
   const flat = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
-  const body = new URLSearchParams({ ...flat, access_token: token });
+  const body = new URLSearchParams({ ...flat, access_token: token, ...proofFor(token) });
   const res = method === "GET"
     ? await fetch(`${GRAPH}/${path}?${body}`, { signal: AbortSignal.timeout(60_000) })
     : await fetch(`${GRAPH}/${path}`, { method: "POST", body, signal: AbortSignal.timeout(120_000) });
@@ -56,10 +57,11 @@ const db = () => warehouse();
 const save = (id: string, patch: Record<string, unknown>) =>
   db().from("autoupload_jobs").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
 
+// Своё приложение автозалива (Decision 093), а без него — ключ статистики с ads_management.
 async function writerToken(userId: string): Promise<string> {
-  const k = (await metaTokensOf(userId)).find((x) => x.canWrite);
-  if (!k) throw new Error("Нужен ключ Meta с правом ads_management — Настройки → Интеграции");
-  return k.token;
+  const c = await uploadCred(userId);
+  if (!c) throw new Error("Нужен ключ Meta с правом ads_management — подключи приложение для автозалива на его странице");
+  return c.token;
 }
 
 async function targeting(token: string, a: PlanCampaign["adsets"][number]) {

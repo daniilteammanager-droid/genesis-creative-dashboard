@@ -43,7 +43,7 @@ export default function AccountOwners() {
       <h2 className="text-lg font-semibold text-white mb-1">Рекламные кабинеты</h2>
       <p className="text-zinc-500 text-sm mb-4">
         Кабинет принадлежит тому, чей ключ Meta его видит — закрепляется сам при загрузке.
-        По этому делится расход в Reports, Креативах и чеке.
+        По этому делится расход в Live Manager, Креативах и чеке.
       </p>
 
       {error && (

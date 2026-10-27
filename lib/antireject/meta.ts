@@ -7,6 +7,8 @@
 // Ключ — только Meta владельца кабинета с ads_management. Токены аккаунтов из
 // FB Tool и Dolphin сюда не ходят никогда.
 
+import { proofFor } from "@/lib/meta/proof";
+
 const GRAPH = "https://graph.facebook.com/v26.0";
 
 export class GraphError extends Error {
@@ -14,7 +16,8 @@ export class GraphError extends Error {
 }
 
 async function graph<T>(token: string, path: string, method: "GET" | "POST", params: Record<string, string>): Promise<T> {
-  const body = new URLSearchParams({ ...params, access_token: token });
+  // proof — только у ключа автозалива с App Secret (Decision 093); у остальных пусто.
+  const body = new URLSearchParams({ ...params, access_token: token, ...proofFor(token) });
   const res = method === "GET"
     ? await fetch(`${GRAPH}/${path}?${body}`, { signal: AbortSignal.timeout(30_000) })
     : await fetch(`${GRAPH}/${path}`, { method: "POST", body, signal: AbortSignal.timeout(60_000) });
