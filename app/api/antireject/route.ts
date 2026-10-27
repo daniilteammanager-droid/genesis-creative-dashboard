@@ -4,13 +4,18 @@ import { warehouse } from "@/lib/warehouse/read";
 import { myCreatives } from "@/lib/autoupload/options";
 import { findSource, originalKey, publicUrl } from "@/lib/uniq/source";
 import { TYPES } from "@/lib/uniq/bot";
+import { confirm, options, preview, scanTokens, type Kind } from "@/lib/antireject/web";
+import { checkRejectedAds } from "@/lib/alerts/rejected";
+import { myLandings } from "@/lib/autoupload/options";
 
 // Страница «Антиотклон» (Decision 083): отклонённые объявления своих кабинетов,
 // уникализация по объявлению или из библиотеки, задания с готовыми видео.
-// Баер видит своё, владелец и тимлид — всё. Кнопки замены ссылки, ФП и
-// Multi-advertiser остаются в боте.
+// Баер видит своё, владелец и тимлид — всё. Замена ссылки, ФП и Multi-advertiser — и в
+// боте, и здесь (Decision 091), история событий, лендинги Torro, «Проверить сейчас».
 //   GET · POST { op: "start", adId? | key, tail, frame }
+//        · { op: "options", adId, kind } · { op: "preview", adId, kind, value } · { op: "confirm", nonce } · { op: "scan" }
 
+export const maxDuration = 300;
 const db = () => warehouse();
 
 async function myAccountIds(userId: string): Promise<string[]> {
@@ -29,9 +34,17 @@ export async function GET() {
   let jq = db().from("video_variant_jobs").select("id, ad_id, source_name, tail_type, frame_type, status, stage, error, result_key, duration, created_at")
     .order("created_at", { ascending: false }).limit(30);
   if (!all) jq = jq.eq("owner_id", me.id);
-  const [{ data: rejected }, { data: jobs }, videos] = await Promise.all([rq, jq, myCreatives(me).then((c) => c.filter((x) => x.kind === "video"))]);
+  let eq = db().from("antireject_events").select("id, created_at, kind, ad_id, ad_name, campaign_name, actor, text, ok, status")
+    .order("created_at", { ascending: false }).limit(50);
+  if (mine) eq = eq.or(`account_id.in.(${mine.join(",") || "0"}),owner_user_id.eq.${me.id}`);
+  const [{ data: rejected }, { data: jobs }, videos, { data: events }, landings, { data: lastRun }] = await Promise.all([
+    rq, jq, myCreatives(me).then((c) => c.filter((x) => x.kind === "video").map((x) => ({ ...x, url: publicUrl(x.key) }))), eq,
+    myLandings(me).catch(() => []),
+    db().from("wh_ingest_runs").select("finished_at").eq("kind", "today").not("finished_at", "is", null).order("finished_at", { ascending: false }).limit(1),
+  ]);
   return NextResponse.json({
-    rejected: rejected ?? [], types: TYPES, videos,
+    rejected: rejected ?? [], types: TYPES, videos, events: events ?? [],
+    landings: landings.slice(0, 10), checkedAt: lastRun?.[0]?.finished_at ?? null,
     jobs: (jobs ?? []).map((j) => ({ ...j, url: j.result_key && ["done", "failed"].includes(j.status as string) ? publicUrl(j.result_key as string) : null })),
   });
 }
@@ -39,10 +52,29 @@ export async function GET() {
 export async function POST(req: Request) {
   const me = await getProfile();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string };
+  const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string; kind?: string; value?: string; nonce?: string; retry?: string };
+  const KINDS = ["link", "page", "multi"];
+  try {
+    if (b.op === "options" && b.adId && KINDS.includes(b.kind ?? "")) return NextResponse.json(await options(me, b.adId, b.kind as Kind));
+    if (b.op === "preview" && b.adId && KINDS.includes(b.kind ?? "") && b.value) return NextResponse.json(await preview(me, b.adId, b.kind as Kind, b.value));
+    if (b.op === "confirm" && b.nonce) return NextResponse.json(await confirm(me, b.nonce));
+    if (b.op === "scan") {
+      const tokens = await scanTokens(me);
+      const r = await checkRejectedAds(tokens);
+      return NextResponse.json({ accounts: tokens.size, rejected: r.rejected, fresh: r.fresh, failedAccounts: r.failedAccounts });
+    }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+  }
   if (b.op !== "start" || !TYPES[b.tail ?? ""] || !TYPES[b.frame ?? ""]) return NextResponse.json({ error: "Выбери вставку и кадры" }, { status: 400 });
   let row: Record<string, unknown>;
-  if (b.adId) {
+  if (b.retry) {
+    // Повтор упавшего задания из библиотеки — новое задание с тем же исходником.
+    const { data: j } = await db().from("video_variant_jobs").select("owner_id, source_key, source_name, ad_id, status").eq("id", b.retry).maybeSingle();
+    if (!j || j.status !== "failed" || j.ad_id) return NextResponse.json({ error: "Повторить можно только упавшее задание из библиотеки" }, { status: 400 });
+    if (j.owner_id !== me.id && me.role !== "main") return NextResponse.json({ error: "Это не твоё задание" }, { status: 403 });
+    row = { owner_id: j.owner_id, source_key: j.source_key, source_name: j.source_name };
+  } else if (b.adId) {
     const { data: ad } = await db().from("wh_rejected_ads").select("ad_id, account_id, ad_name, owner_user_id").eq("ad_id", b.adId).maybeSingle();
     if (!ad) return NextResponse.json({ error: "Этого объявления нет среди отклонённых" }, { status: 400 });
     const { data: own } = await db().from("wh_account_owners").select("owner_user_id").eq("account_id", ad.account_id).maybeSingle();

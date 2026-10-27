@@ -5,6 +5,7 @@ import { mskDay } from "@/lib/day";
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/links";
 import { deliver, type Alert } from "./deliver";
+import { logEvent } from "@/lib/antireject/events";
 import { actionButtons } from "@/lib/antireject/bot";
 import { listAds, tgId } from "@/lib/tgads/api";
 
@@ -255,6 +256,10 @@ export async function checkRejectedAds(
     const { error: e } = await db.from("wh_rejected_ads").delete().in("ad_id", gone.slice(i, i + 200));
     if (e) throw new Error(`wh_rejected_ads: ${e.message}`);
   }
+
+  // В историю антиотклона — каждое новое отклонение (Decision 091), даже без алерта.
+  for (const r of fresh) await logEvent({ kind: "rejected", adId: r.adId, accountId: r.accountId, adName: r.adName, campaignName: r.campaignName,
+    ownerId: tg.get(r.accountId)?.userId ?? null, text: r.reason ?? r.status });
 
   let sent = 0;
   if (!firstRun && fresh.length) {

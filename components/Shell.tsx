@@ -24,6 +24,7 @@ const WORK_AREAS = [
   { href: "/general-report-4", label: "General 4.0" },
   { href: "/autoupload", label: "Автозалив" },
   { href: "/antireject", label: "Антиотклон" },
+  { href: "/uniquify", label: "Уникализация" },
   { href: "/topups", label: "Пополнения" },
 ];
 

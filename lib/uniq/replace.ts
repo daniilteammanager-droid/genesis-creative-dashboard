@@ -3,6 +3,7 @@ import { escapeHtml, sendMessage } from "@/lib/telegram/api";
 import { writer } from "@/lib/antireject/bot";
 import { applyChange, uploadVideo } from "@/lib/antireject/meta";
 import { publicUrl } from "./source";
+import { logEvent } from "@/lib/antireject/events";
 
 // Готовое видео — в кабинет и в объявление (Decision 076). Ключ — Meta владельца
 // кабинета с ads_management, как у остальных кнопок антиотклона. Креатив
@@ -35,6 +36,8 @@ export async function replaceInMeta(id: string): Promise<void> {
     });
     // Забываем отклонение: снова отклонят — придёт новый алерт.
     await db().from("wh_rejected_ads").delete().eq("ad_id", j.ad_id);
+    await logEvent({ kind: "action", adId: j.ad_id, accountId: j.account_id, adName: w.detail.ad.name, campaignName: w.detail.ad.campaign?.name ?? "",
+      ownerId: j.owner_id, actor: j.chat_id ? "Telegram" : "Дашборд", text: "Уникализация: новое видео", ok: true, status: res.status });
     await db().from("video_variant_jobs").update({
       status: "done", stage: "Креатив заменён", meta: { ...video, ...res }, updated_at: new Date().toISOString(),
     }).eq("id", id);

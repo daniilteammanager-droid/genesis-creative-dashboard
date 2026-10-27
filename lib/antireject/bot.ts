@@ -8,6 +8,7 @@ import { sendMessage, tg } from "@/lib/telegram/api";
 import { accountPages, adDetail, applyChange, currentLink, REJECTED, type AdDetail, type Change, type Preview } from "./meta";
 import { host, landingChoices, makeLink } from "./landings";
 import { startUniq } from "@/lib/uniq/bot";
+import { logEvent } from "./events";
 
 // Кнопки антиотклона под алертом об отклонении (Decision 067).
 //
@@ -148,7 +149,12 @@ async function confirm(nonce: string, place: Place, ok: boolean): Promise<void> 
   const w = await writer(ctx);
   if (typeof w === "string") return void (await say(place, w));
   const preview = data.preview as Preview;
-  const result = await applyChange(w.token, preview);
+  const base = { kind: "action" as const, adId: preview.adId, accountId: preview.accountId, adName: preview.adName, campaignName: preview.campaignName, ownerId: ctx.ownerId, actor: "Telegram" };
+  const result = await applyChange(w.token, preview).catch(async (e: unknown) => {
+    await logEvent({ ...base, text: `${preview.describe} — ${e instanceof Error ? e.message : String(e)}`, ok: false });
+    throw e;
+  });
+  await logEvent({ ...base, text: preview.describe, ok: true, status: result.status });
   // Забываем отклонение: если повторная проверка снова отклонит, придёт новый алерт.
   await db.from("wh_rejected_ads").delete().eq("ad_id", preview.adId);
   await say(place, `✅ Meta приняла изменение <b>${escapeHtml(preview.adName)}</b>.\n${escapeHtml(preview.describe)}\nСтатус сейчас: ${result.status}. Одобрение ещё не подтверждено — если снова отклонят, придёт алерт.`);
