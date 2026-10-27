@@ -23,11 +23,11 @@ const s3 = new S3Client({
 // только живые: ACTIVE без ограничения Meta. Бан, unsettled, пропавшие не показываются.
 // live — статусы прямо из Meta своими ключами («Обновить кабинеты»), иначе — с последнего
 // прогона склада (до 15 минут). В склад live не пишет: смену статуса ловят алерты.
-export async function myAccounts(me: Profile, live = false): Promise<{ id: string; name: string; status: string }[]> {
+export async function myAccounts(me: Profile, live = false): Promise<{ id: string; name: string; status: string; timezone: string | null }[]> {
   const { data: own } = await warehouse().from("wh_account_owners").select("account_id").eq("owner_user_id", me.id);
   const ids = (own ?? []).map((r) => r.account_id as string);
   if (!ids.length) return [];
-  const by = new Map<string, { name: string | null; status: string; disableReason: number | null }>();
+  const by = new Map<string, { name: string | null; status: string; disableReason: number | null; timezone?: string | null }>();
   if (live) {
     let read = 0;
     for (const { token } of await metaTokensOf(me.id)) {
@@ -41,12 +41,12 @@ export async function myAccounts(me: Profile, live = false): Promise<{ id: strin
     }
     if (!read) throw new Error("Meta не ответила ни одним ключом — статусы не обновлены");
   } else {
-    const { data: st } = await warehouse().from("wh_cabinet_states").select("account_id, name, status, disable_reason").in("account_id", ids);
-    for (const s of st ?? []) by.set(s.account_id as string, { name: s.name, status: s.status, disableReason: s.disable_reason });
+    const { data: st } = await warehouse().from("wh_cabinet_states").select("account_id, name, status, disable_reason, timezone").in("account_id", ids);
+    for (const s of st ?? []) by.set(s.account_id as string, { name: s.name, status: s.status, disableReason: s.disable_reason, timezone: s.timezone });
   }
   return ids.flatMap((id) => {
     const s = by.get(id);
-    return s && s.status === "ACTIVE" && !s.disableReason ? [{ id, name: s.name || `act_${id}`, status: s.status }] : [];
+    return s && s.status === "ACTIVE" && !s.disableReason ? [{ id, name: s.name || `act_${id}`, status: s.status, timezone: s.timezone ?? null }] : [];
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 

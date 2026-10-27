@@ -23,7 +23,7 @@ const primary = "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r f
 const h2 = "text-base font-semibold text-white mb-3";
 const DRAFT = "autoupload.draft.v2";
 
-interface Account { id: string; name: string; status: string }
+interface Account { id: string; name: string; status: string; timezone?: string | null }
 interface Options { accounts: Account[]; landings: Landing[]; creatives: LibraryItem[] }
 type Details = { pixels: { id: string; name: string }[]; pages: { id: string; name: string }[] } | string;
 interface JobView { id: string; status: string; stage: string | null; error: string | null; createdAt: string; summary: Plan["summary"]; names: string[]; done: { campaigns: number; ads: number } }
@@ -62,6 +62,28 @@ export default function Autoupload() {
   const [pickerFor, setPickerFor] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [drafts, setDrafts] = useState<{ id: string; name: string; form: Draft; updated_at: string }[]>([]);
+  const loadDrafts = useCallback(() => fetch("/api/autoupload?op=drafts").then((r) => r.json()).then((d) => d.drafts && setDrafts(d.drafts)).catch(() => undefined), []);
+  useEffect(() => { loadDrafts(); }, [loadDrafts]);
+  const saveDraft = async () => {
+    const name = window.prompt("Название сборки:", f.campaigns.map((c) => c.geo).join(" ") + " · " + f.date)?.trim();
+    if (!name) return;
+    const r = await fetch("/api/autoupload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "saveDraft", name, form: f }) });
+    const d = await r.json().catch(() => ({}));
+    setErr(d.error ?? null);
+    loadDrafts();
+  };
+  const openDraft = (id: string) => {
+    const d = drafts.find((x) => x.id === id);
+    if (d) set({ ...EMPTY, ...d.form, date: d.form.date < mskDay() ? mskDay() : d.form.date });
+  };
+  const deleteDraft = async () => {
+    const name = window.prompt(`Какую сборку удалить? Название:\n${drafts.map((d) => d.name).join("\n")}`)?.trim();
+    const d = drafts.find((x) => x.name === name);
+    if (!d) return;
+    await fetch("/api/autoupload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "deleteDraft", id: d.id }) });
+    loadDrafts();
+  };
   const set = (patch: Partial<Draft>) => setF((d) => ({ ...d, ...patch }));
 
   const loadOptions = useCallback(() =>
@@ -192,9 +214,20 @@ export default function Autoupload() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Автозалив</h1>
-        <p className="text-sm text-zinc-500 mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия. Форма сохраняется черновиком в этом браузере.</p>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-semibold text-white">Автозалив</h1>
+          <p className="text-sm text-zinc-500 mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия. Форма сохраняется черновиком в этом браузере.</p>
+        </div>
+        {/* Сохранённые сборки (Decision 092) — на сервере: открыть с любого устройства. */}
+        <div className="flex gap-2 items-center">
+          <button type="button" onClick={saveDraft} className={`${small} border-violet-700/50 text-violet-200`}>💾 Сохранить сборку</button>
+          <select value="" onChange={(e) => openDraft(e.target.value)} onFocus={loadDrafts} className={field}>
+            <option value="">Сохранённые сборки{drafts.length ? ` · ${drafts.length}` : ""}</option>
+            {drafts.map((d) => <option key={d.id} value={d.id}>{d.name} · {new Date(d.updated_at).toLocaleDateString("ru-RU")}</option>)}
+          </select>
+          {drafts.length > 0 && <button type="button" title="Удалить сборку" onClick={deleteDraft} className={`${small} border-red-900/40 text-red-300`}>✕</button>}
+        </div>
       </div>
 
       <div data-tour="au-base" className={card}>
@@ -255,9 +288,11 @@ export default function Autoupload() {
               {a.creatives.length > 0 && (
                 <div className="space-y-1 mb-2">
                   {a.creatives.map((c, ci) => (
-                    <div key={c.key} className="flex items-center gap-2">
+                    <div key={`${c.key}-${ci}`} className="flex items-center gap-2">
                       <input value={c.code} onChange={(e) => editAdset(i, { creatives: a.creatives.map((x, k) => (k === ci ? { ...x, code: e.target.value } : x)) })}
                              className={`${field} flex-1 py-1 text-xs font-mono`} title="Код креатива — имя объявления" />
+                      {/* ＋ — то же объявление ещё раз (как у Артёма). В 1‑1‑1 нельзя: кампания сета — по креативу. */}
+                      {!f.oneToOne && <button type="button" title="Ещё одно такое же объявление" onClick={() => editAdset(i, { creatives: [...a.creatives.slice(0, ci + 1), { ...c }, ...a.creatives.slice(ci + 1)] })} className={`${small} border-violet-900/40 text-zinc-300 py-1`}>＋</button>}
                       <button type="button" onClick={() => editAdset(i, { creatives: a.creatives.filter((_, k) => k !== ci) })} className={`${small} border-red-900/40 text-red-300 py-1`}>−</button>
                     </div>
                   ))}
@@ -404,6 +439,14 @@ export default function Autoupload() {
         <LibraryPicker items={opt.creatives} added={new Set(f.adsets[pickerFor].creatives.map((c) => c.key))} onClose={() => setPickerFor(null)}
                        defaultFace={f.campaigns[0]?.actor === "RICKY" ? "RICKY" : "ROMAN"}
                        onFace={(key, face) => setOpt((o) => (o ? { ...o, creatives: o.creatives.map((c) => (c.key === key ? { ...c, face } : c)) } : o))}
+                       onRename={(key, newKey, code) => {
+                         setOpt((o) => (o ? { ...o, creatives: o.creatives.map((c) => (c.key === key ? { ...c, key: newKey, code } : c)) } : o));
+                         set({ adsets: f.adsets.map((a) => ({ ...a, creatives: a.creatives.map((c) => (c.key === key ? { ...c, key: newKey, code } : c)) })) });
+                       }}
+                       onDelete={(key) => {
+                         setOpt((o) => (o ? { ...o, creatives: o.creatives.filter((c) => c.key !== key) } : o));
+                         set({ adsets: f.adsets.map((a) => ({ ...a, creatives: a.creatives.filter((c) => c.key !== key) })) });
+                       }}
                        onAdd={(picked) => { editAdset(pickerFor, { creatives: [...f.adsets[pickerFor].creatives, ...picked.map(({ key, code, kind }) => ({ key, code, kind }))] }); setPickerFor(null); }} />
       )}
       {uploading && <CreativeUploadModal onClose={() => setUploading(false)} onUploaded={() => { loadOptions(); }} />}
@@ -446,7 +489,7 @@ function CampaignFields({ value: c, onChange, accounts, adsets, landings, pages,
         <div className="flex flex-wrap gap-2">
           {accounts.map((a) => (
             <label key={a.id} className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-              Старт {a.name.slice(0, 18)}
+              Старт {a.name.slice(0, 18)}{a.timezone ? ` (${a.timezone})` : ""}
               <input type="time" value={c.startAtByAccount?.[a.id] ?? "00:00"} onChange={(e) => onChange({ startAtByAccount: { ...c.startAtByAccount, [a.id]: e.target.value } })} className={`${field} py-1`} />
             </label>
           ))}

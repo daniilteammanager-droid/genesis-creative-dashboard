@@ -22,9 +22,12 @@ function groups(items: LibraryItem[], by: (c: LibraryItem) => string) {
   return [...m];
 }
 
-export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace, onClose }: {
+// onRename / onDelete — правка кода и удаление файла прямо отсюда, как «✎ Код» у Артёма
+// (через Медиатеку: переименование ведёт превью и оригинал следом).
+export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace, onRename, onDelete, onClose }: {
   items: LibraryItem[]; added: Set<string>; defaultFace: Face;
-  onAdd: (picked: LibraryItem[]) => void; onFace: (key: string, face: Face) => void; onClose: () => void;
+  onAdd: (picked: LibraryItem[]) => void; onFace: (key: string, face: Face) => void;
+  onRename: (key: string, newKey: string, code: string) => void; onDelete: (key: string) => void; onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(defaultFace);
   const [q, setQ] = useState("");
@@ -45,6 +48,20 @@ export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace
     const d = await r.json().catch(() => ({}));
     if (!r.ok) setFaceErr(d.error ?? "Не получилось");
     else onFace(key, face);
+  }
+  async function manage(op: "rename" | "delete", c: LibraryItem) {
+    setFaceErr(null);
+    const ext = c.key.match(/\.[^./]+$/)?.[0] ?? "";
+    let newName: string | undefined;
+    if (op === "rename") {
+      const code = window.prompt("Новый код креатива (имя объявления):", c.code)?.trim();
+      if (!code || code === c.code) return;
+      newName = code + ext;
+    } else if (!window.confirm(`Удалить «${c.code}» из Медиатеки насовсем? Превью и оригинал удалятся вместе с ним.`)) return;
+    const r = await fetch("/api/media/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op, key: c.key, newName }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setFaceErr(d.error ?? "Не получилось");
+    if (op === "rename") onRename(c.key, d.key, newName!.replace(/\.[^.]+$/, "").toLowerCase()); else onDelete(c.key);
   }
   const inApproach = approach === null ? [] : found.filter((c) => c.approach === approach);
   const rows = version === null ? [] : inApproach.filter((c) => c.version === version);
@@ -108,6 +125,8 @@ export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace
                   : <span className="w-10 h-16 rounded-md bg-black/40 flex items-center justify-center text-zinc-500">{c.kind === "video" ? "▶" : "▣"}</span>}
                 <span className="flex-1 min-w-0"><b className="block text-sm text-zinc-100 truncate">{c.code}</b><small className="text-zinc-500">{c.kind === "video" ? "видео" : "картинка"} · {size(c.bytes)}</small></span>
                 {added.has(c.key) && <em className="text-[11px] text-zinc-500">Уже добавлено</em>}
+                <button type="button" title="Поменять код" onClick={(e) => { e.preventDefault(); manage("rename", c); }} className="text-[11px] px-2 py-1 rounded-lg border border-violet-900/40 text-zinc-400 hover:text-white">✎ Код</button>
+                <button type="button" title="Удалить из Медиатеки" onClick={(e) => { e.preventDefault(); manage("delete", c); }} className="text-[11px] px-2 py-1 rounded-lg border border-red-900/40 text-red-300">✕</button>
                 {tab === "NONE" && (["ROMAN", "RICKY"] as const).map((f) => (
                   <button key={f} type="button" onClick={(e) => { e.preventDefault(); assign(c.key, f); }}
                           className="text-[11px] px-2 py-1 rounded-lg border border-violet-700/50 text-violet-200">{f === "ROMAN" ? "Роман" : "Рики"}</button>
