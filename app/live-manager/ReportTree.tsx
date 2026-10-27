@@ -66,6 +66,7 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
   const node = reach.has(raw.id) ? { ...raw, reach: reach.get(raw.id)! } : raw;
   const expandable = Boolean(node.children?.length);
   const isOpen = open.has(node.id);
+  const [full, setFull] = useState(false);
   const s = live.get(node.id);
 
   return (
@@ -73,22 +74,24 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
       <tr className={`hover:bg-violet-900/10 transition border-b border-violet-900/15 ${node.outside ? "opacity-70" : ""} ${selected.has(node.id) ? "bg-violet-900/15" : ""}`}>
         {/* На телефоне закреплённое имя — не шире половины экрана, иначе цифрам
             не остаётся места и таблица не листается вбок. */}
-        <td className={`px-3 py-2.5 sticky left-0 bg-[#111118] z-10 max-w-[48vw] sm:max-w-[440px] ${INDENT[depth]}`}>
+        {/* Имя — полностью: на ПК переносится строкой, на телефоне свёрнуто в одну строку и
+            раскрывается тапом по имени (стрелка слева раскрывает адсеты и объявления). */}
+        <td className={`px-3 py-2.5 sticky left-0 bg-[#111118] z-10 max-w-[48vw] sm:max-w-[640px] ${INDENT[depth]}`}>
           <div className="flex items-center gap-2 max-w-full min-w-0">
             <input type="checkbox" checked={selected.has(node.id)} disabled={!s?.canEdit} onChange={() => select(node.id)}
                    className="shrink-0 accent-violet-500 disabled:opacity-20" aria-label="Выбрать" />
-            <button
-              onClick={() => expandable && toggle(node.id)}
-              className={`text-left flex items-center gap-2 max-w-full min-w-0 ${expandable ? "cursor-pointer" : "cursor-default"}`}
-            >
-              <span className={`text-zinc-600 text-xs w-3 ${expandable ? "" : "opacity-0"}`}>{isOpen ? "▾" : "▸"}</span>
-              <span className={`truncate min-w-0 ${depth === 0 ? "text-zinc-100" : "text-zinc-300"}`} title={node.name}>
+            <div className="text-left flex items-center gap-2 max-w-full min-w-0">
+              <button type="button" onClick={() => expandable && toggle(node.id)} aria-label={isOpen ? "Свернуть" : "Раскрыть"}
+                      className={`text-zinc-600 text-xs w-4 shrink-0 ${expandable ? "cursor-pointer hover:text-zinc-300" : "opacity-0 cursor-default"}`}>{isOpen ? "▾" : "▸"}</button>
+              <button type="button" title={node.name}
+                      onClick={() => (window.matchMedia("(max-width: 639px)").matches ? setFull((v) => !v) : expandable && toggle(node.id))}
+                      className={`text-left min-w-0 sm:whitespace-normal sm:break-words ${full ? "whitespace-normal break-all" : "truncate"} ${depth === 0 ? "text-zinc-100" : "text-zinc-300"} ${expandable ? "cursor-pointer" : "cursor-default sm:cursor-text"}`}>
                 {node.name}
-              </span>
+              </button>
               {node.outside && depth === 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300/90 whitespace-nowrap shrink-0">нет в кабинетах</span>
               )}
-            </button>
+            </div>
             {depth === 0 && !node.outside && (
               <button type="button" onClick={() => pin(node.id)} title={pinned.has(node.id) ? "Открепить" : "Закрепить наверху"}
                       className={`shrink-0 text-xs ${pinned.has(node.id) ? "text-amber-300" : "text-zinc-700 hover:text-zinc-400"}`}>★</button>

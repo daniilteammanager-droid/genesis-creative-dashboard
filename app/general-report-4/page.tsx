@@ -140,7 +140,8 @@ export default function GeneralReport4Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // «Отчёт» — по всей команде (общая + баеры), поэтому только там, где есть общая таблица.
-  const [tab, setTab] = useState<"report" | "table">("report");
+  // Открывается «Таблица»: к ней привыкли, и с «Отчёта» казалось, что таблицы пропали (28.10.2026).
+  const [tab, setTab] = useState<"report" | "table">("table");
 
   const [filters, setFilters] = useState<Filters>({});
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -261,8 +262,8 @@ export default function GeneralReport4Page() {
 
         {sources.some((x) => x.kind === "main") && (
           <div data-tour="gr4-tabs" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit mb-6">
-            <button onClick={() => setTab("report")} className={chip(tab === "report")}>Отчёт</button>
             <button onClick={() => setTab("table")} className={chip(tab === "table")}>Таблица</button>
+            <button onClick={() => setTab("report")} className={chip(tab === "report")}>Отчёт</button>
           </div>
         )}
         {tab === "report" && sources.some((x) => x.kind === "main") ? <Report /> : <>
@@ -334,7 +335,7 @@ export default function GeneralReport4Page() {
             </div>
 
             {/* Фильтры: в каждом разрезе можно выбрать несколько значений */}
-            <div className="bg-[#111118] border border-violet-900/25 rounded-2xl p-4 mb-4">
+            <div data-tour="gr4-filters" className="bg-[#111118] border border-violet-900/25 rounded-2xl p-4 mb-4">
               <button onClick={() => setFiltersOpen((v) => !v)} className="flex items-center gap-2 text-sm text-zinc-300 w-full text-left">
                 <span className="text-zinc-500">{filtersOpen ? "▾" : "▸"}</span>
                 Фильтры
@@ -377,7 +378,7 @@ export default function GeneralReport4Page() {
               )}
             </div>
 
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <div data-tour="gr4-rows" className="flex items-center gap-2 mb-3 flex-wrap">
               <span className={label}>Строки:</span>
               {PERIODS.map((p) => <button key={p.id} onClick={() => setPeriod(p.id)} className={smallChip(period === p.id)}>{p.label}</button>)}
               <span className={`${label} ml-4`}>Разбивка:</span>
