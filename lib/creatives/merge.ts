@@ -10,14 +10,20 @@ const addQuals = (a: Quals | null, b: Quals | null): Quals | null =>
   !a ? b : !b ? a : (a.map((v, i) => v + b[i]) as Quals);
 const union = (a: string[], b: string[]) => [...new Set([...a, ...b])].sort();
 
-export function mergeVersions(rows: CreativeRow[]): (CreativeRow & { versions: number })[] {
-  const by = new Map<string, CreativeRow & { versions: number }>();
+// Код без версии и без гео залива: «vid-storytell-t30-v9-b3-es-ar» → «vid-storytell-t30-v*-b3-es».
+// Так склеивает «Дашборд» Артёма: все версии и все GEO одного креатива — одна строка.
+export const baseKey = (code: string) => versionKey(code).replace(/^(.+-b\d+-[a-z]{2,3})-[a-z]{2,3}$/i, "$1").replace(/^(?!.*-b\d+-)(.+)-(?:es|ar|mx|cl|pe|co|ec|py|uy|pa)$/i, "$1");
+
+export type Merged = CreativeRow & { versions: number; details: CreativeRow[] };
+
+export function mergeVersions(rows: CreativeRow[], keyOf: (code: string) => string = versionKey): Merged[] {
+  const by = new Map<string, Merged>();
   for (const r of rows) {
-    const key = versionKey(r.code);
+    const key = keyOf(r.code);
     const cur = by.get(key);
-    if (!cur) { by.set(key, { ...r, code: key, versions: 1 }); continue; }
+    if (!cur) { by.set(key, { ...r, code: key, versions: 1, details: [r] }); continue; }
     by.set(key, {
-      ...cur, versions: cur.versions + 1,
+      ...cur, versions: cur.versions + 1, details: [...cur.details, r],
       spend: cur.spend + r.spend, clicks: cur.clicks + r.clicks, impressions: cur.impressions + r.impressions,
       adCount: cur.adCount + r.adCount, campaigns: cur.campaigns + r.campaigns,
       crmClicks: add(cur.crmClicks, r.crmClicks), subscribers: add(cur.subscribers, r.subscribers),

@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { mskDaysAgo } from "@/lib/day";
-import { COLS, money, n, romi, type Metrics } from "@/app/reports/columns";
-import { mergeVersions, toCsv } from "@/lib/creatives/merge";
+import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/reports/columns";
+import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
+
+// Сортировка кликом по заголовку — по числу, а не по тексту ячейки.
+const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
+const SORT_KEY: Record<string, (m: Metrics) => number | null> = {
+  "Расход": (m) => m.spend, "Доход": (m) => m.depSum, "Net Profit": (m) => (m.depSum === null ? null : m.depSum - m.spend),
+  "ROMI": (m) => (m.depSum === null || !m.spend ? null : (m.depSum - m.spend) / m.spend), "ROAS": (m) => ratio(m.depSum, m.spend),
+  "Показы": (m) => m.impressions, "Клики": (m) => m.clicks, "Подписки": (m) => m.subscribers,
+  "Цена подписки": (m) => ratio(m.subscribers ? m.spend : null, m.subscribers), "Диалоги": (m) => m.dialogs,
+  "Цена диалога": (m) => ratio(m.dialogs ? m.spend : null, m.dialogs), "Депы": (m) => m.depCount, "CAC": (m) => ratio(m.depCount ? m.spend : null, m.depCount),
+};
+const geoOfCode = (code: string) => (/-([a-z]{2})$/i.exec(code)?.[1] ?? "").toUpperCase();
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -44,7 +55,12 @@ export default function CreativesTable() {
   const [buyer, setBuyer] = useState<string>("all");
   const [country, setCountry] = useState<string>("all");
   const [face, setFace] = useState<string>("all");
-  const [merge, setMerge] = useState(false);
+  // Склейка: нет / версии (v1, v2…) / как у Артёма — версии и все GEO одного креатива вместе,
+  // строка раскрывается на «GEO · лицо».
+  const [merge, setMerge] = useState<"none" | "versions" | "all">("none");
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<{ col: string; desc: boolean }>({ col: "Расход", desc: true });
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set());
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,8 +103,20 @@ export default function CreativesTable() {
   const all: CreativeRow[] = data?.rows ?? [];
   const faces = [...new Set(all.flatMap((r) => r.faces))].sort();
   const byFace = face === "all" ? all : all.filter((r) => (face === "none" ? r.faces.length === 0 : r.faces.includes(face)));
-  const rows: (CreativeRow & { versions?: number })[] = merge ? mergeVersions(byFace) : byFace;
-  const totals = rows.reduce((t, r) => ({ spend: t.spend + r.spend, rev: t.rev + (r.depSum ?? 0) + (r.redepSum ?? 0) }), { spend: 0, rev: 0 });
+  const needle = q.trim().toLowerCase();
+  const found = needle ? byFace.filter((r) => r.code.toLowerCase().includes(needle)) : byFace;
+  const merged: (CreativeRow & Partial<Merged>)[] = merge === "none" ? found : mergeVersions(found, merge === "all" ? baseKey : undefined);
+  const key = SORT_KEY[sort.col] ?? SORT_KEY["Расход"];
+  const rows = [...merged].sort((a, b) => {
+    const ka = key(metrics(a)), kb = key(metrics(b));
+    if (ka === null && kb === null) return 0;
+    if (ka === null) return 1;
+    if (kb === null) return -1;
+    return sort.desc ? kb - ka : ka - kb;
+  });
+  const t = totalsOf(rows.map(metrics));
+  const sortOn = (col: string) => SORT_KEY[col] && setSort((p) => ({ col, desc: p.col === col ? !p.desc : true }));
+  const toggleRow = (code: string) => setOpenRows((p) => { const n2 = new Set(p); if (n2.has(code)) n2.delete(code); else n2.add(code); return n2; });
 
   function downloadCsv() {
     const head = ["Код креатива", "Страны", "Лица", "Подход", ...COLS.map((c) => c.label)];
@@ -160,10 +188,12 @@ export default function CreativesTable() {
             {faces.map((f) => <button key={f} onClick={() => setFace(f)} className={chip(face === f)}>{f}</button>)}
             <button onClick={() => setFace("none")} className={chip(face === "none")}>Без лица</button>
           </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
-            <input type="checkbox" checked={merge} onChange={(e) => setMerge(e.target.checked)} className="accent-violet-500" />
-            Склеить версии v1, v2, v3…
-          </label>
+          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <button onClick={() => setMerge("none")} className={chip(merge === "none")}>Как есть</button>
+            <button onClick={() => setMerge("versions")} className={chip(merge === "versions")}>Склеить версии</button>
+            <button onClick={() => setMerge("all")} className={chip(merge === "all")} title="Все версии и GEO одного креатива — одна строка, клик раскрывает GEO · лицо">Версии и GEO вместе</button>
+          </div>
+          <input placeholder="Код креатива, например storytell-t30" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} w-64`} />
           <button onClick={downloadCsv} className="px-3 py-1.5 rounded-lg text-sm border border-violet-900/40 text-zinc-300 hover:bg-violet-900/20 ml-auto">↓ CSV</button>
         </div>
       )}
@@ -221,16 +251,20 @@ export default function CreativesTable() {
 
       {!loading && !error && rows.length > 0 && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          {/* Карточки — как в «Дашборде» Артёма: число и цена под ним. */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
             {([
-              ["Расход", money(totals.spend)],
-              ["Доход", money(totals.rev)],
-              ["ROMI", romi(totals.spend, totals.rev)],
-              ["Креативов", n(rows.length)],
-            ] as const).map(([label, value]) => (
+              ["Расход", money(t.spend), `Креативов: ${n(rows.length)}`],
+              ["ПДП", n(t.subscribers), `Цена ПДП ${money(t.cpaPdp)}`],
+              ["ДИА", n(t.dialogs), `Цена ДИА ${money(t.cpaDia)}`],
+              ["Депозиты", n(t.depCount), `Цена депа ${money(t.depCount ? t.spend / t.depCount : null)}`],
+              ["Сумма депозитов", money(t.depSum), `Профит ${money(t.depSum - t.spend)}`],
+              ["ROMI", romi(t.spend, t.depSum), `ROAS ${t.spend ? (t.depSum / t.spend).toFixed(2) : "—"}×`],
+            ] as const).map(([label, value, hint]) => (
               <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
                 <p className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-xl font-semibold text-white">{value}</p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">{hint}</p>
               </div>
             ))}
           </div>
@@ -241,16 +275,18 @@ export default function CreativesTable() {
                 <tr className="border-b border-violet-900/25">
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#111118] z-10">Код креатива</th>
                   {["Страны", "Подход", ...COLS.map((c) => c.label)].map((h) => (
-                    <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
-                      {h}
+                    <th key={h} onClick={() => sortOn(h)} className={`px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${SORT_KEY[h] ? "cursor-pointer hover:text-violet-300" : ""} ${sort.col === h ? "text-violet-300" : "text-zinc-500"}`}>
+                      {h}{sort.col === h ? (sort.desc ? " ↓" : " ↑") : ""}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-violet-900/15">
                 {rows.map((r) => (
-                  <tr key={r.code} className="hover:bg-violet-900/10 transition">
+                  <Fragment key={r.code}>
+                  <tr className={`hover:bg-violet-900/10 transition ${r.details && merge === "all" ? "cursor-pointer" : ""}`} onClick={() => merge === "all" && r.details && toggleRow(r.code)}>
                     <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[48vw] sm:max-w-[280px] truncate sticky left-0 bg-[#111118] z-10" title={r.code}>
+                      {merge === "all" && <span className="text-zinc-600 text-xs mr-1.5">{openRows.has(r.code) ? "▾" : "▸"}</span>}
                       {r.code}
                       {/* Старый формат помечен, но не спрятан: сейчас все деньги
                           именно на нём (Decision 043). */}
@@ -258,7 +294,7 @@ export default function CreativesTable() {
                         <span className="ml-2 text-[10px] text-zinc-600 border border-zinc-700/50 rounded px-1 py-0.5">старый</span>
                       )}
                       {(r.versions ?? 1) > 1 && (
-                        <span className="ml-2 text-[10px] text-violet-300 border border-violet-700/40 rounded px-1 py-0.5">версий: {r.versions}</span>
+                        <span className="ml-2 text-[10px] text-violet-300 border border-violet-700/40 rounded px-1 py-0.5">{merge === "all" ? "вариантов" : "версий"}: {r.versions}</span>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
@@ -282,6 +318,17 @@ export default function CreativesTable() {
                       );
                     })}
                   </tr>
+                  {merge === "all" && openRows.has(r.code) && [...(r.details ?? [])].sort((a, b) => b.spend - a.spend).map((d) => (
+                    <tr key={d.code} className="bg-violet-950/10">
+                      <td className="px-3 py-2 pl-8 text-zinc-400 whitespace-nowrap sticky left-0 bg-[#13101b] z-10" title={d.code}>
+                        {d.code}<span className="ml-2 text-[11px] text-zinc-500">{(d.countries.join(", ") || geoOfCode(d.code) || "—")} · {d.faces.join(", ") || "без лица"}</span>
+                      </td>
+                      <td className="px-3 py-2 text-zinc-500">{d.countries.join(", ") || "—"}</td>
+                      <td className="px-3 py-2 text-zinc-500">{d.approach}</td>
+                      {COLS.map((c) => <td key={c.label} className="px-3 py-2 whitespace-nowrap text-zinc-500">{c.cell(metrics(d))}</td>)}
+                    </tr>
+                  ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
