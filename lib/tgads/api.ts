@@ -148,6 +148,8 @@ export async function tgadsAdDays(key: { token: string; accountId: string; accou
         adsetId: id, adsetName: a.title, campaignId: id, campaignName: a.title,
         accountId: key.accountId, accountName: key.accountTitle,
         spend: Math.round(d.spend * rate * 100) / 100, clicks: d.clicks, impressions: d.views,
+        // Клик в TG Ads — это и есть переход по ссылке; охвата и результатов API не отдаёт.
+        linkClicks: d.clicks, reach: null, results: null,
         campaignDailyBudget: live && a.daily_budget_limit ? Math.round(a.daily_budget_limit * rate * 100) / 100 : null,
         countries: geo ? [geo] : [],
       });

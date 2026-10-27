@@ -137,6 +137,8 @@ export async function dolphinAdDays(token: string, since: string, until: string)
         spend,
         clicks: n(a.stats?.link_click),
         impressions,
+        // Все клики Dolphin не отдаёт (с колонкой clicks обнуляет статистику) — есть только по ссылке.
+        linkClicks: n(a.stats?.link_click), reach: null, results: null,
         campaignDailyBudget: campaign.daily_budget ? n(campaign.daily_budget) : null,
         countries: countriesFromNames(adset.name ?? "", campaign.name ?? ""),
       });

@@ -47,6 +47,7 @@ export interface CabinetState {
   currency: string | null;
   balance: number | null;
   prepay: boolean | null;
+  timezone?: string | null;   // только у Meta; у Dolphin и FB Tool — прежний
 }
 
 export interface CabinetAlert {
@@ -63,6 +64,7 @@ interface MetaAccount {
   currency?: string;
   balance?: string;
   is_prepay_account?: boolean;
+  timezone_name?: string;
 }
 
 // Meta отдаёт баланс в минимальных единицах валюты: центах, но у иены их нет.
@@ -87,6 +89,7 @@ export function toState(a: MetaAccount): CabinetState {
     currency: a.currency ?? null,
     balance: fromMinor(a.balance, a.currency),
     prepay: a.is_prepay_account ?? null,
+    timezone: a.timezone_name ?? null,
   };
 }
 
@@ -163,7 +166,7 @@ export function diffCabinets(
   return { states: [...states.values()], alerts };
 }
 
-const FIELDS = "id,name,account_status,disable_reason,currency,balance,is_prepay_account";
+const FIELDS = "id,name,account_status,disable_reason,currency,balance,is_prepay_account,timezone_name";
 
 // Все кабинеты, которые видит ключ: напрямую и через Business Manager. Статусы
 // любые — в отличие от отчётов, тут нужны именно неактивные.
@@ -291,7 +294,7 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
 
   // Прошлые отметки времени передаются явно: в пакетном upsert пропущенное поле
   // становится значением по умолчанию, и changed_at сбрасывался бы каждый прогон.
-  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at, alerted: r.alerted_at }]));
+  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at, alerted: r.alerted_at, last: r.last_status as string | null, tz: r.timezone as string | null }]));
   // Алерт о проблеме — отметка для утренней сводки (Decision 066).
   const statusOf = new Map(states.map((s) => [s.accountId, s.status]));
   const problemAlert = new Set(alerts.filter((a) => (statusOf.get(a.accountId) ?? "") in PROBLEM).map((a) => a.accountId));
@@ -301,6 +304,9 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
     return {
       account_id: s.accountId, name: s.name, status: s.status, disable_reason: s.disableReason,
       currency: s.currency, balance: s.balance, prepay: s.prepay,
+      // Пропал — статус MISSING, а каким он был до этого, остаётся в last_status (Decision 089).
+      last_status: s.status === "MISSING" ? (was?.last ?? (p && p.status !== "MISSING" ? p.status : null)) : s.status,
+      timezone: s.timezone ?? was?.tz ?? null,
       // seen_at двигается, только если кабинет правда видели.
       seen_at: seen.has(s.accountId) || !was ? now.toISOString() : was.seen,
       changed_at: !p || p.status !== s.status || !was ? now.toISOString() : was.changed,

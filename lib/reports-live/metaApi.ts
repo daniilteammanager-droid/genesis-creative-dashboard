@@ -250,7 +250,19 @@ interface InsightRow {
   spend?: string;
   clicks?: string;
   impressions?: string;
+  // Только в дневном режиме (склад, Decision 089).
+  inline_link_clicks?: string;
+  reach?: string;
+  results?: { indicator?: string; values?: { value?: string }[] }[];
 }
+
+// Результат Meta — то, на что оптимизирована реклама (у нас подписка на сайте).
+// Поле есть, а значений нет — значит ноль; поля нет вовсе — не знаем.
+export function resultsOf(r: Pick<InsightRow, "results">): number | null {
+  if (!Array.isArray(r.results)) return null;
+  return r.results.reduce((s, x) => s + (parseInt(x.values?.[0]?.value ?? "0", 10) || 0), 0);
+}
+const intOrNull = (v: string | undefined) => (v === undefined ? null : parseInt(v, 10) || 0);
 
 // daily=true просит дневную разбивку: одна строка на сущность И день, но по-прежнему
 // ОДИН запрос на кабинет за весь диапазон. Три недели дневных строк стоят столько
@@ -268,9 +280,9 @@ async function fetchInsights(
   const base = level === "campaign"
     ? "campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions"
     : "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions";
-  // Охватов здесь нет намеренно: reach не складывается по дням, а склад суммирует
-  // дневные строки за период (Decision 039).
-  const fields = base;
+  // Охват — только в дневных строках склада и только как охват этого дня: в охват
+  // периода он не складывается (Decision 039, 089).
+  const fields = daily ? `${base},inline_link_clicks,reach,results` : base;
   const timeRange = JSON.stringify({ since, until });
 
   const out: InsightRow[] = [];
@@ -442,6 +454,10 @@ export interface MetaAdDay {
   spend: number;
   clicks: number;
   impressions: number;
+  // Decision 089. null — источник не отдаёт (охват у Dolphin и TG Ads).
+  linkClicks: number | null;
+  reach: number | null;
+  results: number | null;
 }
 
 export interface MetaCampaignDay {
@@ -452,6 +468,9 @@ export interface MetaCampaignDay {
   spend: number;
   clicks: number;
   impressions: number;
+  linkClicks: number | null;
+  reach: number | null;
+  results: number | null;
 }
 
 // only — какие кабинеты читать (id без act_). Не передан — все, что видит ключ.
@@ -478,6 +497,7 @@ export async function fetchAdDays(
       spend: parseFloat(r.spend ?? "0") || 0,
       clicks: parseInt(r.clicks ?? "0", 10) || 0,
       impressions: parseInt(r.impressions ?? "0", 10) || 0,
+      linkClicks: intOrNull(r.inline_link_clicks), reach: intOrNull(r.reach), results: resultsOf(r),
     }))
     .filter((r) => r.adId);
   return { items, failedAccounts };
@@ -499,6 +519,7 @@ export async function fetchCampaignDays(
       spend: parseFloat(r.spend ?? "0") || 0,
       clicks: parseInt(r.clicks ?? "0", 10) || 0,
       impressions: parseInt(r.impressions ?? "0", 10) || 0,
+      linkClicks: intOrNull(r.inline_link_clicks), reach: intOrNull(r.reach), results: resultsOf(r),
     }));
   return { items, failedAccounts };
 }

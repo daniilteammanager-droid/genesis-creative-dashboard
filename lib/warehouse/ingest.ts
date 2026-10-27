@@ -5,6 +5,7 @@ import { notify, escapeHtml } from "@/lib/telegram/links";
 import { mskDay } from "@/lib/day";
 import { warehouse } from "./read";
 import { ingestTorro } from "./torroIngest";
+import { syncEntities } from "./entities";
 import { dolphinAdDays, dolphinCabinets, type DolphinAdDay } from "@/lib/dolphin/api";
 import { oldestAdDay, tgadsAdDays } from "@/lib/tgads/api";
 import { markTgadsKey, tgadsKeysOf } from "@/lib/connections/tgadsKeys";
@@ -55,6 +56,7 @@ export interface IngestResult {
   backfill?: string;
   skipped?: string;
   note?: string;
+  entities?: number;
 }
 
 const db = () => warehouse();
@@ -196,14 +198,16 @@ async function writeSpend(userId: string, tokens: { id: string; token: string }[
         adset_id: r.adsetId || null, adset_name: r.adsetName || null,
         campaign_id: r.campaignId || null, campaign_name: r.campaignName || null,
         account_id: r.accountId, account_name: r.accountName,
-        spend: r.spend, clicks: r.clicks, impressions: r.impressions, updated_at: now,
+        spend: r.spend, clicks: r.clicks, impressions: r.impressions,
+        link_clicks: r.linkClicks, reach: r.reach, results: r.results, updated_at: now,
       });
     }
     for (const r of c.items) {
       const key = `${r.date}|${r.campaignId}`;
       if (!campaigns.has(key)) campaigns.set(key, {
         user_id: userId, source: "meta", date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
-        account_id: r.accountId, spend: r.spend, clicks: r.clicks, impressions: r.impressions, updated_at: now,
+        account_id: r.accountId, spend: r.spend, clicks: r.clicks, impressions: r.impressions,
+        link_clicks: r.linkClicks, reach: r.reach, results: r.results, updated_at: now,
       });
     }
   }
@@ -211,6 +215,18 @@ async function writeSpend(userId: string, tokens: { id: string; token: string }[
   await put("wh_ad_days", "date,ad_id", [...ads.values()]);
   await put("wh_campaign_days", "date,campaign_id", [...campaigns.values()]);
   return { adRows: ads.size, campaignRows: campaigns.size, failedAccounts, seenAdsets };
+}
+
+// Перезагрузить расход Meta за прошлые дни по своим кабинетам — разово, когда в склад
+// добавились поля (Decision 089: клики по ссылке, охват, результаты). Пропавший кабинет
+// Meta не отдаёт — его строки остаются как были.
+export async function refetchMetaSpend(userId: string, since: string, until: string) {
+  const tokens = await metaTokensOf(userId);
+  const { data: own } = await db().from("wh_account_owners").select("account_id").eq("owner_user_id", userId);
+  const allowed = new Set((own ?? []).map((o) => o.account_id as string));
+  if (!tokens.length || !allowed.size) return { adRows: 0, campaignRows: 0, failedAccounts: 0 };
+  const w = await writeSpend(userId, tokens, since, until, allowed);
+  return { adRows: w.adRows, campaignRows: w.campaignRows, failedAccounts: w.failedAccounts };
 }
 
 async function upsertAdsets(items: { adsetId: string; adsetName: string; accountId: string; countries: string[] }[]) {
@@ -237,7 +253,7 @@ async function writeDolphinSpend(userId: string, token: string, since: string, u
 async function writeDays(userId: string, source: string, rows: DolphinAdDay[]) {
   const now = new Date().toISOString();
   const ads = new Map<string, Record<string, unknown>>();
-  const campaigns = new Map<string, Record<string, unknown> & { spend: number; clicks: number; impressions: number }>();
+  const campaigns = new Map<string, Record<string, unknown> & { spend: number; clicks: number; impressions: number; link_clicks: number | null; results: number | null }>();
   const adsets = new Map<string, { adsetId: string; adsetName: string; accountId: string; countries: string[] }>();
   for (const r of rows) {
     ads.set(`${r.date}|${r.adId}`, {
@@ -245,15 +261,19 @@ async function writeDays(userId: string, source: string, rows: DolphinAdDay[]) {
       adset_id: r.adsetId || null, adset_name: r.adsetName || null,
       campaign_id: r.campaignId || null, campaign_name: r.campaignName || null,
       account_id: r.accountId, account_name: r.accountName,
-      spend: r.spend, clicks: r.clicks, impressions: r.impressions, updated_at: now,
+      spend: r.spend, clicks: r.clicks, impressions: r.impressions,
+      link_clicks: r.linkClicks, reach: r.reach, results: r.results, updated_at: now,
     });
     if (r.campaignId) {
       const key = `${r.date}|${r.campaignId}`;
+      // Охват кампании из охватов объявлений не собрать (люди пересекаются) — пусто.
       const c = campaigns.get(key) ?? {
         user_id: userId, source, date: r.date, campaign_id: r.campaignId, campaign_name: r.campaignName || null,
-        account_id: r.accountId, spend: 0, clicks: 0, impressions: 0, updated_at: now,
+        account_id: r.accountId, spend: 0, clicks: 0, impressions: 0, link_clicks: null, reach: null, results: null, updated_at: now,
       };
       c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions;
+      if (r.linkClicks !== null) c.link_clicks = (c.link_clicks ?? 0) + r.linkClicks;
+      if (r.results !== null) c.results = (c.results ?? 0) + r.results;
       campaigns.set(key, c);
     }
     if (r.adsetId && r.countries.length) {
@@ -529,6 +549,22 @@ export async function ingestForUser(
           torro_backfilled_from: chunk?.since ?? progress?.torro_backfilled_from ?? since,
           torro_backfill_done: !chunk || chunk.since <= floor,
         }).eq("user_id", userId);
+      }
+    }
+
+    // ─── Статусы и бюджеты объектов — раз в час и на окне (Decision 089) ───
+    if (kind === "window" || opts.backfill || new Date().getUTCMinutes() < 15) {
+      try {
+        const live = fbtool ? (await fbtoolAccounts(fbtool)).filter((a) => a.ok).map((a) => a.id) : [];
+        const e = await syncEntities(userId, {
+          metaTokens: dolphin || fbtool ? [] : tokens.map((t) => t.token),
+          fbtool: fbtool ? { key: fbtool, accounts: live } : null,
+          tgads: tgKeys,
+        });
+        result.entities = e.saved;
+        if (e.failed) notes.push(`статусы объектов не прочитались у ${e.failed} кабинетов`);
+      } catch (e) {
+        notes.push(`статусы объектов не обновились: ${e instanceof Error ? e.message : e}`);
       }
     }
 

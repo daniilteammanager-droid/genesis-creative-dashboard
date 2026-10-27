@@ -1,5 +1,6 @@
 import { countriesFromNames, type DolphinAdDay, type DolphinAdStatus, type DolphinCabinet } from "@/lib/dolphin/api";
 import { usdRate } from "@/lib/fx";
+import type { EntityState } from "@/lib/warehouse/entities";
 
 // FB Tool как источник расхода Facebook (Decision 071).
 //
@@ -63,7 +64,7 @@ export async function fbtoolCabinets(key: string, account: string): Promise<Dolp
 }
 
 interface Action { action_type?: string; value?: string }
-interface Row { date_start?: string; spend?: string; impressions?: string; clicks?: string; actions?: Action[] }
+interface Row { date_start?: string; spend?: string; impressions?: string; clicks?: string; reach?: string; actions?: Action[] }
 interface RawAd {
   id?: string; name?: string; effective_status?: string;
   adset?: { id?: string; name?: string }; campaign?: { id?: string; name?: string };
@@ -96,6 +97,44 @@ export async function fbtoolBudgets(key: string, account: string, day: string): 
   return out;
 }
 
+// Статусы и бюджеты кампаний, адсетов и объявлений аккаунта — для склада состояний
+// (Decision 089). Два запроса: «campaigns» (бюджеты) и «ads» (объявления с адсетами).
+type FbObj = { id?: string; name?: string; status?: string; effective_status?: string; daily_budget?: string; lifetime_budget?: string };
+export async function fbtoolEntities(key: string, account: string, day: string): Promise<{ accounts: string[]; items: EntityState[] }> {
+  const dates = `${day} - ${day}`;
+  const [camps, ads] = await Promise.all([
+    call<{ data?: { account_id?: string; currency?: string; campaigns?: { data?: FbObj[] } }[] }>(key, "get-statistics", { account, mode: "campaigns", status: "all", dates }),
+    call<{ data?: { account_id?: string; ads?: { data?: (FbObj & { adset?: FbObj; campaign?: FbObj })[] } }[] }>(key, "get-statistics", { account, mode: "ads", status: "all", dates }),
+  ]);
+  const items: EntityState[] = [], accounts = new Set<string>();
+  const idOf = (v: unknown) => String(v ?? "").replace(/^act_/, "");
+  for (const cab of camps.data ?? []) {
+    const acc = idOf(cab.account_id); accounts.add(acc);
+    const rate = await usdRate(cab.currency ?? "USD", day);
+    const usd = (v?: string) => (n(v) > 0 ? Math.round((n(v) / 100) * rate * 100) / 100 : null);
+    for (const c of cab.campaigns?.data ?? []) if (c.id) items.push({
+      id: String(c.id), level: "campaign", accountId: acc, campaignId: String(c.id), adsetId: null, name: c.name ?? null,
+      status: c.status ?? null, effective: c.effective_status ?? null, daily: usd(c.daily_budget), lifetime: usd(c.lifetime_budget),
+    });
+  }
+  for (const cab of ads.data ?? []) {
+    const acc = idOf(cab.account_id); accounts.add(acc);
+    for (const a of cab.ads?.data ?? []) {
+      if (!a.id) continue;
+      const campaignId = a.campaign?.id ? String(a.campaign.id) : null, adsetId = a.adset?.id ? String(a.adset.id) : null;
+      if (a.adset?.id) items.push({
+        id: String(a.adset.id), level: "adset", accountId: acc, campaignId, adsetId, name: a.adset.name ?? null,
+        status: a.adset.status ?? null, effective: a.adset.effective_status ?? null, daily: null, lifetime: null,
+      });
+      items.push({
+        id: String(a.id), level: "ad", accountId: acc, campaignId, adsetId, name: a.name ?? null,
+        status: a.status ?? null, effective: a.effective_status ?? null, daily: null, lifetime: null,
+      });
+    }
+  }
+  return { accounts: [...accounts], items };
+}
+
 // Расход по объявлениям по дням — в форме Dolphin, деньги сразу в долларах.
 // budgets — бюджеты кампаний (fbtoolBudgets) для живого чека; без них бюджет пустой.
 export async function fbtoolAdDays(key: string, account: string, since: string, until: string, budgets?: Map<string, number>): Promise<DolphinAdDay[]> {
@@ -113,7 +152,10 @@ export async function fbtoolAdDays(key: string, account: string, since: string, 
           adsetId: String(a.adset?.id ?? ""), adsetName: a.adset?.name ?? "",
           campaignId: String(a.campaign?.id ?? ""), campaignName: a.campaign?.name ?? "",
           accountId, accountName: cab.name ?? "",
-          spend: Math.round(spend * rate * 100) / 100, clicks: linkClicks(r), impressions,
+          // clicks — все клики, как у Meta; по ссылке — отдельно (Decision 089). Результатов
+          // («results» Meta) FB Tool не отдаёт, а угадывать их по actions нельзя: у баеров разная оптимизация.
+          spend: Math.round(spend * rate * 100) / 100, clicks: r.clicks !== undefined ? n(r.clicks) : linkClicks(r), impressions,
+          linkClicks: linkClicks(r), reach: r.reach !== undefined ? n(r.reach) : null, results: null,
           campaignDailyBudget: budgets?.get(String(a.campaign?.id ?? "")) ?? null,
           countries: countriesFromNames(a.adset?.name ?? "", a.campaign?.name ?? ""),
         });
