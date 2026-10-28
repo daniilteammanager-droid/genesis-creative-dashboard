@@ -31,5 +31,6 @@ assert.equal(tight.efficiency, null);                                // никт
 const hidden = forViewer(q, "b", false);
 assert.equal(hidden.ranking[0].profit, undefined);
 assert.equal(hidden.ranking.find((x) => x.id === "b")?.me, true);
+assert.equal(hidden.ranking.find((x) => x.id === "b")?.profit, 2000);   // свой профит баер видит
 assert.equal(forViewer(q, "b", true).ranking[0].profit, 75000);
 console.log("home leaderboard: ok");

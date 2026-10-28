@@ -5,7 +5,7 @@
 //   Объём         — самый большой расход при ROMI выше нуля (сжечь бюджет — не заслуга);
 //   Эффективность — самый высокий ROMI у тех, кто лил в среднем от $15k в месяц:
 //                   иначе ROMI 300% на $500 забирал бы номинацию.
-// Баеру — место, ник и ROMI; суммы видят владелец и тимлид (решено 28.10.2026).
+// Баеру — место, ник и ROMI, суммы — только свои; чужие видят владелец и тимлид (решено 28.10.2026).
 
 export const MIN_MONTHLY_SPEND = 15_000;
 
@@ -51,7 +51,8 @@ export function rankBuyers(buyers: BuyerInput[], since: string | null, until: st
 
 // Что уходит в браузер: баеру суммы не отдаём вовсе, а не прячем в интерфейсе.
 export function forViewer(board: Board<Full>, meId: string, withMoney: boolean): Board {
-  const out = (x: Full | null): Standing | null => x && (withMoney
+  // Свои суммы баер видит — чужие нет.
+  const out = (x: Full | null): Standing | null => x && (withMoney || x.id === meId
     ? { id: x.id, label: x.label, romi: x.romi, spend: x.spend, revenue: x.revenue, profit: x.profit, me: x.id === meId }
     : { id: x.id, label: x.label, romi: x.romi, me: x.id === meId });
   return { ranking: board.ranking.map((x) => out(x)!), volume: out(board.volume), efficiency: out(board.efficiency) };

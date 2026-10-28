@@ -94,13 +94,13 @@ export default function HomePage() {
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
 
-        <Leaders team={Boolean(team)} />
+        <Leaders />
       </div>
     </main>
   );
 }
 
-function Leaders({ team }: { team: boolean }) {
+function Leaders() {
   const [data, setData] = useState<{ quarter: Board; allTime: Board; failed: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -114,9 +114,9 @@ function Leaders({ team }: { team: boolean }) {
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {!data && !err && <p className="text-zinc-500 text-sm">Загружаю…</p>}
       {data && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <BoardCard title="🏆 За 3 месяца" board={data.quarter} team={team} />
-          <BoardCard title="👑 За всё время" board={data.allTime} team={team} />
+        <div className="grid lg:grid-cols-2 gap-4">
+          <BoardCard title="🏆 За 3 месяца" board={data.quarter} />
+          <BoardCard title="👑 За всё время" board={data.allTime} />
         </div>
       )}
       {data && data.failed.length > 0 && (
@@ -129,7 +129,9 @@ function Leaders({ team }: { team: boolean }) {
 const pct = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(0)}%`);
 const romiColor = (v: number | null) => (v === null ? "text-zinc-400" : v >= 0 ? "text-green-400" : "text-red-400");
 
-function BoardCard({ title, board, team }: { title: string; board: Board; team: boolean }) {
+function BoardCard({ title, board }: { title: string; board: Board }) {
+  // Владельцу и тимлиду — у всех, баеру — только своя строка (суммы приходят только они).
+  const showProfit = board.ranking.some((x) => x.profit !== undefined);
   const nominee = (label: string, x: Standing | null, value: (x: Standing) => string) => (
     <div className="flex-1 min-w-[140px] bg-[#0d0b14] border border-violet-900/25 rounded-xl px-3 py-2">
       <p className="text-[11px] text-zinc-500 uppercase tracking-wider">{label}</p>
@@ -146,21 +148,21 @@ function BoardCard({ title, board, team }: { title: string; board: Board; team: 
         <ol className="mb-4">
           <li className="flex items-center gap-3 px-2 pb-1 text-[11px] text-zinc-500 uppercase tracking-wider">
             <span className="flex-1" />
-            {team && <span>Профит</span>}
+            {showProfit && <span className="w-28 shrink-0 text-right">Профит</span>}
             <span className="w-14 text-right">ROMI</span>
           </li>
           {board.ranking.map((x, i) => (
             <li key={x.id} className={`flex items-center gap-3 px-2 py-1.5 rounded-lg text-sm ${x.me ? "bg-violet-900/25" : ""}`}>
               <span className="w-5 text-zinc-500 tabular-nums">{i + 1}</span>
               <span className="flex-1 truncate">{x.label}{x.me && <span className="text-violet-300"> — ты</span>}</span>
-              {team && <span className="tabular-nums text-zinc-300">{money(x.profit ?? null)}</span>}
+              {showProfit && <span className="w-28 shrink-0 text-right tabular-nums text-zinc-300">{x.profit === undefined ? "" : money(x.profit)}</span>}
               <span className={`tabular-nums w-14 text-right ${romiColor(x.romi)}`}>{pct(x.romi)}</span>
             </li>
           ))}
         </ol>
       )}
       <div className="flex flex-wrap gap-2">
-        {nominee("Объём", board.volume, (x) => (team ? `расход ${money(x.spend ?? null)} · ROMI ${pct(x.romi)}` : `ROMI ${pct(x.romi)}`))}
+        {nominee("Объём", board.volume, (x) => (x.spend !== undefined ? `расход ${money(x.spend ?? null)} · ROMI ${pct(x.romi)}` : `ROMI ${pct(x.romi)}`))}
         {nominee("Эффективность", board.efficiency, (x) => `ROMI ${pct(x.romi)}`)}
       </div>
     </div>
