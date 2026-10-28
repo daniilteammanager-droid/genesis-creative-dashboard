@@ -32,6 +32,7 @@ export async function GET() {
     const today = mskDay();
     const withMoney = me.role !== "buyer";
     return NextResponse.json({
+      month: forViewer(rankBuyers(buyers, mskDaysAgo(29), today, 1), me.id, withMoney),
       quarter: forViewer(rankBuyers(buyers, mskDaysAgo(89), today, 3), me.id, withMoney),
       allTime: forViewer(rankBuyers(buyers, null, today, null), me.id, withMoney),
       failed,

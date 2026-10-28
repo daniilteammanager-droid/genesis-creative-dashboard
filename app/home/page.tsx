@@ -101,7 +101,7 @@ export default function HomePage() {
 }
 
 function Leaders() {
-  const [data, setData] = useState<{ quarter: Board; allTime: Board; failed: string[] } | null>(null);
+  const [data, setData] = useState<{ month: Board; quarter: Board; allTime: Board; failed: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,7 +114,8 @@ function Leaders() {
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {!data && !err && <p className="text-zinc-500 text-sm">Загружаю…</p>}
       {data && (
-        <div className="grid lg:grid-cols-2 gap-4">
+        <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+          <BoardCard title="🔥 За месяц" board={data.month} />
           <BoardCard title="🏆 За 3 месяца" board={data.quarter} />
           <BoardCard title="👑 За всё время" board={data.allTime} />
         </div>
