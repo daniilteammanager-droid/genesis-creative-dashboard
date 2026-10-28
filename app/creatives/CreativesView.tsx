@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CreativeCards from "./CreativeCards";
 import CreativeAnalytics from "./CreativeAnalytics";
 import CreativesTable from "./CreativesTable";
-import CreativeUploadModal from "@/app/CreativeUploadModal";
+import CreativeUploadModal from "@/app/library/CreativeUploadModal";
 import MediaLibrary from "@/components/MediaLibrary";
 import { toLegacy } from "./toLegacy";
 import type { MediaFile } from "@/lib/creatives/media";

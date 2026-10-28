@@ -42,13 +42,14 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at")
-    .eq("id", user.id)
-    .maybeSingle();
+  const cols = "id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at";
+  const read = (c: string) => supabase.from("profiles").select(c).eq("id", user.id).maybeSingle();
+  let { data, error } = await read(`${cols}, start_page`);
+  // ponytail: миграция 045 ещё не выполнена — без стартовой страницы, а не без профиля.
+  // Убрать, когда 045 точно в базе.
+  if (error) ({ data, error } = await read(cols));
 
-  return (data as Profile | null) ?? null;
+  return data ? ({ start_page: null, ...(data as object) } as Profile) : null;
 });
 
 // Профиль с нужными правами или null. Проверка идёт на сервере: скрыть кнопку

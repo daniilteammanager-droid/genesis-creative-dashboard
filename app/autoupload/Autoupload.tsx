@@ -8,7 +8,7 @@ import type { Landing, LibraryItem } from "@/lib/autoupload/options";
 import { mskDay } from "@/lib/day";
 import LibraryPicker from "./LibraryPicker";
 import UploadApp from "./UploadApp";
-import CreativeUploadModal from "../CreativeUploadModal";
+import CreativeUploadModal from "@/app/library/CreativeUploadModal";
 import { DatePicker } from "@/components/DatePicker";
 
 // Автозалив (Decision 081, 087) — форма один в один с Genesis Manager Артёма:

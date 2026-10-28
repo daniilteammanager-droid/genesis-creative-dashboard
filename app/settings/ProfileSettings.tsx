@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
+import { WORK_AREAS, startPageOf } from "@/lib/nav";
 
 const field =
   "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
@@ -42,6 +43,14 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
     setNameMsg(error ? error.message : "Сохранено");
     // Имя показано в левой панели — её рисует серверный layout, просим перечитать.
     if (!error) router.refresh();
+  }
+
+  const [start, setStart] = useState(startPageOf(profile.start_page));
+  const [startMsg, setStartMsg] = useState<string | null>(null);
+  async function saveStart(href: string) {
+    setStart(href);
+    const { error } = await createClient().from("profiles").update({ start_page: href }).eq("id", profile.id);
+    setStartMsg(error ? error.message : "Сохранено");
   }
 
   // Сброс отметки — оболочка увидит пустой onboarded_at и откроет обучалку (Decision 078).
@@ -140,6 +149,15 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             ? "Почту, роль и код баера меняет только владелец — на вкладке «Команда»."
             : "Имя правишь сам. Почта, роль и код баера — только через владельца."}
         </p>
+      </div>
+
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-white mb-2">Стартовая страница</h2>
+        <p className="text-sm text-zinc-500 mb-4">Что открывается при входе в дашборд.</p>
+        <select value={start} onChange={(e) => saveStart(e.target.value)} className={field}>
+          {WORK_AREAS.map((a) => <option key={a.href} value={a.href}>{a.label}</option>)}
+        </select>
+        {startMsg && <p className="text-xs text-zinc-500 mt-2">{startMsg}</p>}
       </div>
 
       <div className={card}>

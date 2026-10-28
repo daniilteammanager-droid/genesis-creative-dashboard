@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import Onboarding from "./Onboarding";
+import { WORK_AREAS } from "@/lib/nav";
 
 // Оболочка приложения: рабочие области, аккаунт и содержимое страницы.
 //
@@ -15,18 +16,6 @@ import Onboarding from "./Onboarding";
 // Правило раскладки: в панели только рабочие области, всё служебное — внутри аккаунта.
 // Иначе панель растёт от каждой настроечной страницы.
 
-const WORK_AREAS = [
-  { href: "/", label: "Легаси крео" },
-  { href: "/creatives", label: "Креативы" },
-  { href: "/check", label: "Checks" },
-  { href: "/live-manager", label: "Live Manager" },
-  // General 3.0 из панели убран: им больше не пользуются (Daniil 26.10.2026). Роут живой.
-  { href: "/general-report-4", label: "General 4.0" },
-  { href: "/autoupload", label: "Автозалив" },
-  { href: "/antireject", label: "Антиотклон" },
-  { href: "/uniquify", label: "Уникализация" },
-  { href: "/topups", label: "Пополнения" },
-];
 
 // Профиль для клиентских страниц — без второго похода в Supabase: layout его уже
 // прочитал. Только для интерфейса: доступ проверяют роуты, а не скрытая кнопка.
@@ -100,7 +89,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         <nav className="px-2.5 pb-2 md:pb-0 space-y-0.5 flex-1 md:overflow-y-auto">
           {WORK_AREAS.map((a) => {
             // По границе сегмента: иначе «/general-report» подсвечивался бы и на «/general-report-4».
-            const active = a.href === "/" ? pathname === "/" : pathname === a.href || pathname.startsWith(`${a.href}/`);
+            const active = pathname === a.href || pathname.startsWith(`${a.href}/`);
             return (
               <Link
                 key={a.href}
