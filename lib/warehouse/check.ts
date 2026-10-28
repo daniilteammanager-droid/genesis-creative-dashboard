@@ -254,6 +254,63 @@ function onePerName(pairs: { name: string; value: string }[], many: string): Map
   return new Map([...seen].map(([name, set]) => [name, set.size === 1 ? [...set][0] : many]));
 }
 
+const NO_COUNTRY = "страна не определена";
+
+// Страна и лицо имён Torro, у которых в периоде чека нет расхода (Decision 095). Депы
+// доходят со старого трафика, и страновой чек их молча терял — у Артёма за неделю это был
+// почти весь доход. Страна — из всей истории расхода имени (таргет адсетов, Decision 045),
+// иначе — из имён кампаний Torro с этим объявлением (wh_crm_pairs), иначе «не определена».
+// Ответ есть на каждое имя: в страновом чеке Torro не теряется.
+async function placeOrphans(
+  db: ReturnType<typeof warehouse>, userIds: string[], names: string[], platform: Platform,
+  faceFor: (campaignName: string | null, accountId: string | null) => string,
+): Promise<Map<string, { country: string; face: string }>> {
+  const out = new Map<string, { country: string; face: string }>();
+  if (!names.length) return out;
+  // У TG Ads доход Torro — по кампании (= объявление со страной), у Facebook — по объявлению.
+  const col = platform === "tg" ? "campaign_name" : "ad_name";
+  const hist: { name: string; adset: string | null; campaign: string | null; account: string | null }[] = [];
+  for (let i = 0; i < names.length; i += 200) {
+    const part = names.slice(i, i + 200);
+    const rows = await selectAll<Record<string, string | null>>((from, to) =>
+      db.from("wh_ad_days").select(`${col}, adset_id, campaign_name, account_id`).in(col, part).order("date").order("ad_id").range(from, to));
+    for (const r of rows) hist.push({ name: (r[col] ?? "").trim(), adset: r.adset_id, campaign: r.campaign_name, account: r.account_id });
+  }
+  const adsetIds = [...new Set(hist.map((h) => h.adset).filter((a): a is string => Boolean(a)))];
+  const geo = new Map<string, string[]>();
+  for (let i = 0; i < adsetIds.length; i += 200) {
+    const { data } = await db.from("wh_adsets").select("adset_id, countries").in("adset_id", adsetIds.slice(i, i + 200));
+    for (const a of data ?? []) geo.set(a.adset_id as string, (a.countries as string[] | null) ?? []);
+  }
+  const countryOf = (adset: string | null) => {
+    const c = adset ? geo.get(adset) ?? [] : [];
+    return c.length === 1 ? c[0] : c.length > 1 ? "несколько стран" : NO_COUNTRY;
+  };
+  const country = onePerName(hist.map((h) => ({ name: h.name, value: countryOf(h.adset) })), "несколько стран");
+  const face = onePerName(hist.map((h) => ({ name: h.name, value: faceFor(h.campaign, h.account) })), MANY_FACES);
+
+  // Расхода по имени не было никогда (кабинет не подключали) — гео и лицо из имён кампаний Torro.
+  const rest = names.filter((n) => !country.has(n));
+  const pairs: { name: string; campaign: string }[] = platform === "tg" ? rest.map((n) => ({ name: n, campaign: n })) : [];
+  for (let i = 0; platform === "fb" && i < rest.length; i += 200) {
+    const part = rest.slice(i, i + 200);
+    const rows = await selectAll<{ ad_name: string; campaign_name: string }>((from, to) =>
+      db.from("wh_crm_pairs").select("ad_name, campaign_name").in("user_id", userIds).in("ad_name", part)
+        .order("period_start").order("campaign_name").order("ad_name").range(from, to));
+    for (const r of rows) pairs.push({ name: r.ad_name.trim(), campaign: r.campaign_name });
+  }
+  const nameGeo = onePerName(pairs.flatMap((p) => { const g = parseName(p.campaign).geo; return g ? [{ name: p.name, value: g }] : []; }), "несколько стран");
+  const nameFace = onePerName(pairs.map((p) => ({ name: p.name, value: faceOf(p.campaign) })), MANY_FACES);
+
+  for (const n of names) {
+    out.set(n, {
+      country: country.get(n) ?? nameGeo.get(n) ?? NO_COUNTRY,
+      face: face.get(n) ?? nameFace.get(n) ?? NO_FACE,
+    });
+  }
+  return out;
+}
+
 // ─── Выгрузки Torro за период ────────────────────────────────────────────────
 type CrmTotals = { subscribers: number | null; dialogs: number | null; revenue: number | null };
 // byName — ключи строк это имена кампаний, а не id (Torro по API id не знает).
@@ -428,7 +485,7 @@ export async function loadCheck(
 
   // Какие площадки подключены у кого-то в области видимости и чьё лицо у кабинета TG Ads.
   const [{ data: tgKeyRows }, { data: metaKeyRows }, { data: fbConn }] = scope.length ? await Promise.all([
-    db.from("tgads_keys").select("account_id, name").in("user_id", scope),
+    db.from("tgads_keys").select("user_id, account_id, name").in("user_id", scope),
     db.from("meta_keys").select("user_id").in("user_id", scope).limit(1),
     db.from("buyer_connections").select("user_id").in("user_id", scope).not("spend_source", "is", null).limit(1),
   ]) : [{ data: [] }, { data: [] }, { data: [] }];
@@ -637,9 +694,14 @@ export async function loadCheck(
           adRow(platform, face.get(name) ?? rowFace(platform, a.campaignName, a.accountId), label).spend += a.spend;
         }
 
+        // Имя без расхода сегодня — в страну из его прошлого расхода (Decision 095).
+        const orphans = groupBy === "country"
+          ? await placeOrphans(db, [config.userId], [...crm.rows.keys()].filter((n) => !country.has(n)), platform, (cn, acc) => rowFace(platform, cn, acc))
+          : new Map<string, { country: string; face: string }>();
         for (const [name, c] of crm.rows) {
-          const label = groupBy === "creative" ? name : country.get(name);
-          const row = label ? rows.get(`${platform}|${face.get(name)}|${label}`) : undefined;
+          const o = orphans.get(name);
+          const label = groupBy === "creative" ? name : country.get(name) ?? o?.country;
+          const row = !label ? undefined : o ? adRow(platform, o.face, label) : rows.get(`${platform}|${face.get(name)}|${label}`);
           if (!row) continue;
           row.subscribers = add(row.subscribers, c.subscribers);
           row.dialogs = add(row.dialogs, c.dialogs);
@@ -742,10 +804,14 @@ export async function loadCheck(
         adRow(platformOf(d), face.get(name) ?? rowFace(platformOf(d), d.campaign_name, d.account_id), label).spend += num(d.spend);
       }
 
-      const { data: tgRows } = scope.length
-        ? await db.from("buyer_connections").select("user_id").eq("spend_source", "tgads").in("user_id", scope)
+      // TG Ads — у кого есть кабинеты TG и нет источника Facebook. spend_source = 'tgads' с
+      // Decision 069 не пишется, и по нему Torro Павла не клеился вовсе (28.10.2026).
+      // ponytail: у баера с FB и TG сразу Torro TG пойдёт по имени объявления — таких пока нет.
+      const { data: fbRows } = scope.length
+        ? await db.from("buyer_connections").select("user_id").not("spend_source", "is", null).in("user_id", scope)
         : { data: [] as { user_id: string }[] };
-      const tgUsers = (tgRows ?? []).map((r) => r.user_id as string);
+      const fbUsers = new Set((fbRows ?? []).map((r) => r.user_id as string));
+      const tgUsers = [...new Set((tgKeyRows ?? []).map((k) => k.user_id as string))].filter((u) => !fbUsers.has(u));
       const adUsers = scope.filter((u) => !tgUsers.includes(u));
       type CrmRow = { platform?: Platform; user_id: string; ad_name: string; period_start: string; period_end: string; subscribers: number | null; dialogs: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
       const crm: CrmRow[] = [
@@ -763,17 +829,23 @@ export async function loadCheck(
             .range(from, to)
         )).map((r) => ({ ...r, platform: "tg" as const })) : []),
       ];
+      // По креативам строка выгрузки создаёт свою строку даже без расхода: объявление
+      // могли выключить, а депозиты по нему ещё доходят. По странам такое имя кладётся в
+      // страну из его прошлого расхода или имён кампаний Torro (Decision 095).
+      const orphanNames = (p: Platform) => [...new Set(crm.filter((c) => (c.platform ?? "fb") === p && inside(c.period_start, c.period_end))
+        .map((c) => (c.ad_name ?? "").trim()).filter((n) => n && !country.has(n)))];
+      const faceFor = (p: Platform) => (campaign: string | null, account: string | null) => rowFace(p, campaign, account);
+      const orphans = groupBy === "country"
+        ? new Map([...await placeOrphans(db, scope, orphanNames("fb"), "fb", faceFor("fb")), ...await placeOrphans(db, scope, orphanNames("tg"), "tg", faceFor("tg"))])
+        : new Map<string, { country: string; face: string }>();
       for (const c of crm) {
         if (!inside(c.period_start, c.period_end)) { partial++; continue; }
         const name = (c.ad_name ?? "").trim();
         if (!name) continue;
-        // По креативам строка выгрузки создаёт свою строку даже без расхода:
-        // объявление могли выключить, а депозиты по нему ещё доходят.
-        // По странам так нельзя — страну выключенного объявления взять неоткуда.
-        // Лица у такого имени тоже взять неоткуда, кроме расхода за период.
-        const label = groupBy === "creative" ? name : country.get(name);
+        const orphan = country.has(name) ? undefined : orphans.get(name);
+        const label = groupBy === "creative" ? name : country.get(name) ?? orphan?.country;
         if (!label) continue;
-        const row = adRow(platformByName.get(name) ?? c.platform ?? "fb", face.get(name) ?? NO_FACE, label);
+        const row = adRow(platformByName.get(name) ?? c.platform ?? "fb", face.get(name) ?? orphan?.face ?? NO_FACE, label);
         row.subscribers = add(row.subscribers, c.subscribers);
         row.dialogs = add(row.dialogs, c.dialogs);
         row.revenue = add(row.revenue, add(
