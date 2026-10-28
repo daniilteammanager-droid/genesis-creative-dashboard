@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { SummaryCard } from "@/components/general-report/shared";
 import { COLS, money, type Metrics } from "@/app/live-manager/columns";
 import type { HomeMetrics } from "@/lib/home/summary";
 import { PERIODS, type PeriodId } from "@/lib/home/periods";
-import { MIN_MONTHLY_SPEND, type Board, type Standing } from "@/lib/home/leaderboard";
+import type { Board, Standing } from "@/lib/home/leaderboard";
 import { useProfile } from "@/components/Shell";
 
 // Главная: свои цифры за период (склад) и рейтинг баеров (таблицы General 4.0).
@@ -15,6 +15,15 @@ import { useProfile } from "@/components/Shell";
 const CARDS = COLS.filter((c) => c.label !== "Охват" && c.label !== "Частота");
 const DEFAULT_CARDS = ["Расход", "CPC", "CPM", "Цена подписки", "Цена диалога", "Доход", "Net Profit"];
 const CARDS_KEY = "home:cards";
+
+// Набор карточек — из браузера, но только после гидратации: на сервере его нет,
+// и прочитанный сразу набор не совпадал бы с серверной разметкой.
+const CARDS_EVENT = "home:cards";
+const subscribeCards = (cb: () => void) => { window.addEventListener(CARDS_EVENT, cb); return () => window.removeEventListener(CARDS_EVENT, cb); };
+const readCards = () => { try { return localStorage.getItem(CARDS_KEY); } catch { return null; } };
+function parseCards(raw: string | null): string[] {
+  try { const v = JSON.parse(raw ?? "null"); return Array.isArray(v) && v.length ? v : DEFAULT_CARDS; } catch { return DEFAULT_CARDS; }
+}
 
 const chip = (active: boolean) =>
   `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -31,9 +40,7 @@ export default function HomePage() {
   const [period, setPeriod] = useState<PeriodId>("7d");
   const [data, setData] = useState<HomeMetrics | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [cards, setCards] = useState<string[]>(() => {
-    try { const v = JSON.parse(localStorage.getItem(CARDS_KEY) ?? "null"); return Array.isArray(v) && v.length ? v : DEFAULT_CARDS; } catch { return DEFAULT_CARDS; }
-  });
+  const cards = parseCards(useSyncExternalStore(subscribeCards, readCards, () => null));
   const [cardsOpen, setCardsOpen] = useState(false);
 
   useEffect(() => {
@@ -48,8 +55,8 @@ export default function HomePage() {
   const toggleCard = (label: string) => {
     const next = cards.includes(label) ? cards.filter((c) => c !== label) : [...cards, label];
     if (!next.length) return;
-    setCards(next);
-    try { localStorage.setItem(CARDS_KEY, JSON.stringify(next)); } catch { /* приватное окно */ }
+    try { localStorage.setItem(CARDS_KEY, JSON.stringify(next)); } catch { /* приватное окно — набор не запомнится */ }
+    window.dispatchEvent(new Event(CARDS_EVENT));
   };
 
   const team = me && me.role !== "buyer";
@@ -103,11 +110,7 @@ function Leaders({ team }: { team: boolean }) {
 
   return (
     <section data-tour="home-leaders">
-      <h2 className="text-lg font-semibold mb-1">Рейтинг баеров</h2>
-      <p className="text-xs text-zinc-500 mb-4">
-        Место — по профиту (доход − расход) из таблиц General 4.0. «Эффективность» — лучший ROMI среди тех, кто лил
-        в среднем от ${(MIN_MONTHLY_SPEND / 1000).toFixed(0)}k в месяц.
-      </p>
+      <h2 className="text-lg font-semibold mb-4">Рейтинг баеров</h2>
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {!data && !err && <p className="text-zinc-500 text-sm">Загружаю…</p>}
       {data && (
@@ -141,6 +144,11 @@ function BoardCard({ title, board, team }: { title: string; board: Board; team: 
         <p className="text-sm text-zinc-500">Расхода за период нет ни у кого.</p>
       ) : (
         <ol className="mb-4">
+          <li className="flex items-center gap-3 px-2 pb-1 text-[11px] text-zinc-500 uppercase tracking-wider">
+            <span className="flex-1" />
+            {team && <span>Профит</span>}
+            <span className="w-14 text-right">ROMI</span>
+          </li>
           {board.ranking.map((x, i) => (
             <li key={x.id} className={`flex items-center gap-3 px-2 py-1.5 rounded-lg text-sm ${x.me ? "bg-violet-900/25" : ""}`}>
               <span className="w-5 text-zinc-500 tabular-nums">{i + 1}</span>
