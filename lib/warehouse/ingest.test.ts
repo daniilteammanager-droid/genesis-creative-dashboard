@@ -1,6 +1,7 @@
 // Самопроверка окна и догрузки. Запуск: npx tsx lib/warehouse/ingest.test.ts
 import assert from "node:assert/strict";
 import { nextChunk, windowFrom } from "./ingest";
+import { deadKeyError } from "@/lib/connections/metaKeys";
 
 // Окно: «сегодня» — один день, полное — четырнадцать, включая опорный
 assert.deepEqual(windowFrom("2026-08-31", "today"), { since: "2026-08-31", until: "2026-08-31" });
@@ -16,5 +17,10 @@ assert.deepEqual(nextChunk("2026-10-11", "2020-01-01", 14), { since: "2026-09-27
 assert.deepEqual(nextChunk("2026-10-11", "2026-10-05", 14), { since: "2026-10-05", until: "2026-10-10" });
 // Дошли до начала — кусков больше нет
 assert.equal(nextChunk("2026-10-05", "2026-10-05", 14), null);
+
+// Мёртвый ключ Meta — алерт; сбой Meta — нет (он проходит сам, алерт бы мигал)
+assert.ok(deadKeyError("Meta account discovery failed: Meta API /me/businesses failed: Error validating access token: The session has been invalidated because the user changed their password"));
+assert.ok(!deadKeyError("Meta API /act_1/insights failed: The operation was aborted due to timeout"));
+assert.ok(!deadKeyError("Meta API failed: An unexpected error has occurred. Please retry your request later."));
 
 console.log("ingest: окно и догрузка истории считаются верно");

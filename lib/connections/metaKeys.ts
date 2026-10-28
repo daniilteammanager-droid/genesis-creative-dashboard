@@ -126,9 +126,19 @@ export async function deleteMetaKey(userId: string, id: string): Promise<void> {
   }
 }
 
-// Отметка после прогона: ключ отработал или упал с такой-то ошибкой.
-export async function markMetaKey(id: string, error: string | null): Promise<void> {
+// Ключ умер насовсем: Meta его больше не принимает (сменили пароль, сессию сбросили,
+// отозвали доступ). Таймауты и сбои Meta сюда не подходят — они проходят сами.
+export const deadKeyError = (message: string) => /access token|session has been invalidated|OAuthException/i.test(message);
+
+// Отметка после прогона: ключ отработал или упал с такой-то ошибкой. died — ключ
+// умер именно сейчас (до этого не был мёртвым): об этом говорят в Telegram один раз.
+export async function markMetaKey(id: string, error: string | null): Promise<{ died: boolean; name: string }> {
+  const { data: prev } = await warehouse().from("meta_keys").select("name, last_error").eq("id", id).maybeSingle();
   await warehouse().from("meta_keys")
     .update(error ? { last_error: error.slice(0, 300) } : { last_error: null, last_ok_at: new Date().toISOString() })
     .eq("id", id);
+  return {
+    died: Boolean(error && deadKeyError(error) && !deadKeyError((prev?.last_error as string | null) ?? "")),
+    name: (prev?.name as string) ?? "",
+  };
 }

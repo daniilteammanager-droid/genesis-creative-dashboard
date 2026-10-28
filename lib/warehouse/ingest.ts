@@ -86,7 +86,7 @@ interface SeenAccount { name: string; created: string | null }
 
 // Все кабинеты со всех ключей. Упавший ключ не роняет остальные — он отмечается
 // в «Интеграциях» своей ошибкой.
-async function accountsOf(tokens: { id: string; token: string }[]) {
+async function accountsOf(userId: string, tokens: { id: string; token: string }[]) {
   const seen = new Map<string, SeenAccount>();
   let failedKeys = 0;
   for (const k of tokens) {
@@ -98,7 +98,17 @@ async function accountsOf(tokens: { id: string; token: string }[]) {
       await markMetaKey(k.id, null);
     } catch (e) {
       failedKeys++;
-      await markMetaKey(k.id, e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      const { died, name } = await markMetaKey(k.id, message);
+      // Умерший ключ молчал в «Интеграциях»: у Артёма 27.10.2026 сутки не было расхода,
+      // и никто не знал. Теперь — баеру, владельцу и тимлидам, один раз на смерть ключа.
+      if (died) {
+        const { data: p } = await db().from("profiles").select("name, email").eq("id", userId).maybeSingle();
+        const text = `⚠️ <b>Ключ Meta перестал работать</b>\n${escapeHtml((p?.name as string) || (p?.email as string) || userId)} · ${escapeHtml(name)}\n` +
+          `Расход по его кабинетам в склад не идёт, пока ключ не заменить: Настройки → Интеграции.\n<i>${escapeHtml(message.slice(0, 200))}</i>`;
+        await notify(userId, "connection_broken", text).catch(() => 0);
+        await notifyLeads("connection_broken", text, userId);
+      }
     }
   }
   return { seen, failedKeys };
@@ -147,6 +157,15 @@ async function claimAccounts(userId: string, seen: Map<string, SeenAccount>) {
 }
 
 // Один раз на конфликт — владельцу дашборда и тимлидам. Баерам незачем.
+// Владельцу и тимлидам. except — кому уже отправлено (баер сам тимлид).
+async function notifyLeads(event: string, text: string, except?: string) {
+  const { data: leads } = await db().from("profiles").select("id").in("role", ["main", "teamlead"]).eq("status", "active");
+  for (const l of leads ?? []) {
+    if (l.id === except) continue;
+    try { await notify(l.id as string, event, text); } catch { /* алерт не важнее загрузки */ }
+  }
+}
+
 async function reportConflicts(userId: string, list: { accountId: string; ownerId: string }[], seen: Map<string, SeenAccount>) {
   const { data: people } = await db().from("profiles").select("id, name, email, role, status")
     .in("id", [userId, ...list.map((c) => c.ownerId)]);
@@ -157,10 +176,7 @@ async function reportConflicts(userId: string, list: { accountId: string; ownerI
   const lines = list.map((c) => `• CAB${c.accountId.slice(-4)} · ${escapeHtml(seen.get(c.accountId)?.name ?? c.accountId)} — у ${nameOf(c.ownerId)}`);
   const text = `<b>⚠️ Кабинет виден ключам двух человек</b>\nКлючи ${nameOf(userId)} видят чужие кабинеты:\n${lines.join("\n")}\n\nРасход по ним остаётся за прежним владельцем. Так быть не должно — проверь доступы в БМ.`;
 
-  const { data: leads } = await db().from("profiles").select("id").in("role", ["main", "teamlead"]).eq("status", "active");
-  for (const l of leads ?? []) {
-    try { await notify(l.id as string, "cabinet_status", text); } catch { /* алерт не важнее загрузки */ }
-  }
+  await notifyLeads("cabinet_status", text);
   for (const c of list) {
     await db().from("wh_account_owners").update({ conflict_user_id: userId }).eq("account_id", c.accountId);
   }
@@ -449,7 +465,7 @@ export async function ingestForUser(
         }
       }
     } else if (tokens.length) {
-      const { seen, failedKeys } = await accountsOf(tokens);
+      const { seen, failedKeys } = await accountsOf(userId, tokens);
       if (failedKeys) notes.push(`не прочитались ключи Meta: ${failedKeys}`);
       const { allowed, conflicts } = await claimAccounts(userId, seen);
       if (conflicts) { result.conflicts = conflicts; notes.push(`чужих кабинетов: ${conflicts}`); }
@@ -530,11 +546,21 @@ export async function ingestForUser(
     if (torro && limited?.length) notes.push("Torro на паузе: недавно упёрлись в лимит, пробуем раз в 3 часа");
     // Torro — раз в 30 минут (Daniil 26.10.2026): прогон «сегодня» идёт каждые 15 минут
     // ради расхода и алертов, а Torro трогаем только в первой и третьей четверти часа.
-    // Сразу после подключения (backfill) и окно истории — всегда.
-    const torroTurn = kind !== "today" || opts.backfill || Math.floor(new Date().getUTCMinutes() / 15) % 2 === 0;
+    // Пока догружается история Torro — каждый прогон. opts.backfill сам по себе не
+    // повод: роут ставит его почти всем прогонам «сегодня», и до 28.10.2026 Torro из-за
+    // этого ходил каждые 15 минут.
+    // Окно истории Torro не берёт (28.10.2026): 14 дней разом у Артёма (больше 100
+    // кампаний в день — дробление по странам) не влезали в 280 секунд и упирались в лимит
+    // Torro, прошлые дни у него не обновлялись с 24.10, а баеры после него в окно не попадали.
+    // Вместо этого каждый ход Torro добирает ещё один прошлый день по кругу — каждый из
+    // 13 прошлых дней обновляется раз в 6,5 часа: депы и диалоги доходят задним числом.
+    const torroTurn = kind === "today" &&
+      ((opts.backfill && !progress?.torro_backfill_done) || Math.floor(new Date().getUTCMinutes() / 15) % 2 === 0);
     if (torro && !limited?.length && torroTurn) {
       const t = await ingestTorro(db(), userId, torro.token, torro.buyerId, since, until);
       result.crmRows = t.crmRows;
+      const past = shift(today, -(1 + (Math.floor(Date.now() / 1_800_000) % (WINDOW_DAYS - 1))));
+      result.crmRows += (await ingestTorro(db(), userId, torro.token, torro.buyerId, past, past)).crmRows;
       if (t.unmatchedCampaigns || t.unmatchedAds) {
         notes.push(`Torro: кампаний не из подключённых кабинетов ${t.unmatchedCampaigns}, объявлений без однозначного id ${t.unmatchedAds}`);
       }
@@ -553,7 +579,7 @@ export async function ingestForUser(
     }
 
     // ─── Статусы и бюджеты объектов — раз в час и на окне (Decision 089) ───
-    if (kind === "window" || opts.backfill || new Date().getUTCMinutes() < 15) {
+    if (kind === "window" || new Date().getUTCMinutes() < 15) {
       try {
         const live = fbtool ? (await fbtoolAccounts(fbtool)).filter((a) => a.ok).map((a) => a.id) : [];
         const e = await syncEntities(userId, {
