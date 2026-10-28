@@ -1,4 +1,5 @@
 import type { MetaCampaignRow, MetaAdRow } from "./types";
+import { usdRate } from "@/lib/fx";
 
 // Meta Marketing API client — direct Graph API, no third-party wrapper.
 // Pulls period-scoped spend/clicks/impressions per campaign/ad via the insights
@@ -247,6 +248,7 @@ interface InsightRow {
   ad_name?: string;
   account_id: string;
   account_name: string;
+  account_currency?: string;
   spend?: string;
   clicks?: string;
   impressions?: string;
@@ -278,8 +280,8 @@ async function fetchInsights(
   daily = false
 ): Promise<InsightRow[]> {
   const base = level === "campaign"
-    ? "campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions"
-    : "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,account_id,account_name,spend,clicks,impressions";
+    ? "campaign_id,campaign_name,account_id,account_name,account_currency,spend,clicks,impressions"
+    : "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,account_id,account_name,account_currency,spend,clicks,impressions";
   // Охват — только в дневных строках склада и только как охват этого дня: в охват
   // периода он не складывается (Decision 039, 089).
   const fields = daily ? `${base},inline_link_clicks,reach,results` : base;
@@ -297,6 +299,13 @@ async function fetchInsights(
     if (!json.paging?.next) break;
     after = json.paging.cursors?.after;
     if (!after) break;
+  }
+  // Расход Meta — в валюте кабинета, а склад и чек считают в долларах: кабинет в VND
+  // писал донги долларами (28.10.2026). Курс своего дня; у агрегата за период — курс
+  // последнего дня. Курс не получен — кабинет падает целиком, а не пишется в чужой валюте.
+  for (const r of out) {
+    const cur = r.account_currency?.toUpperCase();
+    if (cur && cur !== "USD" && r.spend) r.spend = String(Number(r.spend) * (await usdRate(cur, daily && r.date_start ? r.date_start : until)));
   }
   return out;
 }
