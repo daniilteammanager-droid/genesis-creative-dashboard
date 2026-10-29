@@ -35,4 +35,20 @@ assert.equal(hidden.ranking.find((x) => x.id === "b")?.profit, 2000);   // св�
 assert.equal(forViewer(q, "b", true).ranking[0].profit, 75000);
 assert.equal(hidden.ranking.find((x) => x.id === "d")?.gone, true);    // выбывший — в рейтинге, с пометкой
 assert.equal(hidden.ranking.find((x) => x.id === "c")?.gone, false);
+// «Прогресс»: окно 29.09–28.10, прошлое — 30.08–28.09.
+const pr = [
+  { id: "n", label: "новичок", rows: [day("2026-09-10", 2000, 0), day("2026-10-10", 2000, 2400)] },        // −100% → +20%
+  { id: "s", label: "стабильный", rows: [day("2026-09-10", 5000, 10000), day("2026-10-10", 5000, 12500)] }, // 100% → 150%
+  { id: "t", label: "мало в прошлом", rows: [day("2026-09-10", 100, 0), day("2026-10-10", 2000, 6000)] },   // прошлое ниже $1k
+  { id: "f", label: "без прошлого", rows: [day("2026-10-10", 9000, 30000)] },
+  { id: "x", label: "до окон", rows: [day("2026-08-29", 5000, 0), day("2026-10-10", 5000, 5000)] },        // 29.08 — уже не прошлое окно
+];
+const m = rankBuyers(pr, "2026-09-29", "2026-10-28", 1);
+assert.equal(m.progress?.id, "n");
+assert.equal(m.ranking.find((x) => x.id === "n")?.prevRomi, -1);
+assert.equal(m.ranking.find((x) => x.id === "x")?.prevRomi, null);
+assert.equal(rankBuyers(pr, null, "2026-10-28", null).progress, undefined);          // у «всего времени» нет
+assert.equal(rankBuyers([pr[1]].map((b) => ({ ...b, rows: [day("2026-09-10", 5000, 10000), day("2026-10-10", 5000, 5000)] })), "2026-09-29", "2026-10-28", 1).progress, null); // все просели
+assert.equal(forViewer(m, "n", false).progress?.prevRomi, -1);
+assert.equal(forViewer(all, "a", false).progress, undefined);
 console.log("home leaderboard: ok");

@@ -165,6 +165,7 @@ function BoardCard({ title, board }: { title: string; board: Board }) {
       <div className="flex flex-wrap gap-2">
         {nominee("Объём", board.volume, (x) => (x.spend !== undefined ? `расход ${money(x.spend ?? null)} · ROMI ${pct(x.romi)}` : `ROMI ${pct(x.romi)}`))}
         {nominee("Эффективность", board.efficiency, (x) => `ROMI ${pct(x.romi)}`)}
+        {board.progress !== undefined && nominee("Прогресс", board.progress, (x) => `ROMI ${pct(x.prevRomi ?? null)} → ${pct(x.romi)}`)}
       </div>
     </div>
   );
