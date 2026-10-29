@@ -311,6 +311,31 @@ async function placeOrphans(
   return out;
 }
 
+// Кампании Torro без расхода в периоде чека — по истории расхода в кабинетах того же
+// человека (Decision 095). Депы доходят со старых кампаний, и их доход уходил в «Нет в
+// подключённых кабинетах», хотя кабинет подключён. Ключ ответа — «человек|имя», только
+// у однозначного имени. Имени нет в Meta вовсе — оно остаётся неразобранным.
+async function pastCampaigns(
+  db: ReturnType<typeof warehouse>, userIds: string[], names: string[],
+): Promise<Map<string, { id: string; accountId: string }>> {
+  const out = new Map<string, { id: string; accountId: string }>();
+  if (!names.length || !userIds.length) return out;
+  const { data: own } = await db.from("wh_account_owners").select("account_id, owner_user_id").in("owner_user_id", userIds);
+  const owner = new Map((own ?? []).map((o) => [o.account_id as string, o.owner_user_id as string]));
+  const hist: { id: string; name: string; account: string }[] = [];
+  for (let i = 0; i < names.length; i += 200) {
+    const rows = await selectAll<{ campaign_id: string; campaign_name: string | null; account_id: string | null }>((from, to) =>
+      db.from("wh_campaign_days").select("campaign_id, campaign_name, account_id").in("campaign_name", names.slice(i, i + 200))
+        .order("date").order("campaign_id").range(from, to));
+    for (const r of rows) if (r.account_id && owner.has(r.account_id)) hist.push({ id: r.campaign_id, name: (r.campaign_name ?? "").trim(), account: r.account_id });
+  }
+  const account = new Map(hist.map((h) => [h.id, h.account]));
+  for (const [key, id] of uniqueIds(hist.map((h) => ({ id: h.id, name: `${owner.get(h.account)}|${h.name}` })))) {
+    out.set(key, { id, accountId: account.get(id)! });
+  }
+  return out;
+}
+
 // ─── Выгрузки Torro за период ────────────────────────────────────────────────
 type CrmTotals = { subscribers: number | null; dialogs: number | null; revenue: number | null };
 // byName — ключи строк это имена кампаний, а не id (Torro по API id не знает).
@@ -647,8 +672,17 @@ export async function loadCheck(
         const idOf = crm.byName
           ? uniqueIds(mine.map((c) => ({ id: c.campaignId, name: c.campaignName })))
           : null;
+        // Старая кампания без расхода сегодня — своей строкой с нулевым расходом (Decision 095).
+        const past = idOf ? await pastCampaigns(db, [config.userId], [...crm.rows.keys()].filter((n) => !idOf.has(n))) : new Map<string, { id: string; accountId: string }>();
         for (const [key, c] of crm.rows) {
-          const id = idOf ? idOf.get(key) : key;
+          // Только со своими цифрами: у Torro бывают строки с одними кликами — пустая строка чек не красит.
+          const found = idOf?.has(key) ? undefined : past.get(`${config.userId}|${key}`);
+          const old = found && config.owned.has(found.accountId) && (c.subscribers || c.dialogs || c.revenue) ? found : undefined;
+          if (old && !rows.has(old.id)) {
+            const platform: Platform = config.tgads ? "tg" : "fb";
+            rows.set(old.id, { ...blank(old.id, key, rowFace(platform, key, old.accountId), platform), accountId: old.accountId, status: campaignMeta.statuses.get(old.id) ?? null });
+          }
+          const id = idOf ? idOf.get(key) ?? old?.id : key;
           const row = id ? rows.get(id) : undefined;
           crmNote(config.userId, key, c, Boolean(row));
           if (!row) continue;
@@ -761,10 +795,19 @@ export async function loadCheck(
           .order("user_id").order("period_start").order("campaign_name")
           .range(from, to)
       );
+      // Старая кампания без расхода в периоде — своей строкой с нулевым расходом (Decision 095).
+      const past = await pastCampaigns(db, scope, [...new Set(crm.filter((c) => inside(c.period_start, c.period_end))
+        .map((c) => c.campaign_name.trim()).filter((n) => n && !idByName.has(n)))]);
       for (const c of crm) {
         if (!inside(c.period_start, c.period_end)) { partial++; continue; }
         const revenue = add(c.dep_sum === null ? null : num(c.dep_sum), c.redep_sum === null ? null : num(c.redep_sum));
-        const id = idByName.get(c.campaign_name.trim());
+        const name = c.campaign_name.trim();
+        // Только со своими цифрами: у Torro бывают строки с одними кликами — пустая строка чек не красит.
+        const old = idByName.has(name) || !(c.subscribers || c.dialogs || revenue) ? undefined : past.get(`${c.user_id}|${name}`);
+        if (old && !rows.has(old.id)) {
+          rows.set(old.id, { ...blank(old.id, name, rowFace(platformOfId(old.id), name, old.accountId)), accountId: old.accountId });
+        }
+        const id = idByName.get(name) ?? old?.id;
         const row = id ? rows.get(id) : undefined;
         crmNote(`${c.user_id}|${c.period_start}`, c.campaign_name, { subscribers: c.subscribers, dialogs: c.dialogs, revenue }, Boolean(row));
         if (!row) continue;
