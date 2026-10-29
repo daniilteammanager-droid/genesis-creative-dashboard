@@ -13,6 +13,13 @@ export type Asset = "USDT" | "GRAM";
 
 export interface Transfer { hash: string; amount: number; at: number }   // at — ms
 
+// Знаков после точки, которые монета переводит: USDT — 6, GRAM (TON) — 9. Платёжки узнают
+// перевод по точной сумме, поэтому сумма заявки хранится и показывается до последнего знака.
+export const DECIMALS: Record<Asset, number> = { USDT: 6, GRAM: 9 };
+
+// Сумма так, как её вводят в кошелёк: точка, без разделителей и хвостовых нулей — 1000.4531.
+export const exact = (n: number, asset: Asset) => n.toFixed(DECIMALS[asset]).replace(/\.?0+$/, "");
+
 const USDT_TRC20 = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const USDT_TON = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs";
 const USDT_BEP20 = "0x55d398326f99059ff775485246999027b3197955";   // 18 знаков

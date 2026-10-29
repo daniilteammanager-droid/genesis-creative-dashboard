@@ -26,7 +26,7 @@ const TX: Record<string, string> = {
   TRC20: "https://tronscan.org/#/transaction/", TON: "https://tonviewer.com/transaction/",
   BEP20: "https://bscscan.com/tx/", ERC20: "https://etherscan.io/tx/",
 };
-const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 6 });
+const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 9 });
 const stamp = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
 
 // Что с заявкой сейчас — словами, со временем и тем, кто закрыл.

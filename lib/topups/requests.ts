@@ -2,7 +2,7 @@ import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml, tg, TelegramError } from "@/lib/telegram/api";
 import { mskDay, mskStamp, mskTime } from "@/lib/day";
 import { paymentUri, qrPng } from "./qr";
-import { addressFits, AUTO_SEARCH, findPayment, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
+import { addressFits, AUTO_SEARCH, DECIMALS, exact, findPayment, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
 // закрыть оплатой, отказом или по сроку. Таблицы закрыты от браузера — всё
@@ -75,7 +75,7 @@ async function getTopup(id: string): Promise<Topup | null> {
 }
 
 export const what = (r: Pick<Topup, "kind" | "target">) => (r.target ? `${r.kind} · ${r.target}` : r.kind);
-const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 6 });
+const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 9 });
 const when = (iso: string) => {
   const d = new Date(iso);
   return mskDay(d) === mskDay() ? `${mskTime(d)} МСК` : `${mskStamp(d)} МСК`;
@@ -96,7 +96,8 @@ export function topupText(r: Topup): string {
     `${head} #${r.number}</b> · ${escapeHtml(what(r))}`,
     `От: ${escapeHtml(r.author ?? "—")}`,
     // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
-    `Сумма: <b>${money(r.amount)} ${r.asset}</b>${r.fee ? ` · комиссия ${money(r.fee)}` : ""}`,
+    // Сумма — точная и копируется нажатием: платёжка узнаёт перевод по ней.
+    `Сумма: <code>${exact(r.amount, r.asset)}</code> <b>${r.asset}</b>${r.fee ? ` · комиссия ${money(r.fee)}` : ""}`,
     `Сеть: ${r.network}`,
     r.status === "expired" || r.status === "rejected" ? "Адрес: скрыт" : `Адрес: <code>${escapeHtml(r.address)}</code>`,
   ];
@@ -131,8 +132,8 @@ async function sendQr(r: Topup, chat: { chat_id: number; thread_id: number | nul
     form.set("chat_id", String(chat.chat_id));
     if (chat.thread_id) form.set("message_thread_id", String(chat.thread_id));
     form.set("reply_parameters", JSON.stringify({ message_id: replyTo }));
-    form.set("caption", `#${r.number} · ${money(r.amount)} ${r.asset} · ${r.network}\n` +
-      (withAmount ? "Сканируй — адрес, сумма и монета подставятся сами." : `Сканируй — подставится адрес. Сумму введи сам: ${money(r.amount)} ${r.asset}.`));
+    form.set("caption", `#${r.number} · ${exact(r.amount, r.asset)} ${r.asset} · ${r.network}\n` +
+      (withAmount ? "Сканируй — адрес, сумма и монета подставятся сами." : `Сканируй — подставится адрес. Сумму введи сам, точно до знака: ${exact(r.amount, r.asset)} ${r.asset}.`));
     form.set("photo", new Blob([new Uint8Array(await qrPng(uri))], { type: "image/png" }), "qr.png");
     const res = await fetch(`https://api.telegram.org/bot${topupToken()}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(20_000) });
     const d = (await res.json().catch(() => null)) as { ok: boolean; result?: { message_id: number } } | null;
@@ -178,6 +179,7 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
   if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
   if (!net) throw new Error("Выбери сеть");
+  if (Number(exact(amount, net.asset)) !== amount) throw new Error(`У ${net.asset} не больше ${DECIMALS[net.asset]} знаков после точки — такую сумму не перевести точно`);
   if (!addressFits(net.network, address)) throw new Error(`Адрес не похож на адрес сети ${net.network}`);
   if (input.minutes === undefined || input.minutes === null) throw new Error("Выбери время на оплату");
   const minutes = Number(input.minutes) || null;   // 0 — осознанно «без срока»

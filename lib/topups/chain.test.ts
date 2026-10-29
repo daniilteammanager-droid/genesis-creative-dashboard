@@ -1,7 +1,15 @@
 // Самопроверка поиска оплаты. Запуск: npx tsx lib/topups/chain.test.ts
 // С LIVE=1 ещё и живой поиск в TronGrid / toncenter по известным переводам.
 import assert from "node:assert/strict";
-import { addressFits, findPayment, matches, parseHash } from "./chain";
+import { addressFits, exact, findPayment, matches, parseHash } from "./chain";
+
+// Точная сумма заявки: не округляется до копеек, без хвостовых нулей, лишний знак виден.
+assert.equal(exact(1000.4531, "USDT"), "1000.4531");
+assert.equal(exact(1000, "USDT"), "1000");
+assert.equal(exact(10.5, "USDT"), "10.5");
+assert.equal(exact(1.123456789, "GRAM"), "1.123456789");
+assert.notEqual(Number(exact(1000.4531234, "USDT")), 1000.4531234);   // 7-й знак USDT не перевести
+assert.ok(matches(1000.4531, 1000.4531));
 
 assert.ok(matches(1000, 1000));
 assert.ok(matches(1000.5, 1000));
