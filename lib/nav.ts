@@ -6,6 +6,8 @@ export const WORK_AREAS = [
   { href: "/creatives", label: "Креативы" },
   { href: "/check", label: "Checks" },
   { href: "/live-manager", label: "Live Manager" },
+  // /reports занят переадресацией на Live Manager (next.config.ts).
+  { href: "/traffic-report", label: "Отчёты" },
   // General 3.0 из панели убран: им больше не пользуются (Daniil 26.10.2026). Роут живой.
   { href: "/general-report-4", label: "General 4.0" },
   { href: "/autoupload", label: "Автозалив" },
