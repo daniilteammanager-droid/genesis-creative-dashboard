@@ -1,8 +1,15 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
-import { buildReport, cellsOf, filterCells, groupCreos, romiBand, sortCreos, stageOf, textKey, totalOf, treeOf, type SpendRow } from "./build";
+import { buildReport, cellsOf, creoGeo, filterCells, geoOf, groupCreos, romiBand, sortCreos, stageOf, textKey, totalOf, treeOf, type SpendRow } from "./build";
 
 const sp = (r: Omit<SpendRow, "face" | "funnel" | "platform"> & Partial<SpendRow>): SpendRow => ({ face: "ROMAN", funnel: "TG", platform: "fb", ...r });
+
+// Страна: таргет главный, код крео — подсказка (несколько стран в таргете, таргета нет).
+assert.equal(creoGeo("vid-storytell-t26-v1-b1-es-ar"), "AR");
+assert.equal(geoOf(["MX"], "", "vid-balance-t30-v9-b3-es-es"), "MX");
+assert.equal(geoOf(["AR", "MX"], "", "vid-storytell-t26-v1-b1-es-ar"), "AR");
+assert.equal(geoOf(["AR", "MX"], "", "vid-storytell-t26-v1-b1-es-pe"), "MULTI");
+assert.equal(geoOf([], "New Traffic Campaign", "vid-storytell-t26-v1-b1-es-pe"), "PE");
 
 // Цвет ROMI — по отсечкам владельца.
 assert.equal(romiBand(-100), "red");

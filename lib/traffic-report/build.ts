@@ -37,12 +37,20 @@ const GEO_NAMES: Record<string, string> = {
 export const geoName = (geo: string) => GEO_NAMES[geo] ?? geo;
 export const testLimit = (geo: string) => TEST_MULT * (geo === "ES" ? TARGET_DEP.ES : LATAM.has(geo) ? TARGET_DEP.LATAM : TARGET_DEP.OTHER);
 
-// Страна строки расхода: одна страна таргета — она, несколько — «несколько стран»,
-// таргета нет — гео из имени кампании.
-export function geoOf(countries: string[], campaignName: string): string {
+// Страна в коде крео — последняя позиция: vid-storytell-t26-v1-b1-es-ar → AR.
+export function creoGeo(ad: string): string | null {
+  const c = parseCreativeCode(ad);
+  return c.scheme === "v2" && /^[a-z]{2}$/i.test(c.geo) ? c.geo.toUpperCase() : null;
+}
+
+// Страна строки расхода. Главная — таргет адсета (Decision 045): у Андрея крео «…-es-es»
+// крутятся в кампаниях на Мексику и Перу, и страна в коде там не та. Код крео — подсказка:
+// таргет на несколько стран — та из них, что в коде; таргета нет — имя кампании, потом код.
+export function geoOf(countries: string[], campaignName: string, ad = ""): string {
+  const fromCode = creoGeo(ad);
   if (countries.length === 1) return countries[0];
-  if (countries.length > 1) return MULTI;
-  return parseName(campaignName).geo ?? NO_GEO;
+  if (countries.length > 1) return fromCode && countries.includes(fromCode) ? fromCode : MULTI;
+  return parseName(campaignName).geo ?? fromCode ?? NO_GEO;
 }
 
 export type Platform = "fb" | "tg";
@@ -168,7 +176,7 @@ export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, 
     const own = platforms.get(r.buyer);
     const s = cell(
       r.buyer,
-      one(seen?.geo, MULTI) ?? name.geo ?? only(ad?.geo) ?? NO_GEO,
+      one(seen?.geo, MULTI) ?? name.geo ?? creoGeo(r.ad) ?? only(ad?.geo) ?? NO_GEO,
       one(seen?.face, "") || named(ad?.face) || name.face || "",
       one(seen?.funnel, "") || named(ad?.funnel) || name.funnel || "",
       one(seen?.platform, "fb" as Platform) ?? only(ad?.platform) ?? (own?.size === 1 ? [...own][0] : "fb"),

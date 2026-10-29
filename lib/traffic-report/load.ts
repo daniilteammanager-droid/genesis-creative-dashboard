@@ -85,7 +85,7 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
     const tg = d.source === "tgads";
     spend.push({
       buyer: label.get(who) ?? who, campaign: d.campaign_name ?? "", ad: d.ad_name ?? "",
-      geo: geoOf(countries.get(d.adset_id ?? "") ?? [], d.campaign_name ?? ""),
+      geo: geoOf(countries.get(d.adset_id ?? "") ?? [], d.campaign_name ?? "", d.ad_name ?? ""),
       face: (tg ? tgFace.get(d.account_id ?? "") : null) || name.face || "", funnel: name.funnel ?? (tg ? "TG" : ""), platform: tg ? "tg" : "fb",
       spend: hint ? 0 : Number(d.spend) || 0, impr: hint ? 0 : Number(d.impressions) || 0, clicks: hint ? 0 : Number(d.clicks) || 0,
     });

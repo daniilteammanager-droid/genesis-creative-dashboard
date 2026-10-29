@@ -7,6 +7,7 @@ import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { allTgadsKeys } from "@/lib/connections/tgadsKeys";
 import { runAutocheck } from "@/lib/alerts/autocheck";
 import { runDailySummary } from "@/lib/alerts/summary";
+import { runTestLimitAlerts } from "@/lib/alerts/testLimit";
 import { runPairs } from "@/lib/warehouse/torroPairs";
 import { tickTopups } from "@/lib/topups/requests";
 import { runOpenJobs } from "@/lib/autoupload/jobs";
@@ -139,7 +140,16 @@ export async function POST(req: Request) {
         summary = { error: e instanceof Error ? e.message : String(e) };
       }
     }
-    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected, autocheck, summary });
+    // Крео за границей теста без депов — раз в час, на первом прогоне часа (Decision 100).
+    let testLimit: unknown = null;
+    if (kind === "today" && new Date().getUTCMinutes() < 15) {
+      try {
+        testLimit = await runTestLimitAlerts();
+      } catch (e) {
+        testLimit = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    return NextResponse.json({ kind, users: users.length, results, cabinets, rejected, autocheck, summary, testLimit });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
   }
