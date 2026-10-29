@@ -1,4 +1,4 @@
-import { warehouse } from "./read";
+import { warehouse, selectAll } from "./read";
 import { callStatistics, fetchDay, rateLimited, type TorroRow } from "@/lib/torro/mcp";
 import { getConnection } from "@/lib/connections/store";
 import { crmColumns, quals } from "./torroIngest";
@@ -11,13 +11,16 @@ import { mskDay, mskDaysAgo } from "@/lib/day";
 // дня раскладывается по кампаниям отдельным запросом (~1 с). У Артёма это ~90
 // запросов на день — поэтому отдельным кроном, а не в прогоне раз в 15 минут.
 //
-// Прошлые дни Torro не переписывает (депозит пишется днём, когда он сделан):
-// закрытый день раскладывается один раз. Сегодня — раз в час, вчера — ещё раз
-// после полуночи, чтобы добрать вечер. История — день за днём вглубь, до самого
-// старого дня Torro в складе. Раскладка дня продолжается с места, где её прервал
-// конец отведённого времени.
+// Сегодня — раз в час, вчера — ещё раз после полуночи, чтобы добрать вечер. Прошлые
+// дни Torro всё же дописывает задним числом (депы, диалоги): Torro по кампаниям их
+// добирает по кругу (Decision 094), и день, где связки разошлись с ним, раскладывается
+// заново — не чаще раза в 6 часов (Decision 099). История — день за днём вглубь, до
+// самого старого дня Torro в складе. Раскладка дня продолжается с места, где её
+// прервал конец отведённого времени.
 
 const TODAY_EVERY_MS = 3600_000;
+const PAST_DAYS = 13;                  // как окно Torro по кампаниям (Decision 094)
+const PAST_EVERY_MS = 6 * 3600_000;
 // Связки — фоновая работа и не должны съедать лимит Torro основной загрузки:
 // 24.10.2026 сплошной сбор у Артёма (~1 запрос/с) выбил ему rate_limited, и час
 // не приходили свежие цифры. Поэтому — потолок запросов на баера за запуск
@@ -33,6 +36,36 @@ interface Cursor {
   started?: string;      // начало прохода по дню — по нему чистятся устаревшие связки
   todayAt?: string;      // когда сегодня разложено целиком
   finalized?: string;    // какой «вчера» уже разложен после полуночи
+  pastDay?: string;      // прошлый день в работе — перекладка, а не история
+  past?: Record<string, string>;   // прошлый день → когда переложен
+}
+
+// Прошлый день окна, где связки разошлись с Torro по кампаниям (подписки, диалоги,
+// депы, сумма), и который давно не перекладывали. Нет такого — null.
+async function stalePastDay(userId: string, yesterday: string, past: Record<string, string>): Promise<string | null> {
+  const db = warehouse();
+  const since = mskDaysAgo(PAST_DAYS);
+  type Row = { period_start: string; period_end?: string; subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null };
+  const [camp, pairs] = await Promise.all([
+    selectAll<Row>((f, t) => db.from("wh_crm_campaign_periods").select("period_start, period_end, subscribers, dialogs, dep_count, dep_sum")
+      .eq("user_id", userId).gte("period_start", since).lt("period_start", yesterday).order("period_start").order("campaign_name").range(f, t)),
+    selectAll<Row>((f, t) => db.from("wh_crm_pairs").select("period_start, subscribers, dialogs, dep_count, dep_sum")
+      .eq("user_id", userId).gte("period_start", since).lt("period_start", yesterday).order("period_start").order("campaign_name").order("ad_name").range(f, t)),
+  ]);
+  const sum = (rows: Row[]) => {
+    const m = new Map<string, number[]>();
+    for (const r of rows) {
+      if (r.period_end !== undefined && r.period_end !== r.period_start) continue;
+      const v = m.get(r.period_start) ?? [0, 0, 0, 0];
+      v[0] += r.subscribers ?? 0; v[1] += r.dialogs ?? 0; v[2] += r.dep_count ?? 0; v[3] += Number(r.dep_sum ?? 0);
+      m.set(r.period_start, v);
+    }
+    return m;
+  };
+  const c = sum(camp), p = sum(pairs);
+  const due = (day: string) => !past[day] || Date.now() - Date.parse(past[day]) > PAST_EVERY_MS;
+  // ponytail: день, который не сходится и после перекладки (имя объявления пустое), перекладывается раз в 6 часов.
+  return [...c.keys()].sort().find((day) => due(day) && (c.get(day) ?? []).join() !== (p.get(day) ?? [0, 0, 0, 0]).join()) ?? null;
 }
 
 const active = (r: TorroRow) =>
@@ -100,10 +133,16 @@ async function pairsForUser(userId: string, deadline: number): Promise<PairsRun[
 
   const budget = new Budget();
   const runs: PairsRun[] = [];
+  let pastChecked = false;
   while (Date.now() < deadline && budget.left > 0) {
     let day: string | null = c.day ?? null;
     if (!day && (!c.todayAt || Date.now() - Date.parse(c.todayAt) > TODAY_EVERY_MS || mskDay(new Date(c.todayAt)) !== today)) day = today;
     if (!day && c.finalized !== yesterday) day = yesterday;
+    if (!day && !pastChecked) {
+      pastChecked = true;
+      day = await stalePastDay(userId, yesterday, c.past ?? {});
+      if (day) c.pastDay = day;
+    }
     if (!day && !historyDone) {
       const next = mskDaysAgo(1, new Date(`${historyFrom ?? yesterday}T12:00:00+03:00`));
       if (next < floor) historyDone = true;
@@ -117,7 +156,11 @@ async function pairsForUser(userId: string, deadline: number): Promise<PairsRun[
     if (r.done) {
       if (day === today) c.todayAt = new Date().toISOString();
       else if (day === yesterday) c.finalized = yesterday;
-      else historyFrom = day;
+      else if (day === c.pastDay) {
+        const since = mskDaysAgo(PAST_DAYS);
+        c.past = { ...Object.fromEntries(Object.entries(c.past ?? {}).filter(([d]) => d >= since)), [day]: new Date().toISOString() };
+        c.pastDay = undefined;
+      } else historyFrom = day;
     }
     await db.from("buyer_connections").update({
       pairs_cursor: c, pairs_backfilled_from: historyFrom, pairs_backfill_done: historyDone,
