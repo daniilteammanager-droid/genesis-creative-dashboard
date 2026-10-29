@@ -1,6 +1,6 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
-import { buildReport, romiBand, stageOf, totalOf } from "./build";
+import { buildReport, groupCreos, romiBand, sortCreos, stageOf, textKey, totalOf } from "./build";
 
 // Цвет ROMI — по отсечкам владельца.
 assert.equal(romiBand(-100), "red");
@@ -49,4 +49,29 @@ assert.deepEqual(a.counts, { test: 0, loser: 1, deps: 1, nospend: 1 });
 assert.equal(totalOf(tree).sums.spend, 700);
 assert.equal(es.m.ctr, 0.01);
 
-console.log("traffic-report: этапы, цвет ROMI и страна депов верно");
+// Склейка по тексту и по тексту + версии, старое имя без tN — отдельной строкой.
+assert.equal(textKey("vid-storytell-t30-v14-b1-es-mx", "text"), "t30");
+assert.equal(textKey("vid-balance-t11-v8-b1-es-ar", "version"), "t11_v8");
+assert.equal(textKey("static21-es", "text"), null);
+const g = buildReport(
+  [
+    { buyer: "B", campaign: "K", ad: "vid-storytell-t30-v14-b1-es-mx", geo: "MX", spend: 300, impr: 0, clicks: 0 },
+    { buyer: "B", campaign: "K", ad: "vid-balance-t30-v12-b1-es-mx", geo: "MX", spend: 300, impr: 0, clicks: 0 },
+    { buyer: "B", campaign: "K", ad: "edit18-mx", geo: "MX", spend: 50, impr: 0, clicks: 0 },
+  ],
+  [{ buyer: "B", campaign: "K", ad: "vid-balance-t30-v12-b1-es-mx", subs: 0, dia: 0, deps: 1, rev: 900 }],
+);
+const byText = groupCreos(g, "text")[0].children![0];
+assert.equal(byText.children!.length, 2);                       // t30 и edit18-mx
+const t30 = byText.children!.find((n) => n.label === "t30")!;
+assert.equal(t30.children!.length, 2);
+assert.equal(t30.stage, "deps");                                 // этап — по сумме склейки
+assert.equal(t30.sums.spend, 600);
+assert.equal(groupCreos(g, "text")[0].counts!.deps, 1);          // считаем строки страны, а не крео
+const byVersion = groupCreos(g, "version")[0].children![0];
+assert.deepEqual(byVersion.children!.map((n) => n.label).sort(), ["edit18-mx", "t30_v12", "t30_v14"]);
+// Сортировка внутри страны по ROMI: окупившийся выше, без спенда — в конце.
+const sorted = sortCreos(g, "romi")[0].children![0].children!.map((n) => n.label);
+assert.equal(sorted[0], "vid-balance-t30-v12-b1-es-mx");
+
+console.log("traffic-report: этапы, цвет ROMI, страна депов, склейка и сортировка верно");

@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
-import { ROMI_CUTS, TARGET_DEP, TEST_MULT, romiBand, type ReportNode, type Stage } from "@/lib/traffic-report/build";
+import { ROMI_CUTS, TARGET_DEP, TEST_MULT, groupCreos, romiBand, sortCreos, type GroupMode, type ReportNode, type SortBy, type Stage } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за любой период, из склада.
@@ -55,6 +55,15 @@ const COLS: { label: string; cell: (n: ReportNode) => string }[] = [
   { label: "Ревенью", cell: (n) => usd0(n.sums.rev) },
 ];
 
+const MODES: { id: GroupMode; label: string; hint: string }[] = [
+  { id: "creo", label: "Крео", hint: "Каждое объявление отдельно" },
+  { id: "text", label: "По тексту", hint: "Все крео одного текста (t11) — одна строка, клик раскрывает крео" },
+  { id: "version", label: "Текст + версия", hint: "Все крео одной версии текста (t11_v8) — одна строка, клик раскрывает крео" },
+];
+const SORTS: { id: SortBy; label: string }[] = [
+  { id: "spend", label: "по спенду" }, { id: "romi", label: "по ROMI" }, { id: "deps", label: "по депам" }, { id: "rev", label: "по ревенью" },
+];
+
 const chip = (on: boolean) =>
   `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
     on ? "bg-violet-600 text-white" : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
@@ -69,6 +78,8 @@ export default function TrafficReportPage() {
   const [open, setOpen] = useState<Set<string>>(new Set());       // раскрытые страны (по умолчанию свёрнуты)
   const [stage, setStage] = useState<Stage | "">("");
   const [q, setQ] = useState("");
+  const [mode, setMode] = useState<GroupMode>("creo");
+  const [sortBy, setSortBy] = useState<SortBy>("spend");
 
   useEffect(() => {
     let alive = true;
@@ -81,29 +92,31 @@ export default function TrafficReportPage() {
     return () => { alive = false; };
   }, [range, buyer]);
 
-  // Видимые строки: дерево с учётом раскрытия; при фильтре — только подходящие крео и их родители.
+  const tree = useMemo(() => (data ? sortCreos(groupCreos(data.nodes, mode), sortBy) : []), [data, mode, sortBy]);
+
+  // Видимые строки: дерево с учётом раскрытия. Фильтр — по строке страны (крео или текст):
+  // её этап, её имя или имя крео под ней; баер и страна — если под ними есть подходящие.
   const rows = useMemo(() => {
-    if (!data) return [];
     const needle = q.trim().toLowerCase();
     const filtering = Boolean(stage || needle);
-    const match = (n: ReportNode) => (!stage || n.stage === stage) && (!needle || n.label.toLowerCase().includes(needle));
-    const hits = (n: ReportNode): boolean => (n.level === 2 ? match(n) : (n.children ?? []).some(hits));
-    const isOpen = (n: ReportNode) => filtering || (n.level === 0 ? !closed.has(n.key) : open.has(n.key));
+    const named = (n: ReportNode) => n.label.toLowerCase().includes(needle) || (n.children ?? []).some((c) => c.label.toLowerCase().includes(needle));
+    const hits = (n: ReportNode): boolean => (n.level >= 2 ? (!stage || n.stage === stage) && (!needle || named(n)) : (n.children ?? []).some(hits));
+    const isOpen = (n: ReportNode) => (n.level === 0 ? filtering || !closed.has(n.key) : n.level === 1 ? filtering || open.has(n.key) : open.has(n.key));
     const out: { n: ReportNode; open: boolean }[] = [];
     const walk = (list: ReportNode[]) => {
       for (const n of list) {
-        if (filtering && !hits(n)) continue;
+        if (filtering && n.level <= 2 && !hits(n)) continue;
         out.push({ n, open: isOpen(n) });
         if (n.children && isOpen(n)) walk(n.children);
       }
     };
-    walk(data.nodes);
+    walk(tree);
     return out;
-  }, [data, closed, open, stage, q]);
+  }, [tree, closed, open, stage, q]);
 
   const toggle = (n: ReportNode) => {
     const flip = (s: Set<string>) => { const x = new Set(s); if (x.has(n.key)) x.delete(n.key); else x.add(n.key); return x; };
-    if (n.level === 0) setClosed(flip); else if (n.level === 1) setOpen(flip);
+    if (n.level === 0) setClosed(flip); else setOpen(flip);
   };
   const expandAll = () => { setClosed(new Set()); setOpen(new Set((data?.nodes ?? []).flatMap((b) => (b.children ?? []).map((g) => g.key)))); };
   const collapseAll = () => { setOpen(new Set()); setClosed(new Set((data?.nodes ?? []).map((b) => b.key))); };
@@ -160,6 +173,15 @@ export default function TrafficReportPage() {
           </p>
 
           <div data-tour="traffic-filters" className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="flex gap-1 bg-[#0d0b14] border border-violet-900/40 rounded-full p-0.5" role="group" aria-label="Склейка крео">
+              {MODES.map((m) => (
+                <button key={m.id} title={m.hint} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${mode === m.id ? "bg-violet-600 text-white" : "text-zinc-400 hover:text-violet-300"}`}>{m.label}</button>
+              ))}
+            </div>
+            <select id="traffic-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className={control} aria-label="Сортировка крео">
+              {SORTS.map((s) => <option key={s.id} value={s.id}>Крео {s.label}</option>)}
+            </select>
             <button onClick={expandAll} className={chip(false)}>Развернуть всё</button>
             <button onClick={collapseAll} className={chip(false)}>Свернуть всё</button>
             <select id="traffic-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage | "")} className={control} aria-label="Этап крео">
@@ -187,10 +209,11 @@ export default function TrafficReportPage() {
                   const bg = n.level === 0 ? "bg-[#1a1626]" : "bg-[#111118]";
                   const st = STAGES.find((s) => s.id === n.stage);
                   return (
-                    <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : "text-zinc-300"}`}>
+                    <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
                       <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-violet-900/15 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>
                         {n.children && <span className="inline-block w-4 text-zinc-500">{isOpen ? "▾" : "▸"}</span>}
                         {n.label}
+                        {n.level === 2 && n.children && <span className="text-zinc-500 font-normal"> · {n.children.length} крео</span>}
                       </td>
                       <td className={`${bg} px-3 py-1.5 border-b border-violet-900/15 whitespace-nowrap`}>
                         {st ? (

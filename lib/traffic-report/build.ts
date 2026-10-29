@@ -1,4 +1,4 @@
-import { parseName } from "@/lib/creatives/code";
+import { parseCreativeCode, parseName } from "@/lib/creatives/code";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за период. Чистая сборка —
 // без базы, её проверяет build.test.ts. Читает склад load.ts.
@@ -59,7 +59,7 @@ export interface Metrics {
 
 export interface ReportNode {
   key: string;
-  level: 0 | 1 | 2;
+  level: 0 | 1 | 2 | 3;               // баер, страна, крео (или текст при склейке), крео под текстом
   label: string;
   geo?: string;
   sums: Sums;
@@ -155,6 +155,66 @@ export function buildReport(spend: SpendRow[], torro: TorroRow[], rest: Map<stri
     return n;
   };
   return [...buyers.values()].map(finish).sort(bySpend);
+}
+
+// Склейка крео внутри страны (Daniil 29.10.2026): «text» — по номеру текста (все t11),
+// «version» — по тексту и его версии (все t11_v8). Номер текста общий для подходов: t11
+// бывает у balance, checklist и live. Крео — строки под текстом; старые имена без tN
+// остаются отдельными строками. Этап считается по сумме склейки.
+export type GroupMode = "creo" | "text" | "version";
+export function textKey(creo: string, mode: Exclude<GroupMode, "creo">): string | null {
+  const c = parseCreativeCode(creo);
+  if (c.scheme !== "v2") return null;
+  return mode === "text" ? `t${c.textNo}` : `t${c.textNo}_v${c.version}`;
+}
+
+export function groupCreos(nodes: ReportNode[], mode: GroupMode): ReportNode[] {
+  if (mode === "creo") return nodes;
+  const blankCounts = (): Record<Stage, number> => ({ test: 0, loser: 0, deps: 0, nospend: 0 });
+  return nodes.map((b) => {
+    const bc = blankCounts();
+    const countries = (b.children ?? []).map((g) => {
+      if (g.geo === REST) return g;
+      const gc = blankCounts();
+      const units: ReportNode[] = [];
+      const groups = new Map<string, ReportNode>();
+      for (const c of g.children ?? []) {
+        const key = textKey(c.label, mode);
+        if (!key) { units.push(c); continue; }
+        if (!groups.has(key)) {
+          const t: ReportNode = { key: `${g.key} › ${key}`, level: 2, label: key, geo: g.geo, sums: { ...ZERO }, m: metricsOf(ZERO), children: [] };
+          groups.set(key, t); units.push(t);
+        }
+        const t = groups.get(key)!;
+        for (const k of Object.keys(t.sums) as (keyof Sums)[]) t.sums[k] += c.sums[k];
+        t.children!.push({ ...c, level: 3 });
+      }
+      for (const t of groups.values()) {
+        t.m = metricsOf(t.sums);
+        t.stage = stageOf(t.sums, g.geo!);
+        if (t.stage === "test") t.left = Math.max(0, testLimit(g.geo!) - t.sums.spend);
+      }
+      for (const u of units) if (u.stage) { gc[u.stage]++; bc[u.stage]++; }
+      units.sort((x, y) => y.sums.spend - x.sums.spend || y.sums.rev - x.sums.rev);
+      return { ...g, counts: gc, children: units };
+    });
+    return { ...b, counts: bc, children: countries };
+  });
+}
+
+// Порядок крео внутри страны (и крео внутри текста): по убыванию выбранного; ROMI без
+// спенда — в конце. Баеры и страны остаются по спенду.
+export type SortBy = "spend" | "romi" | "deps" | "rev";
+export function sortCreos(nodes: ReportNode[], by: SortBy): ReportNode[] {
+  const val = (n: ReportNode) => (by === "romi" ? n.m.romi : n.sums[by]);
+  const cmp = (a: ReportNode, b: ReportNode) => {
+    const x = val(a), y = val(b);
+    if (x === null || y === null) return x === y ? b.sums.spend - a.sums.spend : x === null ? 1 : -1;
+    return y - x || b.sums.spend - a.sums.spend;
+  };
+  const deep = (n: ReportNode): ReportNode =>
+    !n.children ? n : { ...n, children: (n.level >= 1 ? [...n.children].sort(cmp) : n.children).map(deep) };
+  return nodes.map(deep);
 }
 
 export function totalOf(nodes: ReportNode[]): { sums: Sums; m: Metrics } {
