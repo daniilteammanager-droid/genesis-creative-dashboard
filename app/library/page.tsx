@@ -74,7 +74,11 @@ export default function Home() {
   useEffect(() => {
     function updateCols() {
       const w = window.innerWidth;
-      if      (w >= 1280) setColumnCount(5);
+      // Страница на всю ширину (29.10.2026): на широком экране — больше колонок, а не шире карточки.
+      if      (w >= 2400) setColumnCount(8);
+      else if (w >= 2000) setColumnCount(7);
+      else if (w >= 1700) setColumnCount(6);
+      else if (w >= 1280) setColumnCount(5);
       else if (w >= 1024) setColumnCount(4);
       else if (w >= 768)  setColumnCount(3);
       else                setColumnCount(1);
@@ -369,7 +373,7 @@ export default function Home() {
       className="min-h-screen bg-[#0a080f] text-white p-8"
       style={{ animation: contentVisible ? "dashboard-fade-in 0.45s ease forwards" : "none", opacity: contentVisible ? undefined : 0 }}
     >
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
 
         {/* Вкладки этой страницы */}
         <div data-tour="legacy-tabs" className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">

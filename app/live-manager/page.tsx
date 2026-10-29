@@ -24,7 +24,7 @@ export default function ReportsPage() {
 
   return (
     <main className="min-h-screen bg-[#0a080f] text-white p-8">
-      <div className="max-w-screen-2xl mx-auto">
+      <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Live Manager</h1>
 
         <div data-tour="reports-views" className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">

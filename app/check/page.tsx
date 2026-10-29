@@ -995,7 +995,7 @@ export default function CheckPage() {
 
   return (
     <div className="min-h-screen bg-[#0a080f] text-white">
-      <div className="max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
+      <div className="w-full px-4 md:px-8 py-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <h1 className="text-white text-3xl font-semibold tracking-wide">Checks</h1>
           <div data-tour="check-modes" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">

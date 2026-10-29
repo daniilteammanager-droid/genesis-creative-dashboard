@@ -138,7 +138,7 @@ export default function TrafficReportPage() {
 
   return (
     <main className="min-h-screen bg-[#0a080f] text-white p-4 md:p-8">
-      <div className="max-w-screen-2xl mx-auto">
+      <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-2">Отчёт по трафику</h1>
         <p className="text-sm text-zinc-500 mb-6">Баер → страна → крео. Крео оцениваем по ROMI и этапу теста.</p>
 

@@ -73,7 +73,7 @@ export default function Antireject() {
     finally { setScanning(false); }
   }
 
-  if (!v) return <div className="max-w-6xl mx-auto px-4 py-6 text-zinc-500">Загружаю…</div>;
+  if (!v) return <div className="w-full px-4 md:px-8 py-6 text-zinc-500">Загружаю…</div>;
   const pick = (label: string, value: string, set: (s: string) => void) => (
     <label className="flex items-center gap-2 text-xs text-zinc-500">{label}
       <select value={value} onChange={(e) => set(e.target.value)} className={field}>{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -81,7 +81,7 @@ export default function Antireject() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+    <div className="w-full px-4 md:px-8 py-6 space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold text-white">Антиотклон</h1>

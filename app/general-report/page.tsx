@@ -494,7 +494,7 @@ export default function GeneralReportPage() {
 
   return (
     <main className="min-h-screen bg-[#0a080f] text-white p-8">
-      <div className="max-w-[1600px] mx-auto">
+      <div className="w-full">
 
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 3.0</h1>
 

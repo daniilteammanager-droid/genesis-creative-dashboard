@@ -262,7 +262,7 @@ export default function GeneralReport4Page() {
 
   return (
     <main className="min-h-screen bg-[#0a080f] text-white p-4 md:p-8">
-      <div className="max-w-[1800px] mx-auto">
+      <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 4.0</h1>
 
         {sources.some((x) => x.kind === "main") && (

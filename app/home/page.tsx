@@ -63,7 +63,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#0a080f] text-white p-4 md:p-8">
-      <div className="max-w-screen-2xl mx-auto">
+      <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">
           {me?.name ? `Привет, ${me.name}` : "Главная"}
         </h1>
