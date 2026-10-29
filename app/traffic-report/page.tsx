@@ -4,7 +4,10 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
-import { ROMI_CUTS, TARGET_DEP, TEST_MULT, groupCreos, romiBand, sortCreos, type GroupMode, type ReportNode, type SortBy, type Stage } from "@/lib/traffic-report/build";
+import {
+  DIMS, DIM_LABELS, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, romiBand, sortCreos, totalOf, treeOf,
+  type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage,
+} from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за любой период, из склада.
@@ -92,7 +95,16 @@ export default function TrafficReportPage() {
     return () => { alive = false; };
   }, [range, buyer]);
 
-  const tree = useMemo(() => (data ? sortCreos(groupCreos(data.nodes, mode), sortBy) : []), [data, mode, sortBy]);
+  const [filters, setFilters] = useState<Filters>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const options = useMemo(() => dimOptions(data?.cells ?? []), [data]);
+  const base = useMemo(() => treeOf(filterCells(data?.cells ?? [], filters)), [data, filters]);
+  const tree = useMemo(() => sortCreos(groupCreos(base, mode), sortBy), [base, mode, sortBy]);
+  const toggleFilter = (d: Dim, v: string | null) => setFilters((f) => {
+    const cur = f[d] ?? [];
+    return { ...f, [d]: v === null ? [] : cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] };
+  });
+  const activeFilters = DIMS.filter((d) => (filters[d]?.length ?? 0) > 0);
 
   // Видимые строки: дерево с учётом раскрытия. Фильтр — по строке страны (крео или текст):
   // её этап, её имя или имя крео под ней; баер и страна — если под ними есть подходящие.
@@ -118,10 +130,10 @@ export default function TrafficReportPage() {
     const flip = (s: Set<string>) => { const x = new Set(s); if (x.has(n.key)) x.delete(n.key); else x.add(n.key); return x; };
     if (n.level === 0) setClosed(flip); else setOpen(flip);
   };
-  const expandAll = () => { setClosed(new Set()); setOpen(new Set((data?.nodes ?? []).flatMap((b) => (b.children ?? []).map((g) => g.key)))); };
-  const collapseAll = () => { setOpen(new Set()); setClosed(new Set((data?.nodes ?? []).map((b) => b.key))); };
+  const expandAll = () => { setClosed(new Set()); setOpen(new Set(tree.flatMap((b) => (b.children ?? []).map((g) => g.key)))); };
+  const collapseAll = () => { setOpen(new Set()); setClosed(new Set(tree.map((b) => b.key))); };
 
-  const t = data?.total;
+  const t = data ? totalOf(base) : null;
   const pick = (r: { since: string; until: string }) => { setData(null); setRange(r); };
 
   return (
@@ -145,6 +157,33 @@ export default function TrafficReportPage() {
             ))}
           </div>
         )}
+
+        {/* Фильтры как в General 4.0: в каждом разрезе можно выбрать несколько значений */}
+        <div data-tour="traffic-dims" className="bg-[#111118] border border-violet-900/25 rounded-2xl p-4 mb-4">
+          <button onClick={() => setFiltersOpen((v) => !v)} className="flex items-center gap-2 text-sm text-zinc-300 w-full text-left">
+            <span className="text-zinc-500">{filtersOpen ? "▾" : "▸"}</span>
+            Фильтры
+            {activeFilters.length > 0 && (
+              <span className="text-xs text-violet-300">{activeFilters.map((d) => `${DIM_LABELS[d]}: ${filters[d]!.join(", ")}`).join(" · ")}</span>
+            )}
+            {activeFilters.length > 0 && (
+              <span onClick={(e) => { e.stopPropagation(); setFilters({}); }} className="ml-auto text-xs text-zinc-500 hover:text-red-300 cursor-pointer">сбросить</span>
+            )}
+          </button>
+          {filtersOpen && (
+            <div className="mt-3 space-y-2">
+              {DIMS.filter((d) => options[d].length > 1 || filters[d]?.length).map((d) => (
+                <div key={d} className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1 w-20">{DIM_LABELS[d]}</span>
+                  <button onClick={() => toggleFilter(d, null)} className={chip(!filters[d]?.length)}>Все</button>
+                  {options[d].map((v) => (
+                    <button key={v} onClick={() => toggleFilter(d, v)} className={chip(!!filters[d]?.includes(v))}>{v}</button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-2">
           <SummaryCard label="Спенд" value={t ? usd0(t.sums.spend) : "…"} />

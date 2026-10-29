@@ -1,6 +1,8 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
-import { buildReport, groupCreos, romiBand, sortCreos, stageOf, textKey, totalOf } from "./build";
+import { buildReport, cellsOf, filterCells, groupCreos, romiBand, sortCreos, stageOf, textKey, totalOf, treeOf, type SpendRow } from "./build";
+
+const sp = (r: Omit<SpendRow, "face" | "funnel" | "platform"> & Partial<SpendRow>): SpendRow => ({ face: "ROMAN", funnel: "TG", platform: "fb", ...r });
 
 // Цвет ROMI — по отсечкам владельца.
 assert.equal(romiBand(-100), "red");
@@ -23,8 +25,8 @@ assert.equal(stageOf(s(0), "MX"), "nospend");
 // Одно крео в двух странах: депы ложатся в страну своей кампании, а не по имени объявления.
 const tree = buildReport(
   [
-    { buyer: "A", campaign: "C_ES", ad: "creo-1", geo: "ES", spend: 100, impr: 10000, clicks: 100 },
-    { buyer: "A", campaign: "C_MX", ad: "creo-1", geo: "MX", spend: 600, impr: 20000, clicks: 200 },
+    sp({ buyer: "A", campaign: "C_ES", ad: "creo-1", geo: "ES", spend: 100, impr: 10000, clicks: 100 }),
+    sp({ buyer: "A", campaign: "C_MX", ad: "creo-1", geo: "MX", spend: 600, impr: 20000, clicks: 200 }),
   ],
   [
     { buyer: "A", campaign: "C_ES", ad: "creo-1", subs: 10, dia: 5, deps: 1, rev: 400 },
@@ -55,9 +57,9 @@ assert.equal(textKey("vid-balance-t11-v8-b1-es-ar", "version"), "t11_v8");
 assert.equal(textKey("static21-es", "text"), null);
 const g = buildReport(
   [
-    { buyer: "B", campaign: "K", ad: "vid-storytell-t30-v14-b1-es-mx", geo: "MX", spend: 300, impr: 0, clicks: 0 },
-    { buyer: "B", campaign: "K", ad: "vid-balance-t30-v12-b1-es-mx", geo: "MX", spend: 300, impr: 0, clicks: 0 },
-    { buyer: "B", campaign: "K", ad: "edit18-mx", geo: "MX", spend: 50, impr: 0, clicks: 0 },
+    sp({ buyer: "B", campaign: "K", ad: "vid-storytell-t30-v14-b1-es-mx", geo: "MX", spend: 300, impr: 0, clicks: 0 }),
+    sp({ buyer: "B", campaign: "K", ad: "vid-balance-t30-v12-b1-es-mx", geo: "MX", spend: 300, impr: 0, clicks: 0 }),
+    sp({ buyer: "B", campaign: "K", ad: "edit18-mx", geo: "MX", spend: 50, impr: 0, clicks: 0 }),
   ],
   [{ buyer: "B", campaign: "K", ad: "vid-balance-t30-v12-b1-es-mx", subs: 0, dia: 0, deps: 1, rev: 900 }],
 );
@@ -74,4 +76,15 @@ assert.deepEqual(byVersion.children!.map((n) => n.label).sort(), ["edit18-mx", "
 const sorted = sortCreos(g, "romi")[0].children![0].children!.map((n) => n.label);
 assert.equal(sorted[0], "vid-balance-t30-v12-b1-es-mx");
 
-console.log("traffic-report: этапы, цвет ROMI, страна депов, склейка и сортировка верно");
+// Фильтр по лицу режет ячейки до сборки: итог и этапы — только своего лица, Torro — по лицу своей пары.
+const cells = cellsOf(
+  [sp({ buyer: "C", campaign: "R", ad: "x", geo: "ES", spend: 100, impr: 0, clicks: 0 }), sp({ buyer: "C", campaign: "K", ad: "x", geo: "ES", face: "RICKY", spend: 900, impr: 0, clicks: 0 })],
+  [{ buyer: "C", campaign: "K", ad: "x", subs: 0, dia: 0, deps: 1, rev: 500 }],
+);
+const ricky = treeOf(filterCells(cells, { face: ["Рики"] }));
+assert.equal(ricky[0].sums.spend, 900);
+assert.equal(ricky[0].sums.rev, 500);
+assert.equal(treeOf(filterCells(cells, { face: ["Роман"] }))[0].children![0].children![0].stage, "test");
+assert.equal(treeOf(cells)[0].sums.spend, 1000);
+
+console.log("traffic-report: этапы, цвет ROMI, страна депов, склейка, сортировка и фильтры верно");

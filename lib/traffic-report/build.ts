@@ -45,9 +45,39 @@ export function geoOf(countries: string[], campaignName: string): string {
   return parseName(campaignName).geo ?? NO_GEO;
 }
 
-export interface SpendRow { buyer: string; campaign: string; ad: string; geo: string; spend: number; impr: number; clicks: number }
+export type Platform = "fb" | "tg";
+// face — ROMAN | RICKY | "" (из имени кампании, у TG Ads — из названия кабинета); funnel — TG | WA | "".
+export interface SpendRow { buyer: string; campaign: string; ad: string; geo: string; face: string; funnel: string; platform: Platform; spend: number; impr: number; clicks: number }
 export interface TorroRow { buyer: string; campaign: string; ad: string; subs: number; dia: number; deps: number; rev: number }
 export interface Sums { spend: number; impr: number; clicks: number; subs: number; dia: number; deps: number; rev: number }
+
+// Ячейка отчёта: баер × страна × лицо × воронка × площадка × крео. Фильтры режут ячейки,
+// дерево собирается из того, что осталось (treeOf) — итоги и этапы считаются заново.
+export interface Cell { buyer: string; geo: string; face: string; funnel: string; platform: Platform; creo: string; sums: Sums }
+
+// Фильтры как в General 4.0: в каждом разрезе несколько значений, пусто — все.
+export const DIMS = ["face", "region", "geo", "platform", "funnel"] as const;
+export type Dim = (typeof DIMS)[number];
+export const DIM_LABELS: Record<Dim, string> = { face: "Лицо", region: "Регион", geo: "Гео", platform: "Площадка", funnel: "Воронка" };
+export type Filters = Partial<Record<Dim, string[]>>;
+const FACE_LABELS: Record<string, string> = { ROMAN: "Роман", RICKY: "Рики" };
+export const regionName = (geo: string) => (geo === "ES" ? "Испания" : LATAM.has(geo) ? "Латам" : geo === REST ? "Не разнесено" : "Другие");
+export function dimValue(c: Cell, d: Dim): string {
+  switch (d) {
+    case "face": return FACE_LABELS[c.face] ?? "Без лица";
+    case "region": return regionName(c.geo);
+    case "geo": return geoName(c.geo);
+    case "platform": return c.platform === "tg" ? "TG Ads" : "Facebook";
+    case "funnel": return c.funnel || "Без воронки";
+  }
+}
+export function dimOptions(cells: Cell[]): Record<Dim, string[]> {
+  return Object.fromEntries(DIMS.map((d) => [d, [...new Set(cells.map((c) => dimValue(c, d)))].sort((a, b) => a.localeCompare(b, "ru"))])) as Record<Dim, string[]>;
+}
+export function filterCells(cells: Cell[], f: Filters): Cell[] {
+  const active = DIMS.filter((d) => f[d]?.length).map((d) => [d, new Set(f[d])] as const);
+  return active.length ? cells.filter((c) => active.every(([d, set]) => set.has(dimValue(c, d)))) : cells;
+}
 
 export interface Metrics {
   cpm: number | null; cpc: number | null; ctr: number | null;
@@ -98,38 +128,76 @@ export const creoName = (ad: string) => {
   return !s || /^\{\{|^not_exists$/i.test(s) ? NO_MARK : s;
 };
 
-export function buildReport(spend: SpendRow[], torro: TorroRow[], rest: Map<string, Omit<Sums, "spend" | "impr" | "clicks">> = new Map()): ReportNode[] {
-  const cells = new Map<string, Sums>();   // баер|страна|крео
-  const cell = (buyer: string, geo: string, creo: string) => {
-    const k = `${buyer}\u0000${geo}\u0000${creo}`;
-    if (!cells.has(k)) cells.set(k, { ...ZERO });
-    return cells.get(k)!;
+// Расход и Torro → ячейки. Torro берёт страну, лицо, воронку и площадку той пары
+// «кампания × объявление», что крутилась в периоде, иначе — кампании, иначе — из имени
+// кампании Torro (площадка — та, на которой у баера был расход).
+export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, Omit<Sums, "spend" | "impr" | "clicks">> = new Map()): Cell[] {
+  const cells = new Map<string, Cell>();
+  const cell = (buyer: string, geo: string, face: string, funnel: string, platform: Platform, creo: string) => {
+    const k = [buyer, geo, face, funnel, platform, creo].join("\u0000");
+    if (!cells.has(k)) cells.set(k, { buyer, geo, face, funnel, platform, creo, sums: { ...ZERO } });
+    return cells.get(k)!.sums;
   };
-  const pairGeo = new Map<string, Set<string>>(), campGeo = new Map<string, Set<string>>();
-  const note = (m: Map<string, Set<string>>, k: string, geo: string) => (m.get(k) ?? m.set(k, new Set()).get(k)!).add(geo);
-  for (const r of spend) {
-    const s = cell(r.buyer, r.geo, creoName(r.ad));
+  type Seen = { geo: Set<string>; face: Set<string>; funnel: Set<string>; platform: Set<Platform> };
+  const pairs = new Map<string, Seen>(), camps = new Map<string, Seen>(), ads = new Map<string, Seen>(), platforms = new Map<string, Set<Platform>>();
+  const note = (m: Map<string, Seen>, k: string, r: SpendRow) => {
+    const s = m.get(k) ?? m.set(k, { geo: new Set(), face: new Set(), funnel: new Set(), platform: new Set() }).get(k)!;
+    s.geo.add(r.geo); s.face.add(r.face); s.funnel.add(r.funnel); s.platform.add(r.platform);
+  };
+  const one = <T,>(set: Set<T> | undefined, many: T): T | null => (!set ? null : set.size === 1 ? [...set][0] : many);
+  const only = <T,>(set: Set<T> | undefined): T | null => (set?.size === 1 ? [...set][0] : null);
+  // Одно непустое значение среди всех мест, где крутилось крео: в имени кампании лица нет,
+  // а крео у баера — только под одним лицом (у Андрея кампании «07.10 (1818_FB_102) ES 2»).
+  const named = (set: Set<string> | undefined) => only(new Set([...(set ?? [])].filter(Boolean)));
+  for (const r of spend) note(ads, `${r.buyer}\u0000${r.ad.trim()}`, r);
+  for (const raw of spend) {
+    const ad = ads.get(`${raw.buyer}\u0000${raw.ad.trim()}`);
+    const r = { ...raw, face: raw.face || named(ad?.face) || "", funnel: raw.funnel || named(ad?.funnel) || "" };
+    const s = cell(r.buyer, r.geo, r.face, r.funnel, r.platform, creoName(r.ad));
     s.spend += r.spend; s.impr += r.impr; s.clicks += r.clicks;
-    note(pairGeo, `${r.buyer}\u0000${r.campaign.trim()}\u0000${r.ad.trim()}`, r.geo);
-    note(campGeo, `${r.buyer}\u0000${r.campaign.trim()}`, r.geo);
+    note(pairs, `${r.buyer}\u0000${r.campaign.trim()}\u0000${r.ad.trim()}`, r);
+    note(camps, `${r.buyer}\u0000${r.campaign.trim()}`, r);
+    (platforms.get(r.buyer) ?? platforms.set(r.buyer, new Set()).get(r.buyer)!).add(r.platform);
   }
-  const one = (set?: Set<string>) => (!set ? null : set.size === 1 ? [...set][0] : MULTI);
   for (const r of torro) {
-    const geo = one(pairGeo.get(`${r.buyer}\u0000${r.campaign.trim()}\u0000${r.ad.trim()}`))
-      ?? one(campGeo.get(`${r.buyer}\u0000${r.campaign.trim()}`)) ?? parseName(r.campaign).geo ?? NO_GEO;
-    const s = cell(r.buyer, geo, creoName(r.ad));
+    const seen = pairs.get(`${r.buyer}\u0000${r.campaign.trim()}\u0000${r.ad.trim()}`) ?? camps.get(`${r.buyer}\u0000${r.campaign.trim()}`);
+    // Имя кампании в ссылке Torro не совпало с Meta — лицо и воронку знает само крео:
+    // где оно крутилось у этого баера (29.10.2026: у Андрея так терялось лицо у $26k ревенью).
+    const ad = ads.get(`${r.buyer}\u0000${r.ad.trim()}`);
+    const name = parseName(r.campaign);
+    const own = platforms.get(r.buyer);
+    const s = cell(
+      r.buyer,
+      one(seen?.geo, MULTI) ?? name.geo ?? only(ad?.geo) ?? NO_GEO,
+      one(seen?.face, "") || named(ad?.face) || name.face || "",
+      one(seen?.funnel, "") || named(ad?.funnel) || name.funnel || "",
+      one(seen?.platform, "fb" as Platform) ?? only(ad?.platform) ?? (own?.size === 1 ? [...own][0] : "fb"),
+      creoName(r.ad),
+    );
     s.subs += r.subs; s.dia += r.dia; s.deps += r.deps; s.rev += r.rev;
   }
   for (const [buyer, x] of rest) {
-    if (x.subs > 0 || x.dia > 0 || x.deps > 0 || x.rev > 0) Object.assign(cell(buyer, REST, "Torro без связки с крео"), { ...ZERO, ...x });
+    if (x.subs > 0 || x.dia > 0 || x.deps > 0 || x.rev > 0) Object.assign(cell(buyer, REST, "", "", "fb", "Torro без связки с крео"), { ...ZERO, ...x });
   }
+  return [...cells.values()].filter(({ sums: s }) => s.spend > 0 || s.subs || s.dia || s.deps || s.rev);
+}
 
+export const buildReport = (spend: SpendRow[], torro: TorroRow[], rest?: Map<string, Omit<Sums, "spend" | "impr" | "clicks">>) =>
+  treeOf(cellsOf(spend, torro, rest));
+
+// Дерево баер → страна → крео из ячеек: лица, воронки и площадки внутри складываются.
+export function treeOf(input: Cell[]): ReportNode[] {
   const add = (a: Sums, b: Sums) => { for (const k of Object.keys(a) as (keyof Sums)[]) a[k] += b[k]; };
+  const cells = new Map<string, Sums>();   // баер|страна|крео
+  for (const c of input) {
+    const k = `${c.buyer}\u0000${c.geo}\u0000${c.creo}`;
+    if (!cells.has(k)) cells.set(k, { ...ZERO });
+    add(cells.get(k)!, c.sums);
+  }
   const blankCounts = (): Record<Stage, number> => ({ test: 0, loser: 0, deps: 0, nospend: 0 });
   const buyers = new Map<string, ReportNode>();
   const countries = new Map<string, ReportNode>();
   for (const [k, s] of cells) {
-    if (!(s.spend > 0 || s.subs || s.dia || s.deps || s.rev)) continue;
     const [buyer, geo, creo] = k.split("\u0000");
     if (!buyers.has(buyer)) buyers.set(buyer, { key: buyer, level: 0, label: buyer, sums: { ...ZERO }, m: metricsOf(ZERO), counts: blankCounts(), children: [] });
     const b = buyers.get(buyer)!;
