@@ -6,16 +6,18 @@
 //   Эффективность — самый высокий ROMI у тех, кто лил в среднем от $15k в месяц:
 //                   иначе ROMI 300% на $500 забирал бы номинацию.
 // Баеру — место, ник и ROMI, суммы — только свои; чужие видят владелец и тимлид (решено 28.10.2026).
+// Отключённый баер остаётся в рейтинге со своей историей, с пометкой «выбыл» (gone).
 
 export const MIN_MONTHLY_SPEND = 15_000;
 
 export interface DayMoney { date: string; budget: number; revenue: number }
-export interface BuyerInput { id: string; label: string; rows: DayMoney[] }
+export interface BuyerInput { id: string; label: string; gone?: boolean; rows: DayMoney[] }
 
 export interface Standing {
   id: string; label: string; romi: number | null;
   spend?: number; revenue?: number; profit?: number;   // только владельцу и тимлиду
   me?: boolean;
+  gone?: boolean;
 }
 export interface Board<T = Standing> {
   ranking: T[];
@@ -23,7 +25,7 @@ export interface Board<T = Standing> {
   efficiency: T | null;
 }
 
-type Full = { id: string; label: string; spend: number; revenue: number; profit: number; romi: number; monthly: number };
+type Full = { id: string; label: string; gone: boolean; spend: number; revenue: number; profit: number; romi: number; monthly: number };
 
 // months — длина окна в месяцах; null («всё время») — по месяцам, где был расход.
 export function rankBuyers(buyers: BuyerInput[], since: string | null, until: string, months: number | null): Board<Full> {
@@ -38,7 +40,7 @@ export function rankBuyers(buyers: BuyerInput[], since: string | null, until: st
     }
     if (spend <= 0) continue;
     const profit = revenue - spend;
-    all.push({ id: b.id, label: b.label, spend, revenue, profit, romi: profit / spend, monthly: spend / (months ?? active.size) });
+    all.push({ id: b.id, label: b.label, gone: !!b.gone, spend, revenue, profit, romi: profit / spend, monthly: spend / (months ?? active.size) });
   }
   const ranking = all.sort((a, b) => b.profit - a.profit);
   const best = (list: Full[], key: (x: Full) => number) => list.reduce<Full | null>((m, x) => (!m || key(x) > key(m) ? x : m), null);
@@ -53,7 +55,7 @@ export function rankBuyers(buyers: BuyerInput[], since: string | null, until: st
 export function forViewer(board: Board<Full>, meId: string, withMoney: boolean): Board {
   // Свои суммы баер видит — чужие нет.
   const out = (x: Full | null): Standing | null => x && (withMoney || x.id === meId
-    ? { id: x.id, label: x.label, romi: x.romi, spend: x.spend, revenue: x.revenue, profit: x.profit, me: x.id === meId }
-    : { id: x.id, label: x.label, romi: x.romi, me: x.id === meId });
+    ? { id: x.id, label: x.label, gone: x.gone, romi: x.romi, spend: x.spend, revenue: x.revenue, profit: x.profit, me: x.id === meId }
+    : { id: x.id, label: x.label, gone: x.gone, romi: x.romi, me: x.id === meId });
   return { ranking: board.ranking.map((x) => out(x)!), volume: out(board.volume), efficiency: out(board.efficiency) };
 }

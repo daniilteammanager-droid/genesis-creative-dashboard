@@ -136,7 +136,7 @@ function BoardCard({ title, board }: { title: string; board: Board }) {
   const nominee = (label: string, x: Standing | null, value: (x: Standing) => string) => (
     <div className="flex-1 min-w-[140px] bg-[#0d0b14] border border-violet-900/25 rounded-xl px-3 py-2">
       <p className="text-[11px] text-zinc-500 uppercase tracking-wider">{label}</p>
-      <p className="text-sm text-white truncate">{x ? `${x.label}${x.me ? " — ты" : ""}` : "нет претендентов"}</p>
+      <p className="text-sm text-white truncate">{x ? `${x.label}${x.me ? " — ты" : ""}${x.gone ? " · выбыл :((" : ""}` : "нет претендентов"}</p>
       {x && <p className="text-xs text-zinc-400 tabular-nums">{value(x)}</p>}
     </div>
   );
@@ -155,7 +155,7 @@ function BoardCard({ title, board }: { title: string; board: Board }) {
           {board.ranking.map((x, i) => (
             <li key={x.id} className={`flex items-center gap-3 px-2 py-1.5 rounded-lg text-sm ${x.me ? "bg-violet-900/25" : ""}`}>
               <span className="w-5 text-zinc-500 tabular-nums">{i + 1}</span>
-              <span className="flex-1 truncate">{x.label}{x.me && <span className="text-violet-300"> — ты</span>}</span>
+              <span className={`flex-1 min-w-0 truncate ${x.gone ? "text-zinc-500" : ""}`}>{x.label}{x.me && <span className="text-violet-300"> — ты</span>}{x.gone && <span className="text-zinc-600"> · выбыл :((</span>}</span>
               {showProfit && <span className="w-28 shrink-0 text-right tabular-nums text-zinc-300">{x.profit === undefined ? "" : money(x.profit)}</span>}
               <span className={`tabular-nums w-14 text-right ${romiColor(x.romi)}`}>{pct(x.romi)}</span>
             </li>

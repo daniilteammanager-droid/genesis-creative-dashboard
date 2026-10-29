@@ -16,7 +16,7 @@ export async function GET() {
   try {
     const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
     const { data: profiles, error } = await db.from("profiles")
-      .select("id, name, email, buyer_code, gr4_spreadsheet_id")
+      .select("id, name, email, buyer_code, status, gr4_spreadsheet_id")
       .eq("role", "buyer").not("gr4_spreadsheet_id", "is", null);
     if (error) throw new Error(error.message);
 
@@ -26,7 +26,7 @@ export async function GET() {
       // Сломанная таблица одного баера не роняет рейтинг — он просто без него.
       const snap = await snapshot(p.gr4_spreadsheet_id as string, "buyer").catch(() => null);
       if (!snap) { failed.push(label); return null; }
-      return { id: p.id as string, label, rows: snap.rows.map((r) => ({ date: r.date, budget: r.budget, revenue: r.revenue })) };
+      return { id: p.id as string, label, gone: p.status === "disabled", rows: snap.rows.map((r) => ({ date: r.date, budget: r.budget, revenue: r.revenue })) };
     }))).filter((b): b is BuyerInput => b !== null);
 
     const today = mskDay();

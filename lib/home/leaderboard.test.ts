@@ -11,7 +11,7 @@ const buyers = [
   // лучший профит и ROMI при расходе выше порога
   { id: "c", label: "b3", rows: [day("2026-09-05", 50000, 125000), day("2026-07-05", 1000, 0)] },
   // расход больше всех, но в минус — не «Объём»
-  { id: "d", label: "b4", rows: [day("2026-09-01", 90000, 60000)] },
+  { id: "d", label: "b4", gone: true, rows: [day("2026-09-01", 90000, 60000)] },
   // без расхода в рейтинг не попадает
   { id: "e", label: "b5", rows: [day("2026-09-01", 0, 100)] },
 ];
@@ -33,4 +33,6 @@ assert.equal(hidden.ranking[0].profit, undefined);
 assert.equal(hidden.ranking.find((x) => x.id === "b")?.me, true);
 assert.equal(hidden.ranking.find((x) => x.id === "b")?.profit, 2000);   // свой профит баер видит
 assert.equal(forViewer(q, "b", true).ranking[0].profit, 75000);
+assert.equal(hidden.ranking.find((x) => x.id === "d")?.gone, true);    // выбывший — в рейтинге, с пометкой
+assert.equal(hidden.ranking.find((x) => x.id === "c")?.gone, false);
 console.log("home leaderboard: ok");
