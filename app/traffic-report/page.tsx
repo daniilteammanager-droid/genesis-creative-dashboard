@@ -5,7 +5,7 @@ import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import {
-  DIMS, DIM_LABELS, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, romiBand, sortCreos, totalOf, treeOf,
+  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, romiBand, sortCreos, totalOf, treeOf,
   type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage,
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
@@ -71,6 +71,8 @@ const chip = (on: boolean) =>
   `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
     on ? "bg-violet-600 text-white" : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
 const control = "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm text-white";
+// Избранное — «баер × крео» (id баера, имя крео): отметка во всех странах сразу.
+const favKey = (buyerId: string, creo: string) => `${buyerId}\u0000${creo}`;
 
 export default function TrafficReportPage() {
   const [range, setRange] = useState(PERIODS[0].range);
@@ -95,10 +97,38 @@ export default function TrafficReportPage() {
     return () => { alive = false; };
   }, [range, buyer]);
 
+  // Личное избранное: звезда у крео, «Только избранные» — отчёт и итоги по ним за любой период.
+  const [favs, setFavs] = useState<Set<string>>(new Set());
+  const [onlyFav, setOnlyFav] = useState(false);
+  const [favErr, setFavErr] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/traffic-report/favorites").then((r) => r.json()).then((j) => {
+      if (j.favorites) setFavs(new Set((j.favorites as { buyer: string; creo: string }[]).map((f) => favKey(f.buyer, f.creo))));
+    }).catch(() => setFavErr("Избранное не загрузилось"));
+  }, []);
+  // В ячейках баер — подпись; id для избранного — из списка баеров.
+  const idOf = useMemo(() => new Map((data?.buyers ?? []).map((b) => [b.label, b.id])), [data]);
+  const isFav = (buyer: string, creo: string) => favs.has(favKey(idOf.get(buyer) ?? buyer, creo));
+  const toggleFav = (buyer: string, creo: string) => {
+    const id = idOf.get(buyer);
+    if (!id) return;
+    const k = favKey(id, creo), on = !favs.has(k);
+    const flip = (s: Set<string>, add: boolean) => { const x = new Set(s); if (add) x.add(k); else x.delete(k); return x; };
+    setFavs((s) => flip(s, on));
+    setFavErr(null);
+    fetch("/api/traffic-report/favorites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ buyer: id, creo, on }) })
+      .then((r) => r.json()).then((j) => { if (j.error) throw new Error(j.error); })
+      .catch((e) => { setFavs((s) => flip(s, !on)); setFavErr(e instanceof Error ? e.message : "Не сохранилось"); });
+  };
+
   const [filters, setFilters] = useState<Filters>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const options = useMemo(() => dimOptions(data?.cells ?? []), [data]);
-  const base = useMemo(() => treeOf(filterCells(data?.cells ?? [], filters)), [data, filters]);
+  const base = useMemo(() => {
+    const cells = data?.cells ?? [];
+    const mine = onlyFav ? cells.filter((c) => favs.has(favKey(idOf.get(c.buyer) ?? c.buyer, c.creo))) : cells;
+    return treeOf(filterCells(mine, filters));
+  }, [data, filters, onlyFav, favs, idOf]);
   const tree = useMemo(() => sortCreos(groupCreos(base, mode), sortBy), [base, mode, sortBy]);
   const toggleFilter = (d: Dim, v: string | null) => setFilters((f) => {
     const cur = f[d] ?? [];
@@ -114,15 +144,16 @@ export default function TrafficReportPage() {
     const named = (n: ReportNode) => n.label.toLowerCase().includes(needle) || (n.children ?? []).some((c) => c.label.toLowerCase().includes(needle));
     const hits = (n: ReportNode): boolean => (n.level >= 2 ? (!stage || n.stage === stage) && (!needle || named(n)) : (n.children ?? []).some(hits));
     const isOpen = (n: ReportNode) => (n.level === 0 ? filtering || !closed.has(n.key) : n.level === 1 ? filtering || open.has(n.key) : open.has(n.key));
-    const out: { n: ReportNode; open: boolean }[] = [];
-    const walk = (list: ReportNode[]) => {
+    const out: { n: ReportNode; open: boolean; buyer: string }[] = [];
+    const walk = (list: ReportNode[], buyer: string) => {
       for (const n of list) {
         if (filtering && n.level <= 2 && !hits(n)) continue;
-        out.push({ n, open: isOpen(n) });
-        if (n.children && isOpen(n)) walk(n.children);
+        const b = n.level === 0 ? n.label : buyer;
+        out.push({ n, open: isOpen(n), buyer: b });
+        if (n.children && isOpen(n)) walk(n.children, b);
       }
     };
-    walk(tree);
+    walk(tree, "");
     return out;
   }, [tree, closed, open, stage, q]);
 
@@ -194,6 +225,7 @@ export default function TrafficReportPage() {
         </div>
         <div className="text-xs mb-6 space-y-1">
           {err && <p className="text-red-400">{err}</p>}
+          {favErr && <p className="text-red-400">{favErr}</p>}
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
 
@@ -221,6 +253,8 @@ export default function TrafficReportPage() {
             <select id="traffic-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className={control} aria-label="Сортировка крео">
               {SORTS.map((s) => <option key={s.id} value={s.id}>Крео {s.label}</option>)}
             </select>
+            <button onClick={() => setOnlyFav((v) => !v)} aria-pressed={onlyFav} title="Только отмеченные звездой крео — отчёт и итоги по ним"
+                    className={chip(onlyFav)}>★ Только избранные{favs.size ? ` · ${favs.size}` : ""}</button>
             <button onClick={expandAll} className={chip(false)}>Развернуть всё</button>
             <button onClick={collapseAll} className={chip(false)}>Свернуть всё</button>
             <select id="traffic-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage | "")} className={control} aria-label="Этап крео">
@@ -242,8 +276,16 @@ export default function TrafficReportPage() {
               </thead>
               <tbody>
                 {!data && !err && <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-zinc-500">Загружаю…</td></tr>}
-                {data && rows.length === 0 && <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-zinc-500">За этот период расхода и Torro нет.</td></tr>}
-                {rows.map(({ n, open: isOpen }) => {
+                {data && rows.length === 0 && (
+                  <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-zinc-500">
+                    {!onlyFav ? "За этот период расхода и Torro нет."
+                      : favs.size ? "Избранные крео в этом периоде не крутились и Torro по ним нет."
+                      : "Избранного пока нет — отметь крео звездой ☆ слева от названия."}
+                  </td></tr>
+                )}
+                {rows.map(({ n, open: isOpen, buyer: rowBuyer }) => {
+                  const creoRow = !n.children && n.level >= 2 && n.geo !== REST;
+                  const fav = creoRow && isFav(rowBuyer, n.label);
                   const band = romiBand(n.m.romi);
                   const bg = n.level === 0 ? "bg-[#1a1626]" : "bg-[#111118]";
                   const st = STAGES.find((s) => s.id === n.stage);
@@ -251,6 +293,11 @@ export default function TrafficReportPage() {
                     <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
                       <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-violet-900/15 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>
                         {n.children && <span className="inline-block w-4 text-zinc-500">{isOpen ? "▾" : "▸"}</span>}
+                        {creoRow && (
+                          <button onClick={(e) => { e.stopPropagation(); toggleFav(rowBuyer, n.label); }}
+                                  title={fav ? "Убрать из избранного" : "В избранное"} aria-label={fav ? "Убрать из избранного" : "В избранное"} aria-pressed={fav}
+                                  className={`inline-block w-5 -ml-1 mr-0.5 ${fav ? "text-amber-300" : "text-zinc-600 hover:text-amber-200"}`}>{fav ? "★" : "☆"}</button>
+                        )}
                         {n.label}
                         {n.level === 2 && n.children && <span className="text-zinc-500 font-normal"> · {n.children.length} крео</span>}
                       </td>
