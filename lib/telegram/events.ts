@@ -21,6 +21,8 @@ export const EVENTS: TelegramEvent[] = [
   { key: "autoupload", label: "Автозалив", hint: "ход и итог заливки", ready: false },
   { key: "connection_broken", label: "Слетевшие подключения", hint: "аккаунт FB Tool разлогинился или снова в строю, ключ Meta перестал работать", ready: true },
   { key: "test_limit", label: "Крео за границей теста", hint: "крео без депов потратило 2,5 × целевой цены депа страны и ещё крутится", ready: true },
+  { key: "ai_analysis", label: "AI-разбор крео", hint: "почему крео не взлетело или что сработало: когда прошло границу теста и когда дало первые депы", ready: true },
+  { key: "ai_weekly", label: "AI-сводка недели", hint: "по понедельникам: что работает у каждого баера и у команды — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
 ];
 
 export const EVENT_KEYS = EVENTS.map((e) => e.key);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, normalizeBuyerCode, type Profile, type UserRole } from "@/lib/auth/types";
@@ -22,6 +22,25 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
   const [codeDraft, setCodeDraft] = useState<Record<string, string>>({});
   // Черновики таблиц по ключу «id|поле»: у баера их две — General 3.0 и 4.0.
   const [sheetDraft, setSheetDraft] = useState<Record<string, string>>({});
+  // Месячный лимит AI-разборов баера (Decision 101) — своя таблица, мимо admin_update_profile.
+  const [budgets, setBudgets] = useState<Record<string, { limit: number; used: number }>>({});
+  const [budgetDraft, setBudgetDraft] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/ai/budget").then((r) => r.json()).then((j) => j.budgets && setBudgets(j.budgets)).catch(() => {});
+  }, []);
+
+  async function commitBudget(id: string) {
+    const raw = budgetDraft[id];
+    if (raw === undefined || Number(raw) === budgets[id]?.limit) return;
+    setBusy(id); setError(null); setSaved(null);
+    const r = await fetch("/api/ai/budget", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ buyer: id, usd: Number(raw.replace(",", ".")) }) })
+      .then((x) => x.json()).catch(() => ({ error: "Не сохранилось" }));
+    setBusy(null);
+    setBudgetDraft((d) => { const rest = { ...d }; delete rest[id]; return rest; });
+    if (r.error) { setError(r.error); return; }
+    setBudgets((b) => ({ ...b, [id]: r.budget }));
+    setSaved(id);
+  }
 
   async function update(id: string, patch: Record<string, unknown>) {
     setBusy(id);
@@ -176,6 +195,22 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                   />
                 </div>
               ))}
+              {p.role === "buyer" && budgets[p.id] && (
+                <div className="w-full flex items-center gap-2">
+                  <span className="text-[11px] text-zinc-600 whitespace-nowrap w-[72px]">AI-лимит</span>
+                  <span className="text-sm text-zinc-500">$</span>
+                  <input
+                    type="text" inputMode="decimal"
+                    value={budgetDraft[p.id] ?? String(budgets[p.id].limit)}
+                    disabled={busy === p.id}
+                    onChange={(e) => setBudgetDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                    onBlur={() => commitBudget(p.id)}
+                    onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                    className={`${field} w-20 disabled:opacity-50`}
+                  />
+                  <span className="text-[11px] text-zinc-600">в месяц · потрачено ${budgets[p.id].used.toFixed(2)}</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -185,7 +220,8 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
         Код баера — вида <code className="text-zinc-500">b5</code> или просто <code className="text-zinc-500">5</code>,
         пустое поле убирает код. Последнего владельца разжаловать нельзя, иначе администрировать станет некому.
         Таблицы General 3.0 и 4.0 проверяются при сохранении: если она не открыта на чтение сервисному аккаунту,
-        сохранить её не получится.
+        сохранить её не получится. AI-лимит — сколько долларов в месяц баер может потратить на AI-разборы своих крео
+        (кнопка в «Отчётах» и автоматические разборы в Telegram); разборы, которые запускаешь ты, в него не идут.
       </p>
     </div>
   );

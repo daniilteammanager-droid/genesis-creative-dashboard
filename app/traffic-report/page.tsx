@@ -9,6 +9,7 @@ import {
   type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage,
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
+import AiPanel, { VERDICT, type Verdict } from "./AiPanel";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за любой период, из склада.
 // Крео оцениваем по ROMI и этапу теста — правила и цвета в lib/traffic-report/build.ts.
@@ -120,6 +121,15 @@ export default function TrafficReportPage() {
       .then((r) => r.json()).then((j) => { if (j.error) throw new Error(j.error); })
       .catch((e) => { setFavs((s) => flip(s, !on)); setFavErr(e instanceof Error ? e.message : "Не сохранилось"); });
   };
+
+  // AI-разборы (Decision 101): значок ✦ у крео — последний вердикт «баер × крео», клик — панель разбора.
+  const [ai, setAi] = useState<Map<string, Verdict | null>>(new Map());
+  const [aiOpen, setAiOpen] = useState<{ buyerId: string; buyer: string; creo: string } | null>(null);
+  useEffect(() => {
+    fetch("/api/ai/creo").then((r) => r.json()).then((j) => {
+      if (j.analyses) setAi(new Map((j.analyses as { buyer_id: string; creo: string; verdict: Verdict | null }[]).map((a) => [favKey(a.buyer_id, a.creo), a.verdict])));
+    }).catch(() => {});
+  }, []);
 
   const [filters, setFilters] = useState<Filters>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -286,6 +296,8 @@ export default function TrafficReportPage() {
                 {rows.map(({ n, open: isOpen, buyer: rowBuyer }) => {
                   const creoRow = !n.children && n.level >= 2 && n.geo !== REST;
                   const fav = creoRow && isFav(rowBuyer, n.label);
+                  const aiKey = creoRow ? favKey(idOf.get(rowBuyer) ?? rowBuyer, n.label) : "";
+                  const verdict = ai.get(aiKey);
                   const band = romiBand(n.m.romi);
                   const bg = n.level === 0 ? "bg-[#1a1626]" : "bg-[#111118]";
                   const st = STAGES.find((s) => s.id === n.stage);
@@ -297,6 +309,11 @@ export default function TrafficReportPage() {
                           <button onClick={(e) => { e.stopPropagation(); toggleFav(rowBuyer, n.label); }}
                                   title={fav ? "Убрать из избранного" : "В избранное"} aria-label={fav ? "Убрать из избранного" : "В избранное"} aria-pressed={fav}
                                   className={`inline-block w-5 -ml-1 mr-0.5 ${fav ? "text-amber-300" : "text-zinc-600 hover:text-amber-200"}`}>{fav ? "★" : "☆"}</button>
+                        )}
+                        {creoRow && idOf.has(rowBuyer) && (
+                          <button onClick={(e) => { e.stopPropagation(); setAiOpen({ buyerId: idOf.get(rowBuyer)!, buyer: rowBuyer, creo: n.label }); }}
+                                  title={ai.has(aiKey) ? `AI-разбор${verdict ? `: ${VERDICT[verdict].label.toLowerCase()}` : ""}` : "AI-разбор крео"} aria-label="AI-разбор крео"
+                                  className={`inline-block w-5 mr-0.5 ${ai.has(aiKey) ? (verdict ? VERDICT[verdict].tone.split(" ")[1] : "text-violet-300") : "text-zinc-600 hover:text-violet-300"}`}>✦</button>
                         )}
                         {n.label}
                         {n.level === 2 && n.children && <span className="text-zinc-500 font-normal"> · {n.children.length} крео</span>}
@@ -328,6 +345,10 @@ export default function TrafficReportPage() {
           </p>
         </section>
       </div>
+      {aiOpen && (
+        <AiPanel buyerId={aiOpen.buyerId} buyerLabel={aiOpen.buyer} creo={aiOpen.creo} onClose={() => setAiOpen(null)}
+                 onDone={(v) => setAi((m) => new Map(m).set(favKey(aiOpen.buyerId, aiOpen.creo), v))} />
+      )}
     </main>
   );
 }

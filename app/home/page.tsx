@@ -7,6 +7,7 @@ import type { HomeMetrics } from "@/lib/home/summary";
 import { PERIODS, type PeriodId } from "@/lib/home/periods";
 import type { Board, Standing } from "@/lib/home/leaderboard";
 import { useProfile } from "@/components/Shell";
+import AiBlock from "./AiBlock";
 
 // Главная: свои цифры за период (склад) и рейтинг баеров (таблицы General 4.0).
 // Карточки — столбцы Live Manager: те же формулы, ничего второй раз не считаем.
@@ -94,6 +95,7 @@ export default function HomePage() {
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
 
+        {me && <AiBlock lead={me.role !== "buyer"} />}
         <Leaders />
       </div>
     </main>

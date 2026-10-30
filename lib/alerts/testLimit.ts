@@ -6,6 +6,7 @@ import type { Profile } from "@/lib/auth/types";
 import { loadTrafficReport } from "@/lib/traffic-report/load";
 import { TEST_MULT, testLimit, treeOf, type ReportNode } from "@/lib/traffic-report/build";
 import { dashboardUrl } from "./autocheck";
+import { enqueue } from "@/lib/ai/creo";
 
 // Крео прошло границу теста без депов (Decision 100). Раз в час на прогоне «сегодня»:
 // крео в стране, которое крутилось вчера или сегодня, за 30 дней потратило не меньше
@@ -23,6 +24,18 @@ export function activeLosers(window: ReportNode[], recent: ReportNode[]): Loser[
   return window.flatMap((b) => (b.children ?? []).flatMap((g) => (g.children ?? [])
     .filter((c) => c.stage === "loser" && live.has(`${g.geo}|${c.label}`))
     .map((c) => ({ geo: g.geo!, country: g.label, creo: c.label, spend: c.sums.spend, limit: testLimit(g.geo!), subs: c.sums.subs, dia: c.sums.dia }))));
+}
+
+// Крео, которые дали первые депы за последние два дня: все депы окна пришли в эти дни.
+// Для AI-разбора «что сработало» (Decision 101) — одна проверка на прогоне алерта, те же деревья.
+export function firstDeps(window: ReportNode[], recent: ReportNode[]): string[] {
+  const deps = (tree: ReportNode[]) => {
+    const m = new Map<string, number>();
+    for (const b of tree) for (const g of b.children ?? []) for (const c of g.children ?? []) m.set(c.label, (m.get(c.label) ?? 0) + c.sums.deps);
+    return m;
+  };
+  const all = deps(window);
+  return [...deps(recent)].filter(([creo, n]) => n > 0 && all.get(creo) === n).map(([creo]) => creo);
 }
 
 export function loserText(l: Loser): string {
@@ -50,7 +63,9 @@ export async function runTestLimitAlerts(): Promise<{ users: number; found: numb
       loadTrafficReport(me, mskDaysAgo(WINDOW_DAYS - 1), mskDay()),
       loadTrafficReport(me, mskDaysAgo(1), mskDay()),
     ]);
-    const losers = activeLosers(treeOf(window.cells), treeOf(recent.cells));
+    const [wTree, rTree] = [treeOf(window.cells), treeOf(recent.cells)];
+    for (const creo of firstDeps(wTree, rTree)) await enqueue(p.id, creo, "first_deps").catch(() => false);
+    const losers = activeLosers(wTree, rTree);
     if (!losers.length) continue;
     const { data: done } = await db.from("wh_test_alerts").select("geo, creo").eq("user_id", p.id);
     const seen = new Set((done ?? []).map((d) => `${d.geo}|${d.creo}`));
@@ -60,6 +75,8 @@ export async function runTestLimitAlerts(): Promise<{ users: number; found: numb
       const { error } = await db.from("wh_test_alerts").insert({ user_id: p.id, geo: l.geo, creo: l.creo, spend: l.spend });
       if (error) continue;
       try { sent += await notify(p.id, "test_limit", loserText(l), extra); } catch { /* алерт не важнее прогона */ }
+      // Следом — AI-разбор: почему не взлетело и что менять (крон kind=ai, баеру в Telegram).
+      await enqueue(p.id, l.creo, "test_limit").catch(() => false);
     }
   }
   return { users: (people ?? []).length, found, sent };
