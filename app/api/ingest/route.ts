@@ -68,7 +68,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
     }
   }
-  // AI-разборы — раз в 5 минут: очередь автоматических разборов и недельная сводка (Decision 101).
+  // AI-разборы — раз в час, в :20 (после часовой проверки границы теста): очередь автоматических
+  // разборов и недельная сводка (Decision 101).
   if (raw === "ai") {
     try {
       const queue = await runAiQueue(200_000);
