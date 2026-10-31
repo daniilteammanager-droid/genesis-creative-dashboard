@@ -685,6 +685,16 @@ Do not redesign existing UI without a clear reason.
 календарь Genesis вместо системного `<input type="date">`, на ПК — два месяца, на телефоне — один шторкой
 снизу. Сетка и подписи периода — `lib/calendar.ts`. Новый выбор даты — этим компонентом, а не input.
 
+Дизайн-система (31.10.2026, макет согласован с Даниилом). Цвета — токены из `app/globals.css`, а не hex в классе:
+страница `bg-background`, карточка `bg-card`, поле и панель `bg-panel`, поверх карточки `bg-raised`; рамка `border-line`
+(у поля и кнопки — `border-line-strong`); подсказки и подписи `text-hint` (zinc-500/600 на тёмном фоне не читаются). Шрифт — Geist.
+Общие элементы — классы оттуда же: `card`, `field`, `btn` / `btn btn-primary` / `btn btn-sm`, `label`, `page-title`, `stats`
+(ряд `SummaryCard` из `components/general-report/shared.tsx`). Утилиты рядом их перебивают: `card p-6`, `btn w-full`.
+Переключатель одиночного выбора (вид, период, баеры, страны, вкладки) — `<div className="seg">` и `<button {...seg(on)}>`,
+фильтр с несколькими выбранными — `<button {...chip(on)}>` (`components/ui.tsx`); выбранное отмечается `aria-pressed`.
+Иконки — `<Icon name=…>` оттуда же, не эмодзи. Спиннер — `<Spinner>`. Страница — `p-4 md:p-8`, заголовок — `page-title`.
+Нужен новый цвет или вид кнопки — сначала токен или класс в `globals.css`, потом страница.
+
 ---
 
 # Coding Standards
