@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Icon, type IconName } from "@/components/ui";
 
 // «Антиотклон» (Decision 083, 091) — как вкладка Артёма: отклонённые объявления своих
 // кабинетов, действия прямо отсюда (ссылка, ФП, Multi-advertiser — выбор, проверка,
@@ -16,7 +17,8 @@ interface View {
   landings: { id: number; name: string; url: string; series: string | null }[]; checkedAt: string | null;
 }
 type Kind = "link" | "page" | "multi";
-const KIND: Record<Kind, string> = { link: "🔗 Заменить ссылку", page: "📄 Поменять ФП", multi: "🔁 Multi-advertiser" };
+const KIND: Record<Kind, string> = { link: "Заменить ссылку", page: "Поменять ФП", multi: "Multi-advertiser" };
+const KIND_ICON: Record<Kind, IconName> = { link: "link", page: "file", multi: "repeat" };
 const SERIES: Record<string, string> = { spain: "Испания", latam: "Латам", riki: "Рики" };
 interface Panel {
   adId: string; kind: Kind; loading: boolean; error?: string;
@@ -71,7 +73,7 @@ export default function Antireject() {
     finally { setScanning(false); }
   }
 
-  if (!v) return <div className="w-full px-4 md:px-8 py-6 text-hint">Загружаю…</div>;
+  if (!v) return <div className="w-full p-4 md:p-8 text-hint">Загружаю…</div>;
   const pick = (label: string, value: string, set: (s: string) => void) => (
     <label className="flex items-center gap-2 text-xs text-hint">{label}
       <select value={value} onChange={(e) => set(e.target.value)} className="field">{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -79,10 +81,10 @@ export default function Antireject() {
   );
 
   return (
-    <div className="w-full px-4 md:px-8 py-6 space-y-4">
+    <div className="w-full p-4 md:p-8 space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold text-white">Антиотклон</h1>
+          <h1 className="page-title">Антиотклон</h1>
           <p className="text-sm text-hint mt-1">Отклонённые объявления твоих кабинетов. Выбери действие, проверь изменение и подтверди — то же, что кнопки под алертом в боте.</p>
         </div>
         <button type="button" disabled={scanning} onClick={scan} className={`btn border-violet-700/50 text-violet-200 py-2`}>{scanning ? "Проверяю…" : "↻ Проверить сейчас"}</button>
@@ -111,9 +113,9 @@ export default function Antireject() {
                   {!r.ad_id.startsWith("tg:") && (
                     <div className="flex flex-wrap gap-1.5">
                       {(Object.keys(KIND) as Kind[]).map((k) => (
-                        <button key={k} type="button" onClick={() => open(r.ad_id, k)} className={`btn ${panel?.adId === r.ad_id && panel.kind === k ? "border-violet-500 text-white" : "border-line text-zinc-300"}`}>{KIND[k]}</button>
+                        <button key={k} type="button" onClick={() => open(r.ad_id, k)} className={`btn ${panel?.adId === r.ad_id && panel.kind === k ? "border-violet-500 text-white" : "border-line text-zinc-300"}`}><Icon name={KIND_ICON[k]} />{KIND[k]}</button>
                       ))}
-                      <button type="button" onClick={() => uniq(r.ad_id)} className={`btn border-line text-zinc-300`}>🎬 Уникализация</button>
+                      <button type="button" onClick={() => uniq(r.ad_id)} className={`btn border-line text-zinc-300`}><Icon name="film" />Уникализация</button>
                       <a href={`https://adsmanager.facebook.com/adsmanager/manage/ads?act=${r.account_id}&selected_ad_ids=${r.ad_id}`} target="_blank" rel="noreferrer" className={`btn border-line text-hint`}>Ads Manager ↗</a>
                     </div>
                   )}

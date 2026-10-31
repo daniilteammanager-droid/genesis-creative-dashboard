@@ -1,4 +1,5 @@
 import { type MediaFile, isVideo, isImage } from "@/lib/creatives/media";
+import { Icon } from "@/components/ui";
 
 // Превью крео. Переехало сюда из легаси-страницы, когда понадобилось во втором
 // месте — в новой картотеке. Правило проекта: в components/ переезжает то, что
@@ -17,7 +18,7 @@ export function MediaWide({ file }: { file?: MediaFile }) {
   const wrapCls = "w-full aspect-square bg-zinc-900";
   const mediaCls = "w-full h-full object-cover";
 
-  if (!file) return <div className={NO_FILE_WIDE}><span className="text-5xl opacity-40">📷</span></div>;
+  if (!file) return <div className={NO_FILE_WIDE}><Icon name="image" className="w-12 h-12 text-zinc-700" /></div>;
   if (isVideo(file.url)) {
     return file.posterUrl ? (
       /* eslint-disable-next-line @next/next/no-img-element */
@@ -30,14 +31,14 @@ export function MediaWide({ file }: { file?: MediaFile }) {
     /* eslint-disable-next-line @next/next/no-img-element */
     return <div className={wrapCls}><img src={file.url} alt="" loading="lazy" className={mediaCls} /></div>;
   }
-  return <div className={NO_FILE_WIDE}><span className="text-5xl opacity-40">📷</span></div>;
+  return <div className={NO_FILE_WIDE}><Icon name="image" className="w-12 h-12 text-zinc-700" /></div>;
 }
 
 export function MediaSquare({ file }: { file?: MediaFile }) {
   const wrapCls = "w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-900";
   const mediaCls = "w-full h-full object-cover";
 
-  if (!file) return <div className={NO_FILE_SQUARE}><span className="text-2xl opacity-55">📷</span></div>;
+  if (!file) return <div className={NO_FILE_SQUARE}><Icon name="image" className="w-6 h-6 text-zinc-700" /></div>;
   if (isVideo(file.url)) {
     return file.posterUrl ? (
       /* eslint-disable-next-line @next/next/no-img-element */
@@ -50,5 +51,5 @@ export function MediaSquare({ file }: { file?: MediaFile }) {
     /* eslint-disable-next-line @next/next/no-img-element */
     return <div className={wrapCls}><img src={file.url} alt="" loading="lazy" className={mediaCls} /></div>;
   }
-  return <div className={NO_FILE_SQUARE}><span className="text-2xl opacity-55">📷</span></div>;
+  return <div className={NO_FILE_SQUARE}><Icon name="image" className="w-6 h-6 text-zinc-700" /></div>;
 }

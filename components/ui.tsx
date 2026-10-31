@@ -19,7 +19,7 @@ export function Spinner({ small = false }: { small?: boolean }) {
 }
 
 // Иконки вместо эмодзи: эмодзи на каждой системе своего цвета и размера.
-type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image";
+export type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image";
 const PATHS: Record<IconName, string[]> = {
   folder: ["M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   upload: ["M12 15V3", "m7 8 5-5 5 5", "M5 21h14"],

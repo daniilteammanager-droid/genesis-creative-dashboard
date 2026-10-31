@@ -2,9 +2,9 @@
 // что раздел рабочий, а не сломанный, и что нужно сделать, чтобы он ожил.
 export default function NoConnections({ title, what }: { title: string; what: string }) {
   return (
-    <main className="min-h-screen bg-background text-white p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">{title}</h1>
+        <h1 className="page-title mb-6">{title}</h1>
 
         <div className="card p-6">
           <h2 className="text-lg font-semibold text-white mb-2">Подключений пока нет</h2>

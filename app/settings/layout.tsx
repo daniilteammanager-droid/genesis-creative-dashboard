@@ -9,9 +9,9 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   if (!profile) redirect("/login");
 
   return (
-    <main className="min-h-screen bg-background text-white p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Настройки</h1>
+        <h1 className="page-title mb-6">Настройки</h1>
         <SettingsNav isMain={profile.role === "main"} />
         {children}
       </div>

@@ -177,7 +177,7 @@ export default function TrafficReportPage() {
   return (
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-2">Отчёт по трафику</h1>
+        <h1 className="page-title mb-2">Отчёт по трафику</h1>
         <p className="text-sm text-hint mb-6">Баер → страна → крео. Крео оцениваем по ROMI и этапу теста.</p>
 
         <div data-tour="traffic-periods" className="flex flex-wrap items-center gap-2 mb-3">

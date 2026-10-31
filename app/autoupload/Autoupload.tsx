@@ -10,6 +10,7 @@ import LibraryPicker from "./LibraryPicker";
 import UploadApp from "./UploadApp";
 import CreativeUploadModal from "@/app/library/CreativeUploadModal";
 import { DatePicker } from "@/components/DatePicker";
+import { Icon } from "@/components/ui";
 
 // Автозалив (Decision 081, 087) — форма один в один с Genesis Manager Артёма:
 // 01 кабинеты и основа → общий набор адсетов с креативами → текст → 02 кампании
@@ -195,8 +196,8 @@ export default function Autoupload() {
       overrides: Object.fromEntries(Object.entries(f.overrides).filter(([k]) => !k.startsWith(`${key}::`))) });
   };
 
-  if (err && !opt) return <div className="max-w-5xl mx-auto px-4 py-6 text-red-300">{err}</div>;
-  if (!opt) return <div className="max-w-5xl mx-auto px-4 py-6 text-hint">Загружаю…</div>;
+  if (err && !opt) return <div className="max-w-5xl mx-auto p-4 md:p-8 text-red-300">{err}</div>;
+  if (!opt) return <div className="max-w-5xl mx-auto p-4 md:p-8 text-hint">Загружаю…</div>;
 
   const creativesCount = f.adsets.reduce((s, a) => s + a.creatives.length, 0);
   const rows = input.campaigns;
@@ -212,15 +213,15 @@ export default function Autoupload() {
   const ready = checks.filter((c) => c[1]).length;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+    <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold text-white">Автозалив</h1>
+          <h1 className="page-title">Автозалив</h1>
           <p className="text-sm text-hint mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия. Форма сохраняется черновиком в этом браузере.</p>
         </div>
         {/* Сохранённые сборки (Decision 092) — на сервере: открыть с любого устройства. */}
-        <div className="flex gap-2 items-center">
-          <button type="button" onClick={saveDraft} className={`btn border-violet-700/50 text-violet-200`}>💾 Сохранить сборку</button>
+        <div className="flex flex-wrap gap-2 items-center">
+          <button type="button" onClick={saveDraft} className={`btn border-violet-700/50 text-violet-200`}><Icon name="save" />Сохранить сборку</button>
           <select value="" onChange={(e) => openDraft(e.target.value)} onFocus={loadDrafts} className="field">
             <option value="">Сохранённые сборки{drafts.length ? ` · ${drafts.length}` : ""}</option>
             {drafts.map((d) => <option key={d.id} value={d.id}>{d.name} · {new Date(d.updated_at).toLocaleDateString("ru-RU")}</option>)}
@@ -274,7 +275,7 @@ export default function Autoupload() {
       <div data-tour="au-adsets" className={card}>
         <div className="flex items-center gap-2 mb-3">
           <h2 className={`${h2} mb-0`}>Креативы · общий набор</h2>
-          <button type="button" onClick={() => setUploading(true)} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>⬆ Загрузить новые в Медиатеку</button>
+          <button type="button" onClick={() => setUploading(true)} className={`btn border-violet-700/50 text-violet-200 ml-auto`}><Icon name="upload" />Загрузить новые в Медиатеку</button>
         </div>
         <div className="space-y-3">
           {f.adsets.map((a, i) => (

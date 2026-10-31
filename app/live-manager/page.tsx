@@ -24,9 +24,9 @@ export default function ReportsPage() {
   const [view, setView] = useState<View>("campaigns");
 
   return (
-    <main className="min-h-screen bg-background text-white p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Live Manager</h1>
+        <h1 className="page-title mb-6">Live Manager</h1>
 
         <div data-tour="reports-views" className="seg mb-6">
           {VIEWS.map((v) => (

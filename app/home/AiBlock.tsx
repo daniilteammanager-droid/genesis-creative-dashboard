@@ -27,7 +27,7 @@ export default function AiBlock({ lead }: { lead: boolean }) {
         {data.budget && ` Твой лимит: $${data.budget.used.toFixed(2)} из $${data.budget.limit} в этом месяце.`}
       </p>
       {!data.ready && <p className="text-sm text-amber-300/80 mb-4">Не подключено: на сервере нет ключа ANTHROPIC_API_KEY.</p>}
-      <div className={`grid gap-4 ${lead ? "xl:grid-cols-2" : ""}`}>
+      <div className={`grid grid-cols-1 gap-4 ${lead ? "xl:grid-cols-2" : ""}`}>
         {lead && data.ready && <Weekly />}
         <div className={card}>
           <p className="font-semibold mb-3">Свежие разборы крео</p>

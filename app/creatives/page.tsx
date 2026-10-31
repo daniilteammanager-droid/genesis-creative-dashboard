@@ -10,9 +10,9 @@ export default async function CreativesPage() {
   if (!profile) redirect("/login");
 
   return (
-    <main className="min-h-screen bg-background text-white p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Креативы</h1>
+        <h1 className="page-title mb-6">Креативы</h1>
         <CreativesView />
       </div>
     </main>

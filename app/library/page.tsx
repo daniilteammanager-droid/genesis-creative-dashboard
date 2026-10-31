@@ -372,10 +372,12 @@ export default function Home() {
 
   return (
     <main
-      className="min-h-screen bg-background text-white p-8"
+      className="min-h-screen bg-background text-white p-4 md:p-8"
       style={{ animation: contentVisible ? "dashboard-fade-in 0.45s ease forwards" : "none", opacity: contentVisible ? undefined : 0 }}
     >
       <div className="w-full">
+
+        <h1 className="page-title mb-6">Легаси крео</h1>
 
         {/* Вкладки этой страницы */}
         <div data-tour="legacy-tabs" className="seg mb-6">
@@ -393,7 +395,7 @@ export default function Home() {
         {topTab === "creatives" && (
           <>
             {/* Sticky controls */}
-            <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-background/90 backdrop-blur-md border-b border-line">
+            <div className="sticky top-0 z-20 -mx-4 px-4 md:-mx-8 md:px-8 pt-4 pb-4 mb-6 bg-background/90 backdrop-blur-md border-b border-line">
               <input
                 data-tour="legacy-search"
                 type="text"

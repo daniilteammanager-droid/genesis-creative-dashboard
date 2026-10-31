@@ -987,9 +987,9 @@ export default function CheckPage() {
 
   return (
     <div className="min-h-screen bg-background text-white">
-      <div className="w-full px-4 md:px-8 py-8">
+      <div className="w-full p-4 md:p-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
-          <h1 className="text-white text-3xl font-semibold tracking-wide">Checks</h1>
+          <h1 className="page-title">Checks</h1>
           <div data-tour="check-modes" className="seg">
             <button onClick={() => setMode("live")} {...seg(mode === "live")}>Живой</button>
             <button onClick={() => setMode("manual")} {...seg(mode === "manual")}>Ручной</button>

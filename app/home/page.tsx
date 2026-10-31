@@ -62,7 +62,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">
+        <h1 className="page-title mb-6">
           {me?.name ? `Привет, ${me.name}` : "Главная"}
         </h1>
 
@@ -115,10 +115,10 @@ function Leaders() {
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {!data && !err && <p className="text-hint text-sm">Загружаю…</p>}
       {data && (
-        <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-4">
-          <BoardCard title="🔥 За месяц" board={data.month} />
-          <BoardCard title="🏆 За 3 месяца" board={data.quarter} />
-          <BoardCard title="👑 За всё время" board={data.allTime} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+          <BoardCard title="За месяц" board={data.month} />
+          <BoardCard title="За 3 месяца" board={data.quarter} />
+          <BoardCard title="За всё время" board={data.allTime} />
         </div>
       )}
       {data && data.failed.length > 0 && (

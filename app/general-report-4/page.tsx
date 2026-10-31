@@ -257,7 +257,7 @@ export default function GeneralReport4Page() {
   return (
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 4.0</h1>
+        <h1 className="page-title mb-6">General Report 4.0</h1>
 
         {sources.some((x) => x.kind === "main") && (
           <div data-tour="gr4-tabs" className="seg mb-6">

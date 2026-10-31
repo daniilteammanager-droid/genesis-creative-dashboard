@@ -44,7 +44,7 @@ export default function Uniquify() {
     load();
   }
 
-  if (!v) return <div className="max-w-6xl mx-auto px-4 py-6 text-hint">Загружаю…</div>;
+  if (!v) return <div className="max-w-6xl mx-auto p-4 md:p-8 text-hint">Загружаю…</div>;
   const pick = (label: string, value: string, set: (s: string) => void) => (
     <label className="flex flex-col gap-1 text-xs text-hint">{label}
       <select value={value} onChange={(e) => set(e.target.value)} className="field">{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -52,9 +52,9 @@ export default function Uniquify() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+    <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Уникализация</h1>
+        <h1 className="page-title">Уникализация</h1>
         <p className="text-sm text-hint mt-1">Выбери видео из своей Медиатеки. Готовый результат появится ниже со ссылкой для скачивания. Уникализация с заменой в отклонённом объявлении — во вкладке «Антиотклон».</p>
       </div>
 

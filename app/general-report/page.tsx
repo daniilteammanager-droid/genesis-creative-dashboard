@@ -482,10 +482,10 @@ export default function GeneralReportPage() {
 
 
   return (
-    <main className="min-h-screen bg-background text-white p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
 
-        <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 3.0</h1>
+        <h1 className="page-title mb-6">General Report 3.0</h1>
 
         {/* Переключатель источников. Что в нём есть — решает сервер по роли. */}
         <div className="flex flex-col gap-3 mb-6">
