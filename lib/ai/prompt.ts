@@ -13,7 +13,7 @@ export interface CreoFacts {
   transcript: string | null;
   geos: GeoFacts[];
   total: Sums;
-  team: { region: string; sums: Sums }[];   // средние команды по регионам — для сравнения
+  team: { region: string; sums: Sums }[];   // средние команды по регионам — в промпт только цены и конверсии, без сумм
 }
 
 export const CREO_SYSTEM = `Ты — аналитик креативов в команде медиабаинга. Команда льёт рекламу из Facebook и Telegram Ads в Telegram-воронку:
@@ -22,6 +22,9 @@ ROMI = (ревенью − спенд) / спенд. Целевая цена д�
 Крео без депов, потративший больше ${TEST_MULT} × целевой цены депа своей страны, — лузер. Цифры за последние ${WINDOW_DAYS} дней.
 Код крео: подход (balance, edit, checklist, storytell…) — tN номер текста — vN версия монтажа того же текста — bN баер — язык-гео.
 Лицо — спикер в видео.
+
+Разбор читает баер, и он только про его крео: не упоминай других баеров, их крео и связки и не советуй брать чужое.
+Средние команды — ориентир по ценам и конверсиям; суммы команды ты не знаешь и не называешь.
 
 По транскрипту и цифрам дай разбор на русском, не больше 200 слов, для баера, который решает, что делать с крео:
 Первая строка — ровно «Вердикт: масштабировать», «Вердикт: держать», «Вердикт: доработать» или «Вердикт: выключить», дальше через тире — почему, в цифрах.
@@ -40,6 +43,14 @@ function line(name: string, s: Sums, stage?: Stage): string {
     `диалог→деп ${pct(m.crDep)}, депов ${s.deps} (${usd(m.cpdep)}), ревенью $${Math.round(s.rev)}, ROMI ${m.romi === null ? "—" : `${m.romi.toFixed(0)}%`}`;
 }
 
+// Средние команды — только отношения: цены и конверсии. Суммы чужих баеров (спенд, депы, ревенью)
+// в промпт не идут, чтобы модель не пересказала их баеру.
+function ratioLine(name: string, s: Sums): string {
+  const m = metricsOf(s);
+  return `${name}: CPM ${usd(m.cpm)}, CTR ${pct(m.ctr)}, цена подписки ${usd(m.cps)}, подписка→диалог ${pct(m.crDia)}, ` +
+    `цена диалога ${usd(m.cpd)}, диалог→деп ${pct(m.crDep)}, цена депа ${usd(m.cpdep)}, ROMI ${m.romi === null ? "—" : `${m.romi.toFixed(0)}%`}`;
+}
+
 export function creoPrompt(f: CreoFacts): string {
   return [
     `Крео: ${f.creo} · баер: ${f.buyer}${f.face ? ` · лицо: ${f.face}` : ""}${f.funnel ? ` · воронка: ${f.funnel}` : ""}`,
@@ -51,9 +62,20 @@ export function creoPrompt(f: CreoFacts): string {
     line("Итого", f.total),
     ...f.geos.map((g) => line(g.name, g.sums, g.stage)),
     "",
-    "Средние по команде за тот же период (все крео):",
-    ...f.team.map((t) => line(t.region, t.sums)),
+    "Средние по команде за тот же период (все крео, только цены и конверсии):",
+    ...f.team.map((t) => ratioLine(t.region, t.sums)),
   ].join("\n");
+}
+
+// Код текста крео без баера и гео: vid-balance-t30-v9-b3-es-es → vid-balance-t30-v9; баер — b3.
+export const textBase = (creo: string) => creo.toLowerCase().match(/^([a-z]+-[a-z0-9]+-t\d+-v\d+)(?=-|$)/)?.[1] ?? null;
+export const buyerCodeIn = (code: string) => code.toLowerCase().match(/-(b\d+)(?=-|$)/)?.[1] ?? null;
+
+// Транскрипт к крео — как файлы к строкам (Decision 077): своя папка баера или легаси без кода баера,
+// чужой bN — никогда. Свой — первым.
+export function pickTranscript(rows: { code: string; text: string }[], buyerCode: string | null): string | null {
+  const own = rows.find((r) => buyerCode && buyerCodeIn(r.code) === buyerCode.toLowerCase());
+  return (own ?? rows.find((r) => buyerCodeIn(r.code) === null))?.text ?? null;
 }
 
 // Отпечаток цифр: те же цифры — тот же разбор, повторно не платим.

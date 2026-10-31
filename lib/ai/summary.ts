@@ -5,7 +5,7 @@ import { notify } from "@/lib/telegram/links";
 import { loadTrafficReport } from "@/lib/traffic-report/load";
 import { geoName, metricsOf, regionName, REST, type Cell, type Sums } from "@/lib/traffic-report/build";
 import { aiReady, ask, SUMMARY_MODEL } from "./claude";
-import { chunks, toTelegramHtml } from "./prompt";
+import { buyerCodeIn, chunks, pickTranscript, textBase, toTelegramHtml } from "./prompt";
 
 // Недельная AI-сводка владельцу и тимлиду (Decision 101): по каждому баеру — что работает, что
 // сливает, что делать; по команде — закономерности по подходам, текстам и гео. Сама — по
@@ -26,9 +26,10 @@ const SYSTEM = `Ты — руководитель отдела медиабаи�
 
 Напиши сводку недели на русском, до 600 слов, для владельца команды:
 1. По каждому баеру (отдельным блоком, имя жирным): итог недели к прошлой; что работает — крео, подходы, тексты с цифрами;
-   что сливает; 2–3 конкретных действия на эту неделю.
-2. По команде: какие подходы, тексты и хуки дают депы у разных баеров, какие гео тянут, что стоит перенести от одного баера
-   другому, 3 действия на неделю.
+   что сливает; 2–3 конкретных действия на эту неделю — только с его собственными крео, гео и бюджетом.
+2. По команде: какие подходы, хуки и гео дают депы, где команда теряет деньги, 3 действия на неделю для руководителя.
+Дела баера — только дела баера: у каждого свои крео. Никогда не советуй баеру взять, перенять, скопировать или залить крео,
+текст или связку другого баера и не предлагай обмен крео между баерами.
 Опирайся только на цифры и транскрипты из запроса. Без таблиц и заголовков «#», можно **жирный** и списки через «- ».`;
 
 const zero = (): Sums => ({ spend: 0, impr: 0, clicks: 0, subs: 0, dia: 0, deps: 0, rev: 0 });
@@ -38,21 +39,22 @@ const fmt = (s: Sums) => {
   return `спенд $${s.spend.toFixed(0)}, подписок ${s.subs}, диалогов ${s.dia}, депов ${s.deps}, ревенью $${Math.round(s.rev)}, ` +
     `ROMI ${m.romi === null ? "—" : `${m.romi.toFixed(0)}%`}, цена депа ${m.cpdep === null ? "—" : `$${m.cpdep.toFixed(0)}`}`;
 };
-const baseOf = (creo: string) => creo.toLowerCase().match(/^([a-z]+-[a-z0-9]+-t\d+-v\d+)(?=-|$)/)?.[1] ?? null;
+type Hooks = Map<string, { code: string; text: string }[]>;
 
-async function hooks(bases: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+// Транскрипты по коду текста; к крео — его баера или легаси (pickTranscript), чужой bN — никогда.
+async function hooks(bases: string[]): Promise<Hooks> {
+  const out: Hooks = new Map();
   if (!bases.length) return out;
   const { data } = await warehouse().from("creative_notes").select("creative_code, transcription_ru")
     .or(bases.map((b) => `creative_code.ilike.${b}-*`).join(",")).not("transcription_ru", "is", null);
   for (const r of data ?? []) {
-    const b = baseOf(r.creative_code as string);
-    if (b && !out.has(b)) out.set(b, String(r.transcription_ru).replace(/\s+/g, " ").slice(0, 160));
+    const b = textBase(r.creative_code as string);
+    if (b) out.set(b, [...(out.get(b) ?? []), { code: r.creative_code as string, text: String(r.transcription_ru).replace(/\s+/g, " ").slice(0, 160) }]);
   }
   return out;
 }
 
-export function summaryPrompt(week: Cell[], prev: Cell[], hook: Map<string, string>, range: { since: string; until: string }): string {
+export function summaryPrompt(week: Cell[], prev: Cell[], hook: Hooks, range: { since: string; until: string }): string {
   const buyers = [...new Set(week.map((c) => c.buyer))].sort();
   const sum = (cells: Cell[]) => cells.reduce((s, c) => (add(s, c.sums), s), zero());
   const lines = [`Неделя ${range.since} — ${range.until}.`, ""];
@@ -70,7 +72,7 @@ export function summaryPrompt(week: Cell[], prev: Cell[], hook: Map<string, stri
     const top = [...byCreo].sort((a, b2) => b2[1].s.spend - a[1].s.spend);
     const picked = [...top.slice(0, 20), ...top.slice(20).filter(([, x]) => x.s.deps > 0)];
     for (const [creo, x] of picked) {
-      const h = hook.get(baseOf(creo) ?? "");
+      const h = pickTranscript(hook.get(textBase(creo) ?? "") ?? [], buyerCodeIn(creo));
       lines.push(`- ${creo} (${[...x.geos].join(", ")}): ${fmt(x.s)}${h ? `. Начало текста: «${h}»` : ""}`);
     }
     lines.push("");
@@ -89,7 +91,7 @@ export async function weeklySummary(asProfile: Profile, range = lastWeek()): Pro
     loadTrafficReport(owner, shift(range.since, -7), shift(range.until, -7)),
   ]);
   if (!week.cells.length) throw new Error("За неделю нет цифр");
-  const bases = [...new Set(week.cells.map((c) => baseOf(c.creo)).filter((b): b is string => Boolean(b)))];
+  const bases = [...new Set(week.cells.map((c) => textBase(c.creo)).filter((b): b is string => Boolean(b)))];
   const a = await ask(SUMMARY_MODEL, SYSTEM, summaryPrompt(week.cells, prev.cells, await hooks(bases), range), 16000);
   const { error } = await warehouse().from("ai_summaries").upsert({
     week: range.since, text: a.text, model: a.model, input_tokens: a.inputTokens, output_tokens: a.outputTokens, cost_usd: a.cost,

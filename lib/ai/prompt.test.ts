@@ -1,6 +1,6 @@
 // Самопроверка разбора. Запуск: npx tsx lib/ai/prompt.test.ts
 import assert from "node:assert/strict";
-import { chunks, creoPrompt, dataHash, parseVerdict, toTelegramHtml, type CreoFacts } from "./prompt";
+import { chunks, creoPrompt, dataHash, parseVerdict, pickTranscript, toTelegramHtml, type CreoFacts } from "./prompt";
 import { lastWeek, summaryPrompt } from "./summary";
 
 assert.equal(parseVerdict("**Вердикт: масштабировать в Испании** — 3 депа"), "scale");
@@ -20,6 +20,16 @@ const p = creoPrompt(f);
 assert.ok(p.includes("Испания (есть депы): спенд $319"));
 assert.ok(p.includes("Вчера я поймал сделку"));
 assert.ok(creoPrompt({ ...f, transcript: null }).includes("транскрипта нет"));
+// Средние команды — без сумм: баер не должен узнать спенд и ревенью команды.
+const teamLine = p.split("\n").find((l) => l.startsWith("Испания:"))!;
+assert.ok(teamLine.includes("цена депа") && !teamLine.includes("спенд") && !teamLine.includes("ревенью"));
+
+// Транскрипт: свой bN первым, потом легаси без кода баера, чужой bN — никогда (Decision 077).
+const rows = [{ code: "vid-balance-t30-v9-b1-es-es", text: "Артём" }, { code: "vid-balance-t30-v9-es-es", text: "легаси" }, { code: "vid-balance-t30-v9-b3-es-es", text: "Andrew" }];
+assert.equal(pickTranscript(rows, "b3"), "Andrew");
+assert.equal(pickTranscript(rows, "b2"), "легаси");
+assert.equal(pickTranscript(rows.slice(0, 1), "b3"), null);
+assert.equal(pickTranscript(rows, "B1"), "Артём");
 
 assert.equal(dataHash(f), dataHash({ ...f, team: [] }));             // средние команды не меняют разбор крео
 assert.notEqual(dataHash(f), dataHash({ ...f, geos: [{ ...f.geos[0], sums: s(400, 3) }] }));
@@ -33,6 +43,6 @@ assert.deepEqual(lastWeek("2026-11-02"), { since: "2026-10-26", until: "2026-11-
 assert.deepEqual(lastWeek("2026-10-31"), { since: "2026-10-19", until: "2026-10-25" });
 const cell = (buyer: string, creo: string, deps: number) => ({ buyer, geo: "ES", face: "ROMAN", funnel: "TG", platform: "fb" as const, creo, sums: s(300, deps) });
 const sp = summaryPrompt([cell("Andrew", "vid-balance-t47-v2-b3-es-es", 2), cell("Матвей", "vid-checklist-t16-v1-b2-es-es", 0)], [],
-  new Map([["vid-balance-t47-v2", "Вчера я поймал сделку"]]), { since: "2026-10-19", until: "2026-10-25" });
+  new Map([["vid-balance-t47-v2", [{ code: "vid-balance-t47-v2-b3-es-es", text: "Вчера я поймал сделку" }]]]), { since: "2026-10-19", until: "2026-10-25" });
 assert.ok(sp.includes("## Баер Andrew") && sp.includes("## Баер Матвей") && sp.includes("Начало текста: «Вчера я поймал сделку»"));
 console.log("ai prompt: ok");

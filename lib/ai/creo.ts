@@ -7,7 +7,7 @@ import { loadTrafficReport, type TrafficReport } from "@/lib/traffic-report/load
 import { geoName, regionName, stageOf, REST, type Cell, type Sums } from "@/lib/traffic-report/build";
 import { dashboardUrl } from "@/lib/alerts/autocheck";
 import { aiReady, ask, CREO_MODEL } from "./claude";
-import { CREO_SYSTEM, WINDOW_DAYS, creoPrompt, dataHash, parseVerdict, toTelegramHtml, type CreoFacts, type Verdict } from "./prompt";
+import { CREO_SYSTEM, WINDOW_DAYS, creoPrompt, dataHash, parseVerdict, pickTranscript, textBase, toTelegramHtml, type CreoFacts, type Verdict } from "./prompt";
 
 // AI-разбор крео баера (Decision 101): кнопка в «Отчётах» и автоматически — когда крео прошло
 // границу теста без депов и когда дало первые депы (очередь, крон kind=ai, разбор уходит баеру
@@ -54,13 +54,13 @@ async function profileOf(id: string): Promise<Profile> {
   return data as Profile;
 }
 
-async function transcriptOf(creo: string): Promise<string | null> {
-  // Транскрипт — у видео, а не у объявления: код без баера и гео (vid-balance-t30-v9).
-  const base = creo.toLowerCase().match(/^([a-z]+-[a-z0-9]+-t\d+-v\d+)(?=-|$)/)?.[1];
+async function transcriptOf(creo: string, buyerCode: string | null): Promise<string | null> {
+  // Транскрипт — у видео, а не у объявления: ищем по коду текста, а чей он — решает pickTranscript.
+  const base = textBase(creo);
   if (!base) return null;
-  const { data } = await db().from("creative_notes").select("transcription_ru")
-    .or(`creative_code.ilike.${base},creative_code.ilike.${base}-*`).not("transcription_ru", "is", null).limit(1);
-  return (data?.[0]?.transcription_ru as string | undefined) || null;
+  const { data } = await db().from("creative_notes").select("creative_code, transcription_ru")
+    .or(`creative_code.ilike.${base},creative_code.ilike.${base}-*`).not("transcription_ru", "is", null).limit(50);
+  return pickTranscript((data ?? []).map((r) => ({ code: r.creative_code as string, text: r.transcription_ru as string })), buyerCode);
 }
 
 // Вся команда за 30 дней — ради средних по регионам; в ответ баеру чужие цифры не уходят.
@@ -74,7 +74,8 @@ async function teamReport(asProfile: Profile): Promise<TrafficReport> {
 }
 
 export async function creoFacts(buyerId: string, creo: string): Promise<CreoFacts> {
-  const report = await teamReport(await profileOf(buyerId));
+  const buyer = await profileOf(buyerId);
+  const report = await teamReport(buyer);
   const label = report.buyers.find((b) => b.id === buyerId)?.label;
   const mine = report.cells.filter((c) => c.buyer === label && c.creo === creo);
   if (!label || !mine.length) throw new Error("По этому крео нет цифр за 30 дней");
@@ -86,7 +87,7 @@ export async function creoFacts(buyerId: string, creo: string): Promise<CreoFact
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].join(", ");
   return {
     buyer: label, creo, face: uniq(mine.map((c) => c.face)), funnel: uniq(mine.map((c) => c.funnel)),
-    transcript: await transcriptOf(creo),
+    transcript: await transcriptOf(creo, buyer.buyer_code ?? null),
     geos: [...byGeo].filter(([g]) => g !== REST).sort((a, b) => b[1].spend - a[1].spend)
       .map(([geo, sums]) => ({ geo, name: geoName(geo), stage: stageOf(sums, geo), sums })),
     total,
