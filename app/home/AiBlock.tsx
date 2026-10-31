@@ -8,7 +8,7 @@ import { AiText, VERDICT, type Verdict } from "@/app/traffic-report/AiPanel";
 
 interface Item { id: string; buyer_id: string; creo: string; verdict: Verdict | null; text: string; created_at: string; trigger: string }
 const when = (s: string) => new Date(s).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-4";
+const card = "bg-card border border-line rounded-2xl p-4";
 
 export default function AiBlock({ lead }: { lead: boolean }) {
   const [data, setData] = useState<{ ready: boolean; analyses: Item[]; names: Record<string, string>; budget: { limit: number; used: number } | null } | null>(null);
@@ -22,7 +22,7 @@ export default function AiBlock({ lead }: { lead: boolean }) {
   return (
     <section className="mb-10">
       <h2 className="text-lg font-semibold mb-1">✦ AI-разборы</h2>
-      <p className="text-xs text-zinc-500 mb-4">
+      <p className="text-xs text-hint mb-4">
         Разбор крео — значок ✦ у крео в «Отчётах», и сам, в Telegram, когда крео прошло границу теста или дало первые депы.
         {data.budget && ` Твой лимит: $${data.budget.used.toFixed(2)} из $${data.budget.limit} в этом месяце.`}
       </p>
@@ -31,7 +31,7 @@ export default function AiBlock({ lead }: { lead: boolean }) {
         {lead && data.ready && <Weekly />}
         <div className={card}>
           <p className="font-semibold mb-3">Свежие разборы крео</p>
-          {data.analyses.length === 0 && <p className="text-sm text-zinc-500">Пока ни одного. Открой «Отчёты» и нажми ✦ у крео.</p>}
+          {data.analyses.length === 0 && <p className="text-sm text-hint">Пока ни одного. Открой «Отчёты» и нажми ✦ у крео.</p>}
           <ul className="space-y-1">
             {data.analyses.map((a) => {
               const v = a.verdict ? VERDICT[a.verdict] : null;
@@ -40,7 +40,7 @@ export default function AiBlock({ lead }: { lead: boolean }) {
                   <button onClick={() => setOpen(open === a.id ? null : a.id)} className="w-full flex items-center gap-2 text-left text-sm py-1.5 hover:text-violet-200">
                     {v && <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[11px] ${v.tone}`}>{v.label}</span>}
                     <span className="truncate flex-1">{a.creo}</span>
-                    <span className="shrink-0 text-[11px] text-zinc-500">{lead ? `${data.names[a.buyer_id] ?? ""} · ` : ""}{when(a.created_at)}</span>
+                    <span className="shrink-0 text-[11px] text-hint">{lead ? `${data.names[a.buyer_id] ?? ""} · ` : ""}{when(a.created_at)}</span>
                   </button>
                   {open === a.id && <div className="pb-3 pl-1"><AiText text={a.text} /></div>}
                 </li>
@@ -79,11 +79,11 @@ function Weekly() {
         </button>
       </div>
       {err && <p className="text-xs text-red-400 mb-2">{err}</p>}
-      {s === undefined && <p className="text-sm text-zinc-500">Загружаю…</p>}
-      {s === null && <p className="text-sm text-zinc-500">Первая сводка придёт в понедельник после 10:00 МСК — или собери сейчас.</p>}
+      {s === undefined && <p className="text-sm text-hint">Загружаю…</p>}
+      {s === null && <p className="text-sm text-hint">Первая сводка придёт в понедельник после 10:00 МСК — или собери сейчас.</p>}
       {s && (
         <>
-          <p className="text-[11px] text-zinc-500 mb-2">Неделя с {new Date(`${s.week}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} · собрана {when(s.created_at)}</p>
+          <p className="text-[11px] text-hint mb-2">Неделя с {new Date(`${s.week}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} · собрана {when(s.created_at)}</p>
           <div className={full ? "" : "max-h-64 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"}><AiText text={s.text} /></div>
           <button onClick={() => setFull((v) => !v)} className="mt-2 text-xs text-violet-300 hover:text-violet-200">{full ? "Свернуть" : "Показать целиком"}</button>
         </>

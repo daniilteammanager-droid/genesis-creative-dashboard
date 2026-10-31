@@ -214,7 +214,7 @@ const COLUMNS: ColDef<GrPeriodRow>[] = [
   { id: "websiteClicks", label: "Website Clicks",
     cell: (p) => <span className="text-zinc-300">{p.websiteClicks > 0 ? fmt(p.websiteClicks) : "—"}</span> },
   { id: "impressions", label: "Impressions",
-    cell: (p) => <span className="text-zinc-500">{p.impressions > 0 ? fmt(p.impressions) : "—"}</span> },
+    cell: (p) => <span className="text-hint">{p.impressions > 0 ? fmt(p.impressions) : "—"}</span> },
   { id: "cpm", label: "CPM",
     cell: (p) => <span className="text-zinc-400">{fmtOptMoney(p.cpm)}</span> },
   { id: "cpc", label: "CPC",
@@ -264,7 +264,7 @@ const WA_COLUMNS: ColDef<WaPeriodRow>[] = [
     cell: (p) => <span className="text-white">{p.budget > 0 ? fmtMoney(p.budget) : "—"}</span> },
   { id: "clicks", label: "Ad Clicks", cell: (p) => count(p.clicks) },
   { id: "impressions", label: "Impressions",
-    cell: (p) => <span className="text-zinc-500">{p.impressions > 0 ? fmt(p.impressions) : "—"}</span> },
+    cell: (p) => <span className="text-hint">{p.impressions > 0 ? fmt(p.impressions) : "—"}</span> },
   { id: "cpm", label: "CPM", cell: (p) => money(p.cpm) },
   { id: "cpc", label: "CPC", cell: (p) => money(p.cpc) },
   { id: "ctr", label: "CTR %", cell: (p) => pct(p.ctr) },
@@ -489,11 +489,11 @@ export default function GeneralReportPage() {
     `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
       active
         ? "bg-violet-600 text-white"
-        : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
+        : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
     }`;
 
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white p-8">
+    <main className="min-h-screen bg-background text-white p-8">
       <div className="w-full">
 
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 3.0</h1>
@@ -508,8 +508,8 @@ export default function GeneralReportPage() {
             if (groupSources.length === 0) return null;
             return (
               <div key={group} className="flex items-center gap-3 flex-wrap">
-                <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">{label}</span>
-                <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
+                <span className="text-xs text-hint uppercase tracking-wider w-20">{label}</span>
+                <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit flex-wrap">
                   {groupSources.map((s) => (
                     <button key={s.id} onClick={() => setSource(s.id)} className={chip(activeSource === s.id)}>
                       {s.label}
@@ -542,17 +542,17 @@ export default function GeneralReportPage() {
         {data && !loading && !error && (
           <>
             {/* Meta */}
-            <div className="flex items-center gap-4 mb-6 text-xs text-zinc-600 flex-wrap">
+            <div className="flex items-center gap-4 mb-6 text-xs text-hint flex-wrap">
               <span>Источник: <span className="text-violet-400 font-medium">Google Sheets API</span></span>
               <span>•</span>
-              <span>Строк с данными: <span className="text-zinc-500">{data.rows.length}</span></span>
+              <span>Строк с данными: <span className="text-hint">{data.rows.length}</span></span>
               <span>•</span>
-              <span>Обновлено: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString()}</span>{data.fetchedFrom === "cache" ? " (кэш)" : ""}</span>
+              <span>Обновлено: <span className="text-hint">{new Date(data.generatedAt).toLocaleString()}</span>{data.fetchedFrom === "cache" ? " (кэш)" : ""}</span>
             </div>
 
             {/* All-time totals — never affected by date filter; card set is configurable */}
             <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider">
+              <p className="text-xs text-hint uppercase tracking-wider">
                 Тотал за всё время{country !== "all" ? ` · ${country}` : ""}
               </p>
               <button
@@ -560,7 +560,7 @@ export default function GeneralReportPage() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
                   cardsSettingsOpen
                     ? "bg-violet-600 text-white border-violet-600"
-                    : "bg-[#111118] border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
+                    : "bg-card border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
                 }`}
                 title="Настроить карточки"
               >
@@ -570,8 +570,8 @@ export default function GeneralReportPage() {
             </div>
 
             {cardsSettingsOpen && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4 mb-4">
-                <p className="text-xs text-zinc-600 uppercase tracking-wider mb-3">Какие карточки показывать</p>
+              <div className="bg-card border border-line rounded-2xl p-4 mb-4">
+                <p className="text-xs text-hint uppercase tracking-wider mb-3">Какие карточки показывать</p>
                 <div className="flex flex-wrap gap-2">
                   {activeCards.map((c) => (
                     <button
@@ -580,14 +580,14 @@ export default function GeneralReportPage() {
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                         visibleCards.includes(c.id)
                           ? "bg-violet-600 text-white"
-                          : "bg-[#0f0d18] border border-violet-900/30 text-zinc-500 hover:text-violet-300 hover:border-violet-700/50"
+                          : "bg-panel border border-line text-hint hover:text-violet-300 hover:border-violet-700/50"
                       }`}
                     >
                       {c.label}
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-zinc-600 mt-3">Сохраняется в этом браузере. Порядок — как в списке выше.</p>
+                <p className="text-[11px] text-hint mt-3">Сохраняется в этом браузере. Порядок — как в списке выше.</p>
               </div>
             )}
 
@@ -604,7 +604,7 @@ export default function GeneralReportPage() {
 
             {/* Filters */}
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Период:</span>
+              <span className="text-xs text-hint uppercase tracking-wider mr-1">Период:</span>
               {PRESETS.filter((p) => p.id !== "custom").map((p) => (
                 <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>
                   {p.label}
@@ -615,7 +615,7 @@ export default function GeneralReportPage() {
             </div>
 
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Группировка:</span>
+              <span className="text-xs text-hint uppercase tracking-wider mr-1">Группировка:</span>
               {GRANULARITIES.map((g) => (
                 <button key={g.id} onClick={() => setGranularity(g.id)} className={smallChip(granularity === g.id)}>
                   {g.label}
@@ -624,7 +624,7 @@ export default function GeneralReportPage() {
             </div>
 
             <div className="flex items-center gap-2 mb-6 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">{isWa ? "Воронка:" : "Страна:"}</span>
+              <span className="text-xs text-hint uppercase tracking-wider mr-1">{isWa ? "Воронка:" : "Страна:"}</span>
               <button onClick={() => setCountry("all")} className={smallChip(country === "all")}>
                 Все ({activeCountries.length})
               </button>
@@ -637,7 +637,7 @@ export default function GeneralReportPage() {
 
             {/* Charts */}
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1">Графики:</span>
+              <span className="text-xs text-hint uppercase tracking-wider mr-1">Графики:</span>
               {chartDefs.map((c) => (
                 <button key={c.id} onClick={() => toggleChart(c.id)} className={smallChip(visibleCharts.includes(c.id))}>
                   {visibleCharts.includes(c.id) ? "✓ " : ""}{c.label}
@@ -646,26 +646,26 @@ export default function GeneralReportPage() {
             </div>
 
             {periodRows.length >= 2 && chartPanels.map((c) => (
-              <div key={c.id} className="bg-[#111118] border border-violet-900/20 rounded-2xl p-4 mb-4">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">{c.label}</p>
+              <div key={c.id} className="bg-card border border-line rounded-2xl p-4 mb-4">
+                <p className="text-xs text-hint uppercase tracking-wider mb-2">{c.label}</p>
                 {c.node}
               </div>
             ))}
 
             {/* Table */}
-            <div className="bg-[#111118] border border-violet-900/20 rounded-2xl overflow-hidden">
+            <div className="bg-card border border-line rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-[#0f0d18] border-b border-violet-900/20">
+                  <thead className="bg-panel border-b border-line">
                     <tr>
                       {activeColumns.map((c) => (
-                        <th key={c.id} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">
+                        <th key={c.id} className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap">
                           {c.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-violet-900/10">
+                  <tbody className="divide-y divide-line/50">
                     {periodRows.map((p) => (
                       <tr key={p.periodKey} className="hover:bg-violet-900/5 transition-colors">
                         {activeColumns.map((c) => (
@@ -675,7 +675,7 @@ export default function GeneralReportPage() {
                     ))}
                     {periodRows.length === 0 && (
                       <tr>
-                        <td colSpan={activeColumns.length} className="px-4 py-12 text-center text-zinc-600 text-sm">
+                        <td colSpan={activeColumns.length} className="px-4 py-12 text-center text-hint text-sm">
                           Нет данных за выбранный период.
                         </td>
                       </tr>
@@ -683,7 +683,7 @@ export default function GeneralReportPage() {
                   </tbody>
                   {periodRows.length > 0 && (
                     <tfoot>
-                      <tr className="bg-[#0f0d18] border-t-2 border-violet-800/30">
+                      <tr className="bg-panel border-t-2 border-violet-800/30">
                         {activeColumns.map((c, i) => (
                           <td key={c.id} className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
                             {i === 0

@@ -14,7 +14,7 @@ export default function SettingsNav({ isMain }: { isMain: boolean }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap">
+    <div className="flex gap-1 mb-6 bg-card border border-line rounded-2xl p-1 w-fit flex-wrap">
       {TABS.filter((t) => isMain || !t.mainOnly).map((t) => {
         const active = pathname === t.href;
         return (

@@ -70,8 +70,8 @@ const SORTS: { id: SortBy; label: string }[] = [
 
 const chip = (on: boolean) =>
   `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-    on ? "bg-violet-600 text-white" : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
-const control = "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm text-white";
+    on ? "bg-violet-600 text-white" : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
+const control = "bg-panel border border-line rounded-xl px-3 py-2 text-sm text-white";
 // Избранное — «баер × крео» (id баера, имя крео): отметка во всех странах сразу.
 const favKey = (buyerId: string, creo: string) => `${buyerId}\u0000${creo}`;
 
@@ -178,10 +178,10 @@ export default function TrafficReportPage() {
   const pick = (r: { since: string; until: string }) => { setData(null); setRange(r); };
 
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white p-4 md:p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-2">Отчёт по трафику</h1>
-        <p className="text-sm text-zinc-500 mb-6">Баер → страна → крео. Крео оцениваем по ROMI и этапу теста.</p>
+        <p className="text-sm text-hint mb-6">Баер → страна → крео. Крео оцениваем по ROMI и этапу теста.</p>
 
         <div data-tour="traffic-periods" className="flex flex-wrap items-center gap-2 mb-3">
           <DateRange since={range.since} until={range.until} onChange={(since, until) => pick({ since, until })} />
@@ -200,22 +200,22 @@ export default function TrafficReportPage() {
         )}
 
         {/* Фильтры как в General 4.0: в каждом разрезе можно выбрать несколько значений */}
-        <div data-tour="traffic-dims" className="bg-[#111118] border border-violet-900/25 rounded-2xl p-4 mb-4">
+        <div data-tour="traffic-dims" className="bg-card border border-line rounded-2xl p-4 mb-4">
           <button onClick={() => setFiltersOpen((v) => !v)} className="flex items-center gap-2 text-sm text-zinc-300 w-full text-left">
-            <span className="text-zinc-500">{filtersOpen ? "▾" : "▸"}</span>
+            <span className="text-hint">{filtersOpen ? "▾" : "▸"}</span>
             Фильтры
             {activeFilters.length > 0 && (
               <span className="text-xs text-violet-300">{activeFilters.map((d) => `${DIM_LABELS[d]}: ${filters[d]!.join(", ")}`).join(" · ")}</span>
             )}
             {activeFilters.length > 0 && (
-              <span onClick={(e) => { e.stopPropagation(); setFilters({}); }} className="ml-auto text-xs text-zinc-500 hover:text-red-300 cursor-pointer">сбросить</span>
+              <span onClick={(e) => { e.stopPropagation(); setFilters({}); }} className="ml-auto text-xs text-hint hover:text-red-300 cursor-pointer">сбросить</span>
             )}
           </button>
           {filtersOpen && (
             <div className="mt-3 space-y-2">
               {DIMS.filter((d) => options[d].length > 1 || filters[d]?.length).map((d) => (
                 <div key={d} className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs text-zinc-600 uppercase tracking-wider mr-1 w-20">{DIM_LABELS[d]}</span>
+                  <span className="text-xs text-hint uppercase tracking-wider mr-1 w-20">{DIM_LABELS[d]}</span>
                   <button onClick={() => toggleFilter(d, null)} className={chip(!filters[d]?.length)}>Все</button>
                   {options[d].map((v) => (
                     <button key={v} onClick={() => toggleFilter(d, v)} className={chip(!!filters[d]?.includes(v))}>{v}</button>
@@ -239,22 +239,22 @@ export default function TrafficReportPage() {
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
 
-        <section data-tour="traffic-tree" className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4 md:p-5">
+        <section data-tour="traffic-tree" className="bg-card border border-line rounded-2xl p-4 md:p-5">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-400 mb-3">
-            <span className="text-zinc-500">ROMI:</span>
+            <span className="text-hint">ROMI:</span>
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.red}`} />{ROMI_CUTS.red}%</span>
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.orange}`} />от {ROMI_CUTS.red + 1}% до {ROMI_CUTS.orange}%</span>
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.yellow}`} />от {ROMI_CUTS.orange + 1}% до {ROMI_CUTS.yellow}%</span>
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.green}`} />{ROMI_CUTS.yellow + 1}% и выше</span>
           </div>
-          <p className="text-xs text-zinc-500 mb-4 max-w-5xl">
+          <p className="text-xs text-hint mb-4 max-w-5xl">
             «На тесте» — депов нет и спенд меньше {TEST_MULT.toLocaleString("ru-RU")} × целевой цены депа страны: Испания {usd0(TEST_MULT * TARGET_DEP.ES)},
             Латам {usd0(TEST_MULT * TARGET_DEP.LATAM)}, остальные {usd0(TEST_MULT * TARGET_DEP.OTHER)}. «Лузер пока что» — депов нет, граница пройдена.
             «Есть депы» — оцениваем по ROMI. «Без спенда» — депы и подписки пришли в периоде с крео, которое в нём уже не крутилось.
           </p>
 
           <div data-tour="traffic-filters" className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="flex gap-1 bg-[#0d0b14] border border-violet-900/40 rounded-full p-0.5" role="group" aria-label="Склейка крео">
+            <div className="flex gap-1 bg-panel border border-line rounded-full p-0.5" role="group" aria-label="Склейка крео">
               {MODES.map((m) => (
                 <button key={m.id} title={m.hint} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}
                         className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${mode === m.id ? "bg-violet-600 text-white" : "text-zinc-400 hover:text-violet-300"}`}>{m.label}</button>
@@ -274,20 +274,20 @@ export default function TrafficReportPage() {
             <input id="traffic-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск крео" className={`${control} min-w-[10rem] flex-1 max-w-xs`} />
           </div>
 
-          <div className="overflow-auto max-h-[70vh] rounded-xl border border-violet-900/25 [color-scheme:dark]">
+          <div className="overflow-auto max-h-[70vh] rounded-xl border border-line [color-scheme:dark]">
             <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
               <thead>
-                <tr className="text-zinc-500">
-                  <th className="sticky top-0 left-0 z-30 bg-[#111118] text-left font-medium px-3 py-2 border-b border-violet-900/30 min-w-[13rem]">Баер / страна / крео</th>
-                  <th className="sticky top-0 z-20 bg-[#111118] text-left font-medium px-3 py-2 border-b border-violet-900/30">Этап</th>
-                  {COLS.map((c) => <th key={c.label} className="sticky top-0 z-20 bg-[#111118] text-right font-medium px-3 py-2 border-b border-violet-900/30 whitespace-nowrap">{c.label}</th>)}
-                  <th className="sticky top-0 z-20 bg-[#111118] text-right font-medium px-3 py-2 border-b border-violet-900/30">ROMI</th>
+                <tr className="text-hint">
+                  <th className="sticky top-0 left-0 z-30 bg-card text-left font-medium px-3 py-2 border-b border-line min-w-[13rem]">Баер / страна / крео</th>
+                  <th className="sticky top-0 z-20 bg-card text-left font-medium px-3 py-2 border-b border-line">Этап</th>
+                  {COLS.map((c) => <th key={c.label} className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line whitespace-nowrap">{c.label}</th>)}
+                  <th className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line">ROMI</th>
                 </tr>
               </thead>
               <tbody>
-                {!data && !err && <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-zinc-500">Загружаю…</td></tr>}
+                {!data && !err && <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-hint">Загружаю…</td></tr>}
                 {data && rows.length === 0 && (
-                  <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-zinc-500">
+                  <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-hint">
                     {!onlyFav ? "За этот период расхода и Torro нет."
                       : favs.size ? "Избранные крео в этом периоде не крутились и Torro по ним нет."
                       : "Избранного пока нет — отметь крео звездой ☆ слева от названия."}
@@ -299,37 +299,37 @@ export default function TrafficReportPage() {
                   const aiKey = creoRow ? favKey(idOf.get(rowBuyer) ?? rowBuyer, n.label) : "";
                   const verdict = ai.get(aiKey);
                   const band = romiBand(n.m.romi);
-                  const bg = n.level === 0 ? "bg-[#1a1626]" : "bg-[#111118]";
+                  const bg = n.level === 0 ? "bg-raised" : "bg-card";
                   const st = STAGES.find((s) => s.id === n.stage);
                   return (
                     <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
-                      <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-violet-900/15 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>
-                        {n.children && <span className="inline-block w-4 text-zinc-500">{isOpen ? "▾" : "▸"}</span>}
+                      <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-line/50 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>
+                        {n.children && <span className="inline-block w-4 text-hint">{isOpen ? "▾" : "▸"}</span>}
                         {creoRow && (
                           <button onClick={(e) => { e.stopPropagation(); toggleFav(rowBuyer, n.label); }}
                                   title={fav ? "Убрать из избранного" : "В избранное"} aria-label={fav ? "Убрать из избранного" : "В избранное"} aria-pressed={fav}
-                                  className={`inline-block w-5 -ml-1 mr-0.5 ${fav ? "text-amber-300" : "text-zinc-600 hover:text-amber-200"}`}>{fav ? "★" : "☆"}</button>
+                                  className={`inline-block w-5 -ml-1 mr-0.5 ${fav ? "text-amber-300" : "text-hint hover:text-amber-200"}`}>{fav ? "★" : "☆"}</button>
                         )}
                         {creoRow && idOf.has(rowBuyer) && (
                           <button onClick={(e) => { e.stopPropagation(); setAiOpen({ buyerId: idOf.get(rowBuyer)!, buyer: rowBuyer, creo: n.label }); }}
                                   title={ai.has(aiKey) ? `AI-разбор${verdict ? `: ${VERDICT[verdict].label.toLowerCase()}` : ""}` : "AI-разбор крео"} aria-label="AI-разбор крео"
-                                  className={`inline-block w-5 mr-0.5 ${ai.has(aiKey) ? (verdict ? VERDICT[verdict].tone.split(" ")[1] : "text-violet-300") : "text-zinc-600 hover:text-violet-300"}`}>✦</button>
+                                  className={`inline-block w-5 mr-0.5 ${ai.has(aiKey) ? (verdict ? VERDICT[verdict].tone.split(" ")[1] : "text-violet-300") : "text-hint hover:text-violet-300"}`}>✦</button>
                         )}
                         {n.label}
-                        {n.level === 2 && n.children && <span className="text-zinc-500 font-normal"> · {n.children.length} крео</span>}
+                        {n.level === 2 && n.children && <span className="text-hint font-normal"> · {n.children.length} крео</span>}
                       </td>
-                      <td className={`${bg} px-3 py-1.5 border-b border-violet-900/15 whitespace-nowrap`}>
+                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 whitespace-nowrap`}>
                         {st ? (
                           <span className={`inline-block px-2 py-0.5 rounded-md border ${st.chip}`}>{st.label}{n.stage === "test" && n.left !== undefined ? ` · ещё ${usd0(n.left)}` : ""}</span>
                         ) : n.counts ? (
-                          <span className="text-zinc-500 font-normal">
+                          <span className="text-hint font-normal">
                             {STAGES.filter((s) => n.counts![s.id] > 0).map((s, i) => <Fragment key={s.id}>{i > 0 && " · "}{n.counts![s.id]} {s.many(n.counts![s.id])}</Fragment>)}
                           </span>
                         ) : null}
                       </td>
-                      {COLS.map((c) => <td key={c.label} className={`${bg} px-3 py-1.5 border-b border-violet-900/15 text-right whitespace-nowrap`}>{c.cell(n)}</td>)}
-                      <td className={`${bg} px-3 py-1.5 border-b border-violet-900/15 text-right whitespace-nowrap`}>
-                        <span className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md ${band ? BAND[band] : "text-zinc-500"}`}>{show(n.m.romi, romiText)}</span>
+                      {COLS.map((c) => <td key={c.label} className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>{c.cell(n)}</td>)}
+                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>
+                        <span className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md ${band ? BAND[band] : "text-hint"}`}>{show(n.m.romi, romiText)}</span>
                       </td>
                     </tr>
                   );
@@ -337,7 +337,7 @@ export default function TrafficReportPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-zinc-600 mt-3 max-w-5xl">
+          <p className="text-[11px] text-hint mt-3 max-w-5xl">
             Спенд, показы и клики — склад (Meta, Telegram Ads; у Артёма за 19.09–23.10 — снимки Genesis Manager), клики — все клики Meta.
             Подписки, диалоги, депы и ревенью — Torro по связке «кампания × объявление», ревенью — депы и редепы за период. Страна — из таргета адсета,
             где его нет — из имени кампании. День спенда — по часовому поясу кабинета, день Torro — по Москве. «Не разнесено по крео» — Torro,

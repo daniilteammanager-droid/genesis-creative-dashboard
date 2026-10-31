@@ -7,10 +7,10 @@ import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import { WORK_AREAS, startPageOf } from "@/lib/nav";
 
 const field =
-  "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white";
+  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+  "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
+const card = "bg-card border border-line rounded-2xl p-6";
 
 const button =
   "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 " +
@@ -117,13 +117,13 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
         <h2 className="text-lg font-semibold text-white mb-4">Аккаунт</h2>
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm mb-5">
-          <dt className="text-zinc-600">Почта</dt>
+          <dt className="text-hint">Почта</dt>
           <dd className="text-zinc-300">{profile.email}</dd>
-          <dt className="text-zinc-600">Роль</dt>
+          <dt className="text-hint">Роль</dt>
           <dd className="text-zinc-300">{ROLE_LABELS[profile.role]}</dd>
           {profile.buyer_code && (
             <>
-              <dt className="text-zinc-600">Код баера</dt>
+              <dt className="text-hint">Код баера</dt>
               <dd className="text-zinc-300">{profile.buyer_code}</dd>
             </>
           )}
@@ -141,9 +141,9 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             {nameBusy ? "Секунду…" : "Сохранить"}
           </button>
         </form>
-        {nameMsg && <p className="text-xs text-zinc-500 mt-2">{nameMsg}</p>}
+        {nameMsg && <p className="text-xs text-hint mt-2">{nameMsg}</p>}
 
-        <p className="text-[11px] text-zinc-600 leading-relaxed mt-4">
+        <p className="text-[11px] text-hint leading-relaxed mt-4">
           {/* Баеру незачем читать про вкладку, которой он не видит. */}
           {profile.role === "main"
             ? "Почту, роль и код баера меняет только владелец — на вкладке «Команда»."
@@ -153,11 +153,11 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
 
       <div className={card}>
         <h2 className="text-lg font-semibold text-white mb-2">Стартовая страница</h2>
-        <p className="text-sm text-zinc-500 mb-4">Что открывается при входе в дашборд.</p>
+        <p className="text-sm text-hint mb-4">Что открывается при входе в дашборд.</p>
         <select value={start} onChange={(e) => saveStart(e.target.value)} className={field}>
           {WORK_AREAS.map((a) => <option key={a.href} value={a.href}>{a.label}</option>)}
         </select>
-        {startMsg && <p className="text-xs text-zinc-500 mt-2">{startMsg}</p>}
+        {startMsg && <p className="text-xs text-hint mt-2">{startMsg}</p>}
       </div>
 
       <div className={card}>
@@ -211,7 +211,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
           </button>
         </form>
 
-        <p className="text-[11px] text-zinc-600 leading-relaxed mt-4">
+        <p className="text-[11px] text-hint leading-relaxed mt-4">
           Восстановления пароля по почте пока нет. Забыл — владелец заведёт новое приглашение.
         </p>
       </div>

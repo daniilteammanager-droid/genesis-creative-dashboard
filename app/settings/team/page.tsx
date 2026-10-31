@@ -18,7 +18,7 @@ export default async function TeamPage() {
 
   return (
     <>
-      <p className="text-zinc-500 text-sm mb-5">
+      <p className="text-hint text-sm mb-5">
         Роль, номер баера и доступ. Изменения применяются сразу.
       </p>
       <TeamManager people={(data as Profile[]) ?? []} meId={me.id} />

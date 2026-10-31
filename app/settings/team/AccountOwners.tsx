@@ -41,7 +41,7 @@ export default function AccountOwners() {
   return (
     <div className="mt-10">
       <h2 className="text-lg font-semibold text-white mb-1">Рекламные кабинеты</h2>
-      <p className="text-zinc-500 text-sm mb-4">
+      <p className="text-hint text-sm mb-4">
         Кабинет принадлежит тому, чей ключ Meta его видит — закрепляется сам при загрузке.
         По этому делится расход в Live Manager, Креативах и чеке.
       </p>
@@ -51,34 +51,34 @@ export default function AccountOwners() {
       )}
 
       {loading && (
-        <div className="flex items-center gap-3 text-zinc-500 text-sm py-6">
+        <div className="flex items-center gap-3 text-hint text-sm py-6">
           <span className="w-4 h-4 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
           Считаю расход по кабинетам за 30 дней…
         </div>
       )}
 
       {data && !loading && (data.accounts.length === 0 ? (
-        <p className="text-zinc-500 text-sm">Кабинетов пока нет — появятся, когда кто-то подключит ключ Meta.</p>
+        <p className="text-hint text-sm">Кабинетов пока нет — появятся, когда кто-то подключит ключ Meta.</p>
       ) : (
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-x-auto">
+        <div className="bg-card border border-line rounded-2xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-violet-900/25">
+              <tr className="border-b border-line">
                 {["Кабинет", "Чей", "Расход за 30 дней", "Объявлений"].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-violet-900/15">
+            <tbody className="divide-y divide-line/50">
               {data.accounts.map((a) => (
                 <tr key={a.accountId}>
                   <td className="px-4 py-3">
                     <p className="text-zinc-200">{a.accountName}</p>
-                    <p className="text-[11px] text-zinc-600">{a.accountId}</p>
+                    <p className="text-[11px] text-hint">{a.accountId}</p>
                   </td>
-                  <td className="px-4 py-3 text-zinc-300">{label(a.ownerUserId) ?? <span className="text-zinc-600">ничей</span>}</td>
-                  <td className="px-4 py-3 text-zinc-200 whitespace-nowrap">{a.spend > 0 ? money(a.spend) : <span className="text-zinc-600">—</span>}</td>
-                  <td className="px-4 py-3 text-zinc-400">{a.adCount || <span className="text-zinc-600">—</span>}</td>
+                  <td className="px-4 py-3 text-zinc-300">{label(a.ownerUserId) ?? <span className="text-hint">ничей</span>}</td>
+                  <td className="px-4 py-3 text-zinc-200 whitespace-nowrap">{a.spend > 0 ? money(a.spend) : <span className="text-hint">—</span>}</td>
+                  <td className="px-4 py-3 text-zinc-400">{a.adCount || <span className="text-hint">—</span>}</td>
                 </tr>
               ))}
             </tbody>

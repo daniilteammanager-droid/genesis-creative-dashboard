@@ -15,9 +15,9 @@ import { DateRange } from "@/components/DatePicker";
 
 interface ReportData { main: Gr4Row[]; buyers: Gr4Row[]; targets: Gr4Targets; generatedAt: string; syncError: string | null; error?: string }
 
-const card = "bg-[#111118] border border-violet-900/25 rounded-2xl p-4";
-const smallChip = (on: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${on ? "bg-violet-600 text-white" : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300"}`;
-const label = "text-xs text-zinc-600 uppercase tracking-wider mr-1";
+const card = "bg-card border border-line rounded-2xl p-4";
+const smallChip = (on: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${on ? "bg-violet-600 text-white" : "bg-card border border-line text-zinc-400 hover:text-violet-300"}`;
+const label = "text-xs text-hint uppercase tracking-wider mr-1";
 const GRAN: { id: Period; label: string }[] = [{ id: "day", label: "По дням" }, { id: "week", label: "По неделям" }, { id: "month", label: "По месяцам" }];
 
 // Прошлый период той же длины — для сравнения.
@@ -29,19 +29,19 @@ function prevRange(r: { from: string; to: string }) {
 const lastDate = (rows: Gr4Row[]) => rows.reduce((m, r) => (r.date > m ? r.date : m), "");
 
 function Delta({ cur, prev, lower, neutral }: { cur: number | null; prev: number | null; lower?: boolean; neutral?: boolean }) {
-  if (cur === null || prev === null || prev === 0) return <span className="text-[11px] text-zinc-600">—</span>;
+  if (cur === null || prev === null || prev === 0) return <span className="text-[11px] text-hint">—</span>;
   const d = (cur - prev) / Math.abs(prev);
   const good = lower ? d < 0 : d > 0;
   // Спенд вырос — не хорошо и не плохо само по себе: без цвета.
-  return <span className={`text-[11px] ${neutral || Math.abs(d) < 0.005 ? "text-zinc-500" : good ? "text-green-400" : "text-red-400"}`}>{d > 0 ? "▲" : "▼"} {Math.abs(d * 100).toFixed(0)}% к прошлому</span>;
+  return <span className={`text-[11px] ${neutral || Math.abs(d) < 0.005 ? "text-hint" : good ? "text-green-400" : "text-red-400"}`}>{d > 0 ? "▲" : "▼"} {Math.abs(d * 100).toFixed(0)}% к прошлому</span>;
 }
 
 function Kpi({ title, value, tone, goal, children }: { title: string; value: string; tone?: Tone; goal?: string; children?: React.ReactNode }) {
   return (
-    <div className={`rounded-2xl px-4 py-3 border border-violet-900/25 ${tone ? toneClass(tone) : "bg-[#111118]"}`}>
-      <p className="text-[11px] text-zinc-500 uppercase tracking-wider">{title}</p>
+    <div className={`rounded-2xl px-4 py-3 border border-line ${tone ? toneClass(tone) : "bg-card"}`}>
+      <p className="text-[11px] text-hint uppercase tracking-wider">{title}</p>
       <p className="text-xl font-semibold text-white mt-0.5">{value}</p>
-      <div className="flex gap-2 items-center flex-wrap mt-0.5">{children}{goal && <span className="text-[11px] text-zinc-500">цель {goal}</span>}</div>
+      <div className="flex gap-2 items-center flex-wrap mt-0.5">{children}{goal && <span className="text-[11px] text-hint">цель {goal}</span>}</div>
     </div>
   );
 }
@@ -50,11 +50,11 @@ function Kpi({ title, value, tone, goal, children }: { title: string; value: str
 function Line({ name, t, g, spendShare, torro }: { name: string; t: Gr4Totals; g: Gr4Targets; spendShare: number; torro?: number }) {
   const td = "px-3 py-2 whitespace-nowrap tabular-nums";
   return (
-    <tr className="border-t border-violet-900/15 hover:bg-violet-900/5">
-      <td className={`${td} text-zinc-200 sticky left-0 bg-[#111118]`}>{name}</td>
+    <tr className="border-t border-line/50 hover:bg-violet-900/5">
+      <td className={`${td} text-zinc-200 sticky left-0 bg-card`}>{name}</td>
       <td className={`${td} text-white`}>{fmtMoney(t.budget, 0)}</td>
       <td className={td}>
-        <div className="flex items-center gap-2"><div className="h-1.5 rounded bg-violet-500/60" style={{ width: `${Math.max(2, spendShare * 60)}px` }} /><span className="text-zinc-500 text-xs">{fmtPct(spendShare)}</span></div>
+        <div className="flex items-center gap-2"><div className="h-1.5 rounded bg-violet-500/60" style={{ width: `${Math.max(2, spendShare * 60)}px` }} /><span className="text-hint text-xs">{fmtPct(spendShare)}</span></div>
       </td>
       {torro !== undefined && <td className={`${td} text-zinc-400`}>{torro ? fmtMoney(torro, 0) : "—"}</td>}
       <td className={`${td} text-green-300`}>{t.revenue ? fmtMoney(t.revenue, 0) : "—"}</td>
@@ -121,7 +121,7 @@ export default function Report() {
   const toggle = (dim: Gr4Dim, v: string | null) => setFilters((f) => ({ ...f, [dim]: v === null ? [] : (f[dim] ?? []).includes(v) ? f[dim]!.filter((x) => x !== v) : [...(f[dim] ?? []), v] }));
 
   if (err) return <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-5 py-4 text-red-300 text-sm">Не удалось загрузить отчёт: {err}</div>;
-  if (!d || !view) return <div className="py-16 text-center text-zinc-500 text-sm">Собираю отчёт…</div>;
+  if (!d || !view) return <div className="py-16 text-center text-hint text-sm">Собираю отчёт…</div>;
   const { total: t, prev: p } = view, g = d.targets;
   const deps = t.depCountCpa + t.depCountIb;
   const coefs = [...view.coef].filter(([, v]) => v !== null);
@@ -130,8 +130,8 @@ export default function Report() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 text-xs text-zinc-600 flex-wrap">
-        <span>Из таблиц: <span className="text-zinc-500">{new Date(d.generatedAt).toLocaleString("ru-RU")}</span> · сами обновляются раз в 15 минут</span>
+      <div className="flex items-center gap-3 text-xs text-hint flex-wrap">
+        <span>Из таблиц: <span className="text-hint">{new Date(d.generatedAt).toLocaleString("ru-RU")}</span> · сами обновляются раз в 15 минут</span>
         <button onClick={() => { setRefreshing(true); load(true); }} disabled={refreshing} className="text-violet-300 hover:text-violet-200 disabled:opacity-50">{refreshing ? "обновляю…" : "↻ Обновить из таблиц"}</button>
         {d.syncError && <span className="text-amber-300/80">Не прочиталось: {d.syncError}</span>}
       </div>
@@ -143,12 +143,12 @@ export default function Report() {
           <DateRange since={shown.from} until={shown.to} max="" active={preset === "custom"} onChange={(a, b) => { setFrom(a); setTo(b); setPreset("custom"); }} />
         </div>
         <button onClick={() => setFiltersOpen((v) => !v)} className="text-sm text-zinc-300 flex items-center gap-2 mt-1">
-          <span className="text-zinc-500">{filtersOpen ? "▾" : "▸"}</span>Фильтры
+          <span className="text-hint">{filtersOpen ? "▾" : "▸"}</span>Фильтры
           {DIMENSIONS.some((x) => filters[x]?.length) && (
             <span className="text-xs text-violet-300">{DIMENSIONS.filter((x) => filters[x]?.length).map((x) => `${DIM_LABELS[x]}: ${filters[x]!.join(", ")}`).join(" · ")}</span>
           )}
         </button>
-        {DIMENSIONS.some((x) => filters[x]?.length) && <button onClick={() => setFilters({})} className="text-xs text-zinc-500 hover:text-red-300 ml-3">сбросить</button>}
+        {DIMENSIONS.some((x) => filters[x]?.length) && <button onClick={() => setFilters({})} className="text-xs text-hint hover:text-red-300 ml-3">сбросить</button>}
         {filtersOpen && DIMENSIONS.filter((x) => options[x].length > 1).map((x) => (
           <div key={x} className="flex items-center gap-1.5 flex-wrap mt-1.5">
             <span className={`${label} w-20`}>{DIM_LABELS[x]}</span>
@@ -174,7 +174,7 @@ export default function Report() {
       {view.chart.length >= 2 && (
         <div data-tour="gr4-report-chart" className={card}>
           <div className="flex items-center gap-2 flex-wrap mb-2">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mr-2">Динамика: спенд и доход</p>
+            <p className="text-xs text-hint uppercase tracking-wider mr-2">Динамика: спенд и доход</p>
             {GRAN.map((x) => <button key={x.id} onClick={() => setGran(x.id)} className={smallChip(gran === x.id)}>{x.label}</button>)}
           </div>
           {CHART_DEFS.find((c) => c.id === "spendRevenue")!.render(view.chart)}
@@ -183,13 +183,13 @@ export default function Report() {
 
       <div data-tour="gr4-report-buyers" className={`${card} overflow-x-auto`}>
         <p className="text-sm font-semibold text-white mb-1">Баеры</p>
-        <p className="text-[11px] text-zinc-500 mb-3">
+        <p className="text-[11px] text-hint mb-3">
           Доход — выплаты общей таблицы, разложенные по Torro баеров внутри направления (лицо + регион), как «Факт выплат» финансовой таблицы.
           {coefs.length > 0 && ` Коэффициент факт / Torro: ${coefs.map(([k, v]) => `${k.replace("|", " · ")} ${v!.toFixed(2)}`).join(", ")}.`}
         </p>
         <table className="w-full text-sm">
-          <thead><tr className="text-[11px] text-zinc-500 uppercase tracking-wider">
-            <th className="px-3 py-2 text-left sticky left-0 bg-[#111118]">Баер</th>
+          <thead><tr className="text-[11px] text-hint uppercase tracking-wider">
+            <th className="px-3 py-2 text-left sticky left-0 bg-card">Баер</th>
             {HEAD.slice(0, 2).map((h) => <th key={h} className="px-3 py-2 text-left whitespace-nowrap">{h}</th>)}
             <th className="px-3 py-2 text-left whitespace-nowrap">Torro</th>
             {HEAD.slice(2).map((h) => <th key={h} className="px-3 py-2 text-left whitespace-nowrap">{h === "Доход" ? "Доход (факт)" : h}</th>)}
@@ -206,8 +206,8 @@ export default function Report() {
           {DIMENSIONS.filter((x) => x !== "buyer").map((x) => <button key={x} onClick={() => setBy(x)} className={smallChip(by === x)}>{DIM_LABELS[x]}</button>)}
         </div>
         <table className="w-full text-sm">
-          <thead><tr className="text-[11px] text-zinc-500 uppercase tracking-wider">
-            <th className="px-3 py-2 text-left sticky left-0 bg-[#111118]">{DIM_LABELS[by]}</th>
+          <thead><tr className="text-[11px] text-hint uppercase tracking-wider">
+            <th className="px-3 py-2 text-left sticky left-0 bg-card">{DIM_LABELS[by]}</th>
             {HEAD.map((h) => <th key={h} className="px-3 py-2 text-left whitespace-nowrap">{h}</th>)}
           </tr></thead>
           <tbody>
@@ -216,7 +216,7 @@ export default function Report() {
         </table>
       </div>
 
-      <p className="text-[11px] text-zinc-600">
+      <p className="text-[11px] text-hint">
         Подсветка: ROMI от 130% — зелёный, 100–129% — жёлтый, 100% и ниже — красный. Цены подписки и диалога — к цели из листа «Настройки»: не дороже цели — зелёный, до +20% — жёлтый, дороже — красный.
       </p>
     </div>

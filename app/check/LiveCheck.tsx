@@ -14,7 +14,7 @@ const chip = (on: boolean) =>
   }`;
 
 const field =
-  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none " +
+  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
   "focus:border-violet-600/50 transition text-white";
 
 const nf = (v: number | null, d = 2) =>
@@ -119,7 +119,7 @@ export default function LiveCheck() {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
+        <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
         <button onClick={() => { setSince(today()); setUntil(today()); }}
                 className={chip(since === today() && until === today())}>Сегодня</button>
@@ -128,13 +128,13 @@ export default function LiveCheck() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Разрез</span>
-        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+        <span className="text-xs text-hint uppercase tracking-wider w-20">Разрез</span>
+        <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
           {GROUPS.map((g) => (
             <button key={g.id} onClick={() => { setGroup(g.id); if (g.id !== "campaign") setFormat("ours"); }} className={chip(group === g.id)}>{g.label}</button>
           ))}
         </div>
-        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1" title="Формат текста чека">
+        <div className="flex gap-1 bg-card border border-line rounded-2xl p-1" title="Формат текста чека">
           <button onClick={() => setFormat("ours")} className={chip(format === "ours")}>Наш формат</button>
           <button onClick={() => { setFormat("artem"); setGroup("campaign"); }} className={chip(format === "artem")}>Формат Артёма</button>
         </div>
@@ -152,16 +152,16 @@ export default function LiveCheck() {
           непонятно, куда он делся и почему в чеке видно только свои кабинеты. */}
       {!isBuyer && data && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-20">Баеры</span>
+          <span className="text-xs text-hint uppercase tracking-wider w-20">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
               <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Все</button>
               {data.buyers.map((b) => (
                 <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
               ))}
             </div>
           ) : (
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-hint">
               Никто из баеров ещё не подключил ключи — выбирать пока некого
             </span>
           )}
@@ -170,7 +170,7 @@ export default function LiveCheck() {
 
       {/* Откуда цифры. Две разные вещи: чьи это ключи и насколько свежие числа. */}
       {data && (
-        <p className="text-[11px] text-zinc-600 mb-4">
+        <p className="text-[11px] text-hint mb-4">
           {data.sources.length > 0 && <>Считаю по: {data.sources.join(", ")}. </>}
           {data.live
             ? "Чек за сегодня: расход тянется из Meta в момент запроса."
@@ -201,15 +201,15 @@ export default function LiveCheck() {
               ["ROMI", data.totals.romi === null ? "—" : `${data.totals.romi.toFixed(0)}%`],
               ["Дейли бюджет", data.totalBudget === null ? "—" : `$${nf(data.totalBudget, 0)}`],
             ] as const).map(([label, value]) => (
-              <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
-                <p className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">{label}</p>
+              <div key={label} className="bg-card border border-line rounded-2xl px-5 py-4">
+                <p className="text-[11px] text-hint uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-xl font-semibold text-white">{value}</p>
               </div>
             ))}
           </div>
 
           {/* Готовый текст — то, ради чего раздел и существует */}
-          <div data-tour="check-text" className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5 mb-5">
+          <div data-tour="check-text" className="bg-card border border-line rounded-2xl p-5 mb-5">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h2 className="text-lg font-semibold text-white">Готовый чек</h2>
               <div className="flex items-center gap-2 flex-wrap">
@@ -230,13 +230,13 @@ export default function LiveCheck() {
           </div>
 
           {data.rows.length > 0 && (
-            <div className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-x-auto">
+            <div className="bg-card border border-line rounded-2xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-violet-900/25">
+                  <tr className="border-b border-line">
                     {[GROUPS.find((g) => g.id === group)!.head, "Дейли", "Спенд",
                       "Цена ПДП", "Цена диалога", "Доход", "ROMI"].map((h) => (
-                      <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -248,13 +248,13 @@ export default function LiveCheck() {
                         {p.total ? <CheckLine r={{ ...p.total, label: p.label }} level="platform" /> : (
                           <tr className="bg-violet-900/25">
                             <td className="px-3 py-2.5 text-white font-semibold">{p.label}</td>
-                            <td colSpan={6} className="px-3 py-2.5 text-zinc-500">расхода нет</td>
+                            <td colSpan={6} className="px-3 py-2.5 text-hint">расхода нет</td>
                           </tr>
                         )}
                       </tbody>
                     )}
                     {data.faces.filter((f) => !p || f.platform === p.platform).map((f) => (
-                      <tbody key={`${f.platform}|${f.face}`} className="divide-y divide-violet-900/15 border-t border-violet-900/30">
+                      <tbody key={`${f.platform}|${f.face}`} className="divide-y divide-line/50 border-t border-line">
                         <CheckLine r={f} level="face" />
                         {data.rows.filter((r) => r.platform === f.platform && r.face === f.face).map((r) => <CheckLine key={r.key} r={r} />)}
                       </tbody>
@@ -266,7 +266,7 @@ export default function LiveCheck() {
           )}
 
           {group === "country" && (
-            <p className="text-[11px] text-zinc-600 mt-3">
+            <p className="text-[11px] text-hint mt-3">
               Страна берётся из настроек таргета адсета, а не из названия. Адсеты, таргетящие
               несколько стран, сведены в одну строку: доход между странами разделить нечем.
             </p>
@@ -274,20 +274,20 @@ export default function LiveCheck() {
         </div>
       )}
 
-      <div data-tour="check-history" className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5 mt-5">
+      <div data-tour="check-history" className="bg-card border border-line rounded-2xl p-5 mt-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">История чеков</h2>
-          <button onClick={loadHistory} className="px-3 py-1.5 rounded-lg text-sm border border-violet-900/40 text-zinc-300 hover:bg-violet-900/20">
+          <button onClick={loadHistory} className="px-3 py-1.5 rounded-lg text-sm border border-line text-zinc-300 hover:bg-violet-900/20">
             {history ? "↻ Обновить" : "Показать"}
           </button>
         </div>
-        {history && (history.length === 0 ? <p className="text-sm text-zinc-500 mt-3">Чеков в Telegram ещё не отправлялось.</p> : (
-          <div className="divide-y divide-violet-900/20 mt-2">
+        {history && (history.length === 0 ? <p className="text-sm text-hint mt-3">Чеков в Telegram ещё не отправлялось.</p> : (
+          <div className="divide-y divide-line mt-2">
             {history.map((h) => (
               <div key={h.id} className="py-2">
                 <button onClick={() => setOpenId(openId === h.id ? null : h.id)} className="text-left w-full text-sm text-zinc-300">
                   {new Date(h.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" })}
-                  <span className="text-zinc-500"> · {h.kind === "manual" ? "вручную" : "по расписанию"} · чатов: {h.sent}</span>
+                  <span className="text-hint"> · {h.kind === "manual" ? "вручную" : "по расписанию"} · чатов: {h.sent}</span>
                 </button>
                 {openId === h.id && (
                   <pre className="text-xs text-zinc-400 whitespace-pre-wrap font-mono mt-2 max-h-72 overflow-y-auto">{unhtml(h.text)}</pre>

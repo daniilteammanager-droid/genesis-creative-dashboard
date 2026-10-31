@@ -18,7 +18,7 @@ export default async function InvitesPage() {
 
   return (
     <>
-      <p className="text-zinc-500 text-sm mb-5">
+      <p className="text-hint text-sm mb-5">
         Одноразовая ссылка на одного человека. Использованную повторно не открыть.
       </p>
       <InviteManager invites={(data as Invite[]) ?? []} />

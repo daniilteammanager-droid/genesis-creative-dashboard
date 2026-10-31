@@ -241,11 +241,11 @@ function FileBox({
   return (
     <label
       htmlFor={id}
-      className="flex flex-col gap-2 p-4 rounded-xl border border-dashed border-violet-800/50 bg-[#18181f] hover:border-violet-600/70 cursor-pointer transition group"
+      className="flex flex-col gap-2 p-4 rounded-xl border border-dashed border-violet-800/50 bg-raised hover:border-violet-600/70 cursor-pointer transition group"
     >
       <span className="text-xs text-zinc-400 font-medium">
         {label}
-        {optional && <span className="ml-1 text-zinc-600">(опционально)</span>}
+        {optional && <span className="ml-1 text-hint">(опционально)</span>}
       </span>
       <input id={id} type="file" accept=".xlsx,.xls" className="sr-only" onChange={(e) => onChange(e.target.files?.[0] ?? null)} />
       <span className="text-sm text-violet-300 group-hover:text-violet-200 truncate">
@@ -257,8 +257,8 @@ function FileBox({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1 p-3 rounded-xl bg-[#18181f] border border-violet-900/30">
-      <span className="text-xs text-zinc-500">{label}</span>
+    <div className="flex flex-col gap-1 p-3 rounded-xl bg-raised border border-line">
+      <span className="text-xs text-hint">{label}</span>
       <span className="text-base font-semibold text-white">{value}</span>
     </div>
   );
@@ -275,23 +275,23 @@ function DataTable({
   const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
 
   if (!sorted.length) {
-    return <p className="text-zinc-500 text-sm py-6 text-center">Нет данных</p>;
+    return <p className="text-hint text-sm py-6 text-center">Нет данных</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-violet-900/30">
+    <div className="overflow-x-auto rounded-xl border border-line">
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-[#18181f]">
+          <tr className="bg-raised">
             {cols.map((col) => {
               const active = sort?.col === col.key;
               return (
                 <th
                   key={col.key}
                   onClick={() => onSort(col.key)}
-                  className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-violet-300 select-none border-b border-violet-900/30"
+                  className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-violet-300 select-none border-b border-line"
                 >
                   {col.label}
-                  <span className="ml-1 text-zinc-600">{active ? (sort!.dir === "asc" ? "↑" : "↓") : "↕"}</span>
+                  <span className="ml-1 text-hint">{active ? (sort!.dir === "asc" ? "↑" : "↓") : "↕"}</span>
                 </th>
               );
             })}
@@ -299,7 +299,7 @@ function DataTable({
         </thead>
         <tbody>
           {sorted.map((row, i) => (
-            <tr key={i} className={`border-b border-violet-900/20 hover:bg-violet-900/10 ${rowHighlight(row.status)}`}>
+            <tr key={i} className={`border-b border-line hover:bg-violet-900/10 ${rowHighlight(row.status)}`}>
               {cols.map((col) => {
                 const raw = row[col.key];
                 const display = col.fmt ? col.fmt(raw) : raw !== null && raw !== undefined ? String(raw) : "—";
@@ -328,23 +328,23 @@ function GenericTable({
   const sorted = useMemo(() => sortGenericRows(rows, sort), [rows, sort]);
 
   if (!sorted.length) {
-    return <p className="text-zinc-500 text-sm py-6 text-center">Нет данных</p>;
+    return <p className="text-hint text-sm py-6 text-center">Нет данных</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-violet-900/30">
+    <div className="overflow-x-auto rounded-xl border border-line">
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-[#18181f]">
+          <tr className="bg-raised">
             {cols.map((col) => {
               const active = sort?.col === col.key;
               return (
                 <th
                   key={col.key}
                   onClick={() => onSort(col.key)}
-                  className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-violet-300 select-none border-b border-violet-900/30"
+                  className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-violet-300 select-none border-b border-line"
                 >
                   {col.label}
-                  <span className="ml-1 text-zinc-600">{active ? (sort!.dir === "asc" ? "↑" : "↓") : "↕"}</span>
+                  <span className="ml-1 text-hint">{active ? (sort!.dir === "asc" ? "↑" : "↓") : "↕"}</span>
                 </th>
               );
             })}
@@ -352,7 +352,7 @@ function GenericTable({
         </thead>
         <tbody>
           {sorted.map((row, i) => (
-            <tr key={i} className="border-b border-violet-900/20 hover:bg-violet-900/10">
+            <tr key={i} className="border-b border-line hover:bg-violet-900/10">
               {cols.map((col) => {
                 const raw = row[col.key];
                 const display = col.fmt ? col.fmt(raw) : raw !== null && raw !== undefined ? String(raw) : "—";
@@ -378,13 +378,13 @@ function MultiSelect({
   if (!options.length) return null;
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs text-zinc-500">{label}</span>
+      <span className="text-xs text-hint">{label}</span>
       <select
         multiple
         size={Math.min(options.length, 5)}
         value={value}
         onChange={(e) => onChange(Array.from(e.target.selectedOptions).map((o) => o.value))}
-        className="rounded-lg border border-violet-900/40 bg-[#18181f] text-zinc-300 text-sm px-2 py-1 focus:outline-none focus:border-violet-500/60"
+        className="rounded-lg border border-line bg-raised text-zinc-300 text-sm px-2 py-1 focus:outline-none focus:border-violet-500/60"
       >
         {options.map((o) => (
           <option key={o} value={o} className="py-0.5">{o}</option>
@@ -698,7 +698,7 @@ function ManualCheck() {
   return (
     <>
         {/* Upload card */}
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6 mb-6">
+        <div className="bg-card border border-line rounded-2xl p-6 mb-6">
           <h2 className="text-lg font-semibold text-white mb-4">Загрузи выгрузки</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
             <FileBox id="fbFile" label="FB / Статистика аккаунтов" fileName={fbFile?.name ?? null} onChange={setFbFile} />
@@ -709,11 +709,11 @@ function ManualCheck() {
 
           <div className="flex flex-wrap items-center gap-4 mb-5">
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-500">Уровень расчёта</span>
+              <span className="text-xs text-hint">Уровень расчёта</span>
               <select
                 value={entityMode}
                 onChange={(e) => setEntityMode(e.target.value as EntityMode)}
-                className="rounded-lg border border-violet-900/40 bg-[#18181f] text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60"
+                className="rounded-lg border border-line bg-raised text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60"
               >
                 <option value="auto">Auto: объявления, если есть</option>
                 <option value="campaign">Кампании</option>
@@ -757,15 +757,15 @@ function ManualCheck() {
                 { label: "MVP строк", value: String(data.mvpCount) },
                 { label: "Несовпадений", value: String(mismatches.length) },
               ].map(({ label, value }) => (
-                <div key={label} className="flex flex-col gap-0.5 px-4 py-2.5 rounded-xl bg-[#111118] border border-violet-900/30 min-w-[100px]">
-                  <span className="text-xs text-zinc-500">{label}</span>
+                <div key={label} className="flex flex-col gap-0.5 px-4 py-2.5 rounded-xl bg-card border border-line min-w-[100px]">
+                  <span className="text-xs text-hint">{label}</span>
                   <span className="text-sm font-semibold text-white">{value}</span>
                 </div>
               ))}
             </div>
 
             {/* Tab nav */}
-            <div className="flex flex-wrap gap-1 mb-5 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+            <div className="flex flex-wrap gap-1 mb-5 bg-card border border-line rounded-2xl p-1 w-fit">
               {NAV_TABS.map((t) => (
                 <button
                   key={t.id}
@@ -783,36 +783,36 @@ function ManualCheck() {
 
             {/* ── Чек ── */}
             {activeTab === "check" && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+              <div className="bg-card border border-line rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-white">Готовый чек</h2>
                   <div className="flex gap-2">
-                    <button onClick={handleCopy} className="px-4 py-1.5 rounded-lg bg-[#18181f] border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
+                    <button onClick={handleCopy} className="px-4 py-1.5 rounded-lg bg-raised border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
                       {copied ? "Скопировано ✓" : "Скопировать"}
                     </button>
-                    <button onClick={handleDownloadTxt} className="px-4 py-1.5 rounded-lg bg-[#18181f] border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
+                    <button onClick={handleDownloadTxt} className="px-4 py-1.5 rounded-lg bg-raised border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
                       Скачать TXT
                     </button>
                   </div>
                 </div>
                 <textarea
                   readOnly value={data.checkText} spellCheck={false}
-                  className="w-full h-[60vh] bg-[#18181f] border border-violet-900/30 rounded-xl p-4 text-sm text-zinc-200 font-mono resize-none focus:outline-none focus:border-violet-500/50"
+                  className="w-full h-[60vh] bg-raised border border-line rounded-xl p-4 text-sm text-zinc-200 font-mono resize-none focus:outline-none focus:border-violet-500/50"
                 />
               </div>
             )}
 
             {/* ── Сумма ── */}
             {activeTab === "sum" && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+              <div className="bg-card border border-line rounded-2xl p-6">
                 <h2 className="text-base font-semibold text-white mb-4">Сумма по фильтру</h2>
 
                 <div className="mb-4">
-                  <label className="text-xs text-zinc-500 block mb-1">Название (Enter — закрепить)</label>
+                  <label className="text-xs text-hint block mb-1">Название (Enter — закрепить)</label>
                   <input
                     type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)}
                     onKeyDown={handleNameKeyDown} placeholder="например EDIT4 или SPAIN"
-                    className="w-full max-w-sm rounded-lg border border-violet-900/40 bg-[#18181f] text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60 placeholder-zinc-600"
+                    className="w-full max-w-sm rounded-lg border border-line bg-raised text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60 placeholder:text-hint"
                   />
                   {pinnedNames.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -822,7 +822,7 @@ function ManualCheck() {
                           <button onClick={() => removeChip(idx)} className="text-violet-400 hover:text-white">×</button>
                         </span>
                       ))}
-                      <button onClick={() => setPinnedNames([])} className="px-2 py-1 text-xs text-zinc-500 hover:text-zinc-300">очистить</button>
+                      <button onClick={() => setPinnedNames([])} className="px-2 py-1 text-xs text-hint hover:text-zinc-300">очистить</button>
                     </div>
                   )}
                 </div>
@@ -832,7 +832,7 @@ function ManualCheck() {
                   {dateOptions.length > 0 && <MultiSelect label="Дата" options={dateOptions} value={selDates} onChange={setSelDates} />}
                   {cabinetOptions.length > 0 && <MultiSelect label="Кабинет/T2A" options={cabinetOptions} value={selCabinets} onChange={setSelCabinets} />}
                   {(selGeos.length || selDates.length || selCabinets.length) ? (
-                    <button onClick={() => { setSelGeos([]); setSelDates([]); setSelCabinets([]); }} className="self-end mb-1 text-xs text-zinc-500 hover:text-zinc-300">
+                    <button onClick={() => { setSelGeos([]); setSelDates([]); setSelCabinets([]); }} className="self-end mb-1 text-xs text-hint hover:text-zinc-300">
                       сбросить фильтры
                     </button>
                   ) : null}
@@ -843,7 +843,7 @@ function ManualCheck() {
                 </div>
 
                 {diagnosticRows > 0 && (
-                  <p className="text-[11px] text-zinc-600 mb-4">
+                  <p className="text-[11px] text-hint mb-4">
                     Ниже показаны ещё {diagnosticRows} строк, которых нет в ФБ. В итоги они не входят —
                     это диагностика, разбор во вкладке «Несовпадения».
                   </p>
@@ -855,15 +855,15 @@ function ManualCheck() {
 
             {/* ── Поиск ── */}
             {activeTab === "search" && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+              <div className="bg-card border border-line rounded-2xl p-6">
                 <h2 className="text-base font-semibold text-white mb-4">Быстрый поиск</h2>
                 <input
                   type="text" value={quickSearch}
                   onChange={(e) => setQuickSearch(e.target.value)}
                   placeholder="часть названия / гео / кабинет"
-                  className="w-full max-w-lg rounded-xl border border-violet-900/40 bg-[#18181f] text-zinc-200 text-sm px-4 py-2.5 mb-5 focus:outline-none focus:border-violet-500/60 placeholder-zinc-600"
+                  className="w-full max-w-lg rounded-xl border border-line bg-raised text-zinc-200 text-sm px-4 py-2.5 mb-5 focus:outline-none focus:border-violet-500/60 placeholder:text-hint"
                 />
-                <p className="text-xs text-zinc-600 mb-4">
+                <p className="text-xs text-hint mb-4">
                   {quickSearch.trim() ? `Найдено: ${searchRows.length}` : `Показаны первые 200 строк`}
                 </p>
                 <DataTable cols={SEARCH_COLS} rows={searchRows} sort={searchSort} onSort={handleSearchSort} />
@@ -872,41 +872,41 @@ function ManualCheck() {
 
             {/* ── Крео по странам ── */}
             {activeTab === "creos" && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+              <div className="bg-card border border-line rounded-2xl p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
                   <div>
                     <h2 className="text-base font-semibold text-white mb-1">Крео по странам</h2>
-                    <p className="text-xs text-zinc-500 max-w-xl">
+                    <p className="text-xs text-hint max-w-xl">
                       Какие крео крутились по каждому гео, суммарный spend и метрики. ПДП/диа/депозиты берутся из MVP объявлений по ID (если загружены) или из основного чека.
                     </p>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <button onClick={handleCopyCreos} className="px-4 py-1.5 rounded-lg bg-[#18181f] border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
+                    <button onClick={handleCopyCreos} className="px-4 py-1.5 rounded-lg bg-raised border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
                       {creosCopied ? "Скопировано ✓" : "Скопировать сводку"}
                     </button>
-                    <button onClick={handleDownloadCreosCsv} className="px-4 py-1.5 rounded-lg bg-[#18181f] border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
+                    <button onClick={handleDownloadCreosCsv} className="px-4 py-1.5 rounded-lg bg-raised border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition">
                       Скачать CSV
                     </button>
                   </div>
                 </div>
 
                 {!data.creativeAnalysis.hasAdData ? (
-                  <p className="text-zinc-500 text-sm py-6">Нет данных по объявлениям. Загрузи FB объявления (4-й файл) или убедись, что основной FB-файл содержит колонку объявлений.</p>
+                  <p className="text-hint text-sm py-6">Нет данных по объявлениям. Загрузи FB объявления (4-й файл) или убедись, что основной FB-файл содержит колонку объявлений.</p>
                 ) : (
                   <>
                     <div className="flex flex-wrap gap-4 mb-5">
                       <MultiSelect label="Гео" options={creoGeoOptions} value={creoGeos} onChange={setCreoGeos} />
                       <label className="flex flex-col gap-1">
-                        <span className="text-xs text-zinc-500">Крео / EDIT</span>
+                        <span className="text-xs text-hint">Крео / EDIT</span>
                         <input
                           type="text" value={creoSearch}
                           onChange={(e) => setCreoSearch(e.target.value)}
                           placeholder="например EDIT4 или static"
-                          className="rounded-lg border border-violet-900/40 bg-[#18181f] text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60 placeholder-zinc-600"
+                          className="rounded-lg border border-line bg-raised text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60 placeholder:text-hint"
                         />
                       </label>
                       {(creoGeos.length || creoSearch) ? (
-                        <button onClick={() => { setCreoGeos([]); setCreoSearch(""); }} className="self-end mb-1 text-xs text-zinc-500 hover:text-zinc-300">
+                        <button onClick={() => { setCreoGeos([]); setCreoSearch(""); }} className="self-end mb-1 text-xs text-hint hover:text-zinc-300">
                           сбросить
                         </button>
                       ) : null}
@@ -940,15 +940,15 @@ function ManualCheck() {
 
             {/* ── FB/MVP Ads ── */}
             {activeTab === "link" && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+              <div className="bg-card border border-line rounded-2xl p-6">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
                     <h2 className="text-base font-semibold text-white mb-1">Связка FB объявлений и MVP объявлений</h2>
-                    <p className="text-xs text-zinc-500 max-w-xl">
+                    <p className="text-xs text-hint max-w-xl">
                       Нашли ли мы для FB объявления строку в MVP объявлениях. Строки, которые есть в MVP ID но отсутствуют в FB, выводятся отдельно.
                     </p>
                   </div>
-                  <button onClick={handleDownloadLinkCsv} className="px-4 py-1.5 rounded-lg bg-[#18181f] border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition shrink-0">
+                  <button onClick={handleDownloadLinkCsv} className="px-4 py-1.5 rounded-lg bg-raised border border-violet-800/40 text-violet-300 text-sm hover:border-violet-600/60 transition shrink-0">
                     Скачать CSV
                   </button>
                 </div>
@@ -963,7 +963,7 @@ function ManualCheck() {
 
             {/* ── Несовпадения ── */}
             {activeTab === "mismatch" && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+              <div className="bg-card border border-line rounded-2xl p-6">
                 <h2 className="text-base font-semibold text-white mb-4">
                   Несовпадения FB / MVP
                   {mismatches.length === 0 && (
@@ -994,11 +994,11 @@ export default function CheckPage() {
     }`;
 
   return (
-    <div className="min-h-screen bg-[#0a080f] text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="w-full px-4 md:px-8 py-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <h1 className="text-white text-3xl font-semibold tracking-wide">Checks</h1>
-          <div data-tour="check-modes" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+          <div data-tour="check-modes" className="flex gap-1 bg-card border border-line rounded-2xl p-1">
             <button onClick={() => setMode("live")} className={tab(mode === "live")}>Живой</button>
             <button onClick={() => setMode("manual")} className={tab(mode === "manual")}>Ручной</button>
           </div>

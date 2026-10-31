@@ -370,13 +370,13 @@ export default function Home() {
 
   return (
     <main
-      className="min-h-screen bg-[#0a080f] text-white p-8"
+      className="min-h-screen bg-background text-white p-8"
       style={{ animation: contentVisible ? "dashboard-fade-in 0.45s ease forwards" : "none", opacity: contentVisible ? undefined : 0 }}
     >
       <div className="w-full">
 
         {/* Вкладки этой страницы */}
-        <div data-tour="legacy-tabs" className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+        <div data-tour="legacy-tabs" className="flex gap-1 mb-6 bg-card border border-line rounded-2xl p-1 w-fit">
           {(["creatives", "analytics"] as const).map((t) => (
             <button
               key={t}
@@ -395,14 +395,14 @@ export default function Home() {
         {topTab === "creatives" && (
           <>
             {/* Sticky controls */}
-            <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-[#0a080f]/90 backdrop-blur-md border-b border-violet-900/30">
+            <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-background/90 backdrop-blur-md border-b border-line">
               <input
                 data-tour="legacy-search"
                 type="text"
                 placeholder="Поиск крео..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-[#111118] border border-violet-900/40 rounded-xl px-4 py-3 mb-3 outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600"
+                className="w-full bg-card border border-line rounded-xl px-4 py-3 mb-3 outline-none focus:border-violet-600/50 transition placeholder:text-hint"
               />
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -418,12 +418,12 @@ export default function Home() {
                       className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${
                         activeTab === tab
                           ? "bg-violet-600 text-white shadow-sm"
-                          : "bg-[#111118] text-zinc-400 hover:text-violet-300 border border-violet-900/30 hover:border-violet-600/40"
+                          : "bg-card text-zinc-400 hover:text-violet-300 border border-line hover:border-violet-600/40"
                       }`}
                     >
                       {labels[tab]}
                       <span className={`text-xs font-normal tabular-nums ${
-                        activeTab === tab ? "text-white/60" : "text-zinc-600"
+                        activeTab === tab ? "text-white/60" : "text-hint"
                       }`}>
                         {tabCounts[tab]}
                       </span>
@@ -436,7 +436,7 @@ export default function Home() {
                   <select
                     value={activeSort}
                     onChange={(e) => setActiveSort(e.target.value as typeof activeSort)}
-                    className="bg-[#111118] border border-violet-900/40 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
+                    className="bg-card border border-line text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
                   >
                     <option value="none">Sort: default</option>
                     <option value="romi">ROMI ↓</option>
@@ -447,7 +447,7 @@ export default function Home() {
                   <select
                     value={activeApproach}
                     onChange={(e) => setActiveApproach(e.target.value)}
-                    className="bg-[#111118] border border-violet-900/40 text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
+                    className="bg-card border border-line text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
                   >
                     <option value="all">All approaches</option>
                     {approaches.map((ap) => (
@@ -458,7 +458,7 @@ export default function Home() {
                   {(search !== "" || activeTab !== "all" || activeApproach !== "all" || activeSort !== "none") && (
                     <button
                       onClick={() => { setSearch(""); setActiveTab("all"); setActiveApproach("all"); setActiveSort("none"); }}
-                      className="px-3 py-2 rounded-xl text-sm text-zinc-400 border border-violet-900/30 hover:text-violet-300 hover:border-violet-600/40 transition"
+                      className="px-3 py-2 rounded-xl text-sm text-zinc-400 border border-line hover:text-violet-300 hover:border-violet-600/40 transition"
                     >
                       ✕ Сбросить
                     </button>
@@ -603,7 +603,7 @@ const CreativeCard = memo(function CreativeCard({
   return (
     <div
       onClick={() => onSelect(item)}
-      className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition"
+      className="bg-card border border-line rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition"
     >
       {/* Desktop: full-width media at top */}
       <div className="hidden md:block">
@@ -611,7 +611,7 @@ const CreativeCard = memo(function CreativeCard({
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-violet-900/20">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-line">
         <div className="min-w-0 flex-1">
           <div className="text-base font-bold text-white truncate">{item.creative}</div>
           <div className="flex items-center gap-1.5 flex-wrap mt-1">
@@ -680,7 +680,7 @@ function MetricsGrid({ item }: { item: CreativeRow }) {
 function MetricCell({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
   return (
     <div>
-      <div className="text-zinc-500 text-xs leading-none mb-0.5">{label}</div>
+      <div className="text-hint text-xs leading-none mb-0.5">{label}</div>
       <div className={`text-sm font-semibold truncate ${emphasis ? "text-white" : "text-zinc-200"}`}>
         {value || "—"}
       </div>
@@ -692,8 +692,8 @@ function MetricCell({ label, value, emphasis }: { label: string; value: string; 
 
 function SummaryCard({ label, value, colorClass = "text-white" }: { label: string; value: string; colorClass?: string }) {
   return (
-    <div className="bg-[#111118] border border-violet-900/30 rounded-xl px-4 py-3">
-      <div className="text-zinc-500 text-xs mb-1 truncate">{label}</div>
+    <div className="bg-card border border-line rounded-xl px-4 py-3">
+      <div className="text-hint text-xs mb-1 truncate">{label}</div>
       <div className={`text-lg font-bold tabular-nums truncate ${colorClass}`}>{value}</div>
     </div>
   );
@@ -721,7 +721,7 @@ function SummaryPanel({ summary }: {
 
 function LoadingScreen() {
   return (
-    <div className="fixed inset-0 bg-[#0a080f] flex flex-col items-center justify-center z-50">
+    <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-50">
       <div className="flex flex-col items-center gap-8 animate-pulse">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-dark.png" alt="Genesis" className="h-28 w-auto object-contain" />
@@ -795,7 +795,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
     return { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits };
   }, [rows, index]);
 
-  if (!analytics) return <p className="text-zinc-500 text-sm mt-8">Нет данных для аналитики.</p>;
+  if (!analytics) return <p className="text-hint text-sm mt-8">Нет данных для аналитики.</p>;
 
   const { romiDist, romiWithData, spendByApproach, winnersByApproach, top10Romi, top10Deposits } = analytics;
   const maxRomiCount = Math.max(...romiDist.map((b) => b.count), 1);
@@ -805,9 +805,9 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
   return (
     <div className="space-y-6 pb-8">
       {/* ROMI Distribution */}
-      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+      <div className="bg-card border border-line rounded-2xl p-6">
         <h2 className="text-base font-bold mb-1">ROMI Distribution</h2>
-        <p className="text-zinc-500 text-xs mb-5">{romiWithData} из {rows.length} крео с данными ROMI</p>
+        <p className="text-hint text-xs mb-5">{romiWithData} из {rows.length} крео с данными ROMI</p>
         <div className="space-y-3">
           {romiDist.map((bucket) => (
             <div key={bucket.label} className="flex items-center gap-3">
@@ -826,7 +826,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
 
       {/* Spend + Winners by Approach */}
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+        <div className="bg-card border border-line rounded-2xl p-6">
           <h2 className="text-base font-bold mb-5">Spend by Approach</h2>
           <div className="space-y-3">
             {spendByApproach.map(([approach, spend]) => (
@@ -841,7 +841,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
           </div>
         </div>
 
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+        <div className="bg-card border border-line rounded-2xl p-6">
           <h2 className="text-base font-bold mb-5">Winners by Approach</h2>
           <div className="space-y-3">
             {winnersByApproach.map(([approach, count]) => (
@@ -858,12 +858,12 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
       </div>
 
       {/* Top 10 by ROMI */}
-      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+      <div className="bg-card border border-line rounded-2xl p-6">
         <h2 className="text-base font-bold mb-5">Top 10 by ROMI</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="text-zinc-500 text-xs border-b border-violet-900/30">
+              <tr className="text-hint text-xs border-b border-line">
                 <th className="text-left font-medium pb-3 pr-4">Creative</th>
                 <th className="text-right font-medium pb-3 px-4 w-20">ROMI</th>
                 <th className="text-right font-medium pb-3 px-4 w-24">Spend</th>
@@ -875,9 +875,9 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
                 const romi    = parseNumber(item.romi);
                 const romiCls = romi >= 150 ? "text-green-300" : romi >= 0 ? "text-yellow-300" : "text-red-300";
                 return (
-                  <tr key={item.creative} className="border-b border-violet-900/15 hover:bg-violet-900/10 transition-colors">
+                  <tr key={item.creative} className="border-b border-line/50 hover:bg-violet-900/10 transition-colors">
                     <td className="py-2.5 pr-4">
-                      <span className="text-zinc-600 text-xs tabular-nums mr-2">{i + 1}</span>
+                      <span className="text-hint text-xs tabular-nums mr-2">{i + 1}</span>
                       <span className="text-zinc-200">{item.creative}</span>
                     </td>
                     <td className={`py-2.5 px-4 text-right font-bold tabular-nums ${romiCls}`}>{item.romi || "—"}</td>
@@ -892,12 +892,12 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
       </div>
 
       {/* Top 10 by Deposits */}
-      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+      <div className="bg-card border border-line rounded-2xl p-6">
         <h2 className="text-base font-bold mb-5">Top 10 by Deposits</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="text-zinc-500 text-xs border-b border-violet-900/30">
+              <tr className="text-hint text-xs border-b border-line">
                 <th className="text-left font-medium pb-3 pr-4">Creative</th>
                 <th className="text-right font-medium pb-3 px-4 w-24">Deposits</th>
                 <th className="text-right font-medium pb-3 px-4 w-24">Spend</th>
@@ -909,9 +909,9 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
                 const romi    = parseNumber(item.romi);
                 const romiCls = romi >= 150 ? "text-green-300" : romi >= 0 ? "text-yellow-300" : "text-red-300";
                 return (
-                  <tr key={item.creative} className="border-b border-violet-900/15 hover:bg-violet-900/10 transition-colors">
+                  <tr key={item.creative} className="border-b border-line/50 hover:bg-violet-900/10 transition-colors">
                     <td className="py-2.5 pr-4">
-                      <span className="text-zinc-600 text-xs tabular-nums mr-2">{i + 1}</span>
+                      <span className="text-hint text-xs tabular-nums mr-2">{i + 1}</span>
                       <span className="text-zinc-200">{item.creative}</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-bold text-white tabular-nums">{item.deposits || "—"}</td>

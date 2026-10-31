@@ -29,7 +29,7 @@ function parseCards(raw: string | null): string[] {
 const chip = (active: boolean) =>
   `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
     active ? "bg-violet-600 text-white"
-      : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
+      : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
 
 const tone = (label: string, x: Metrics): "good" | "bad" | undefined => {
   if ((label !== "Net Profit" && label !== "ROMI") || x.depSum === null || !x.spend) return undefined;
@@ -63,7 +63,7 @@ export default function HomePage() {
   const team = me && me.role !== "buyer";
 
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white p-4 md:p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">
           {me?.name ? `Привет, ${me.name}` : "Главная"}
@@ -74,11 +74,11 @@ export default function HomePage() {
             <button key={p.id} onClick={() => { if (p.id !== period) { setData(null); setErr(null); setPeriod(p.id); } }} className={chip(period === p.id)}>{p.label}</button>
           ))}
           <button onClick={() => setCardsOpen((v) => !v)} className={chip(cardsOpen)}>⚙ Настроить</button>
-          <span className="text-xs text-zinc-600">{team ? "Вся команда" : "По твоим подключениям"} · склад обновляется раз в 15 минут</span>
+          <span className="text-xs text-hint">{team ? "Вся команда" : "По твоим подключениям"} · склад обновляется раз в 15 минут</span>
         </div>
 
         {cardsOpen && (
-          <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4 mb-4 flex flex-wrap gap-2">
+          <div className="bg-card border border-line rounded-2xl p-4 mb-4 flex flex-wrap gap-2">
             {CARDS.map((c) => (
               <button key={c.label} className={chip(cards.includes(c.label))} onClick={() => toggleCard(c.label)}>{c.label}</button>
             ))}
@@ -90,7 +90,7 @@ export default function HomePage() {
             <SummaryCard key={c.label} label={c.label} value={data ? c.cell(data.totals) : "…"} tone={data ? tone(c.label, data.totals) : undefined} />
           ))}
         </div>
-        <div className="text-xs text-zinc-600 mb-10 space-y-1">
+        <div className="text-xs text-hint mb-10 space-y-1">
           {err && <p className="text-red-400">{err}</p>}
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
@@ -114,7 +114,7 @@ function Leaders() {
     <section data-tour="home-leaders">
       <h2 className="text-lg font-semibold mb-4">Рейтинг баеров</h2>
       {err && <p className="text-red-400 text-sm">{err}</p>}
-      {!data && !err && <p className="text-zinc-500 text-sm">Загружаю…</p>}
+      {!data && !err && <p className="text-hint text-sm">Загружаю…</p>}
       {data && (
         <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-4">
           <BoardCard title="🔥 За месяц" board={data.month} />
@@ -136,28 +136,28 @@ function BoardCard({ title, board }: { title: string; board: Board }) {
   // Владельцу и тимлиду — у всех, баеру — только своя строка (суммы приходят только они).
   const showProfit = board.ranking.some((x) => x.profit !== undefined);
   const nominee = (label: string, x: Standing | null, value: (x: Standing) => string) => (
-    <div className="flex-1 min-w-[140px] bg-[#0d0b14] border border-violet-900/25 rounded-xl px-3 py-2">
-      <p className="text-[11px] text-zinc-500 uppercase tracking-wider">{label}</p>
+    <div className="flex-1 min-w-[140px] bg-panel border border-line rounded-xl px-3 py-2">
+      <p className="text-[11px] text-hint uppercase tracking-wider">{label}</p>
       <p className="text-sm text-white truncate">{x ? `${x.label}${x.me ? " — ты" : ""}${x.gone ? " · выбыл :((" : ""}` : "нет претендентов"}</p>
       {x && <p className="text-xs text-zinc-400 tabular-nums">{value(x)}</p>}
     </div>
   );
   return (
-    <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4">
+    <div className="bg-card border border-line rounded-2xl p-4">
       <p className="font-semibold mb-3">{title}</p>
       {board.ranking.length === 0 ? (
-        <p className="text-sm text-zinc-500">Расхода за период нет ни у кого.</p>
+        <p className="text-sm text-hint">Расхода за период нет ни у кого.</p>
       ) : (
         <ol className="mb-4">
-          <li className="flex items-center gap-3 px-2 pb-1 text-[11px] text-zinc-500 uppercase tracking-wider">
+          <li className="flex items-center gap-3 px-2 pb-1 text-[11px] text-hint uppercase tracking-wider">
             <span className="flex-1" />
             {showProfit && <span className="w-28 shrink-0 text-right">Профит</span>}
             <span className="w-14 text-right">ROMI</span>
           </li>
           {board.ranking.map((x, i) => (
             <li key={x.id} className={`flex items-center gap-3 px-2 py-1.5 rounded-lg text-sm ${x.me ? "bg-violet-900/25" : ""}`}>
-              <span className="w-5 text-zinc-500 tabular-nums">{i + 1}</span>
-              <span className={`flex-1 min-w-0 truncate ${x.gone ? "text-zinc-500" : ""}`}>{x.label}{x.me && <span className="text-violet-300"> — ты</span>}{x.gone && <span className="text-zinc-600"> · выбыл :((</span>}</span>
+              <span className="w-5 text-hint tabular-nums">{i + 1}</span>
+              <span className={`flex-1 min-w-0 truncate ${x.gone ? "text-hint" : ""}`}>{x.label}{x.me && <span className="text-violet-300"> — ты</span>}{x.gone && <span className="text-hint"> · выбыл :((</span>}</span>
               {showProfit && <span className="w-28 shrink-0 text-right tabular-nums text-zinc-300">{x.profit === undefined ? "" : money(x.profit)}</span>}
               <span className={`tabular-nums w-14 text-right ${romiColor(x.romi)}`}>{pct(x.romi)}</span>
             </li>

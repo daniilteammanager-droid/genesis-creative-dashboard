@@ -79,21 +79,21 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
   }
 
   function status(i: Invite): { label: string; cls: string } {
-    if (i.used_at) return { label: "использовано", cls: "bg-zinc-800/50 text-zinc-500 border-zinc-700/40" };
+    if (i.used_at) return { label: "использовано", cls: "bg-zinc-800/50 text-hint border-zinc-700/40" };
     if (new Date(i.expires_at) <= new Date()) return { label: "просрочено", cls: "bg-red-900/30 text-red-400 border-red-800/30" };
     return { label: "активно", cls: "bg-green-900/30 text-green-400 border-green-800/30" };
   }
 
   const field =
-    "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none " +
-    "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white";
+    "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
+    "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
+      <form onSubmit={create} className="bg-card border border-line rounded-2xl p-5">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs text-zinc-500 mb-1.5">Для кого</label>
+            <label className="block text-xs text-hint mb-1.5">Для кого</label>
             <input
               type="text"
               placeholder="Новый баер, выходит с понедельника"
@@ -103,7 +103,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
             />
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1.5">Роль</label>
+            <label className="block text-xs text-hint mb-1.5">Роль</label>
             <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={`${field} cursor-pointer`}>
               <option value="buyer">Баер</option>
               <option value="teamlead">Тимлид</option>
@@ -111,7 +111,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
           </div>
           {role === "buyer" && (
             <div>
-              <label className="block text-xs text-zinc-500 mb-1.5">Номер</label>
+              <label className="block text-xs text-hint mb-1.5">Номер</label>
               <input
                 type="text"
                 placeholder="1"
@@ -122,7 +122,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
             </div>
           )}
           <div>
-            <label className="block text-xs text-zinc-500 mb-1.5">Живёт, дней</label>
+            <label className="block text-xs text-hint mb-1.5">Живёт, дней</label>
             <input
               type="number"
               min={1}
@@ -140,7 +140,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
             {busy ? "Секунду…" : "Создать ссылку"}
           </button>
         </div>
-        <p className="text-[11px] text-zinc-600 mt-3">
+        <p className="text-[11px] text-hint mt-3">
           Ссылка копируется в буфер сразу после создания. Роль «владелец» через приглашения не выдаётся.
           Номер оставь пустым — присвоится следующий свободный.
         </p>
@@ -150,8 +150,8 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
         <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm">{error}</div>
       )}
 
-      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl divide-y divide-violet-900/20">
-        {invites.length === 0 && <p className="text-sm text-zinc-600 p-5">Пока ни одного приглашения.</p>}
+      <div className="bg-card border border-line rounded-2xl divide-y divide-line">
+        {invites.length === 0 && <p className="text-sm text-hint p-5">Пока ни одного приглашения.</p>}
         {invites.map((i) => {
           const s = status(i);
           const active = !i.used_at && new Date(i.expires_at) > new Date();
@@ -159,7 +159,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
             <div key={i.token} className="flex items-center gap-3 px-5 py-3 flex-wrap">
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-zinc-200 truncate">{i.note || "без пометки"}</p>
-                <p className="text-[11px] text-zinc-600 mt-0.5">
+                <p className="text-[11px] text-hint mt-0.5">
                   {i.role === "teamlead" ? "тимлид" : "баер"}
                   {i.buyer_code ? ` ${i.buyer_code}` : ""} · до{" "}
                   {new Date(i.expires_at).toLocaleDateString("ru-RU")}
@@ -169,7 +169,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               {active && (
                 <button
                   onClick={() => copy(i.token)}
-                  className="text-xs px-2.5 py-1 rounded-lg border border-violet-900/40 text-zinc-300 hover:border-violet-600/50 transition"
+                  className="text-xs px-2.5 py-1 rounded-lg border border-line text-zinc-300 hover:border-violet-600/50 transition"
                 >
                   {copied === i.token ? "Скопировано" : "Копировать ссылку"}
                 </button>

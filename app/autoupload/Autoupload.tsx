@@ -18,8 +18,8 @@ import { DatePicker } from "@/components/DatePicker";
 // считает сервер (plan.ts), сеты раскрывает sets.ts — здесь только ввод и показ.
 
 const CTA_LABEL: Record<string, string> = { LEARN_MORE: "Узнать больше", SIGN_UP: "Регистрация", MESSAGE_PAGE: "Написать нам" };
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-5";
-const field = "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
+const card = "bg-card border border-line rounded-2xl p-5";
+const field = "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
 const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
 const primary = "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50";
 const h2 = "text-base font-semibold text-white mb-3";
@@ -199,7 +199,7 @@ export default function Autoupload() {
   };
 
   if (err && !opt) return <div className="max-w-5xl mx-auto px-4 py-6 text-red-300">{err}</div>;
-  if (!opt) return <div className="max-w-5xl mx-auto px-4 py-6 text-zinc-500">Загружаю…</div>;
+  if (!opt) return <div className="max-w-5xl mx-auto px-4 py-6 text-hint">Загружаю…</div>;
 
   const creativesCount = f.adsets.reduce((s, a) => s + a.creatives.length, 0);
   const rows = input.campaigns;
@@ -219,7 +219,7 @@ export default function Autoupload() {
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold text-white">Автозалив</h1>
-          <p className="text-sm text-zinc-500 mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия. Форма сохраняется черновиком в этом браузере.</p>
+          <p className="text-sm text-hint mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия. Форма сохраняется черновиком в этом браузере.</p>
         </div>
         {/* Сохранённые сборки (Decision 092) — на сервере: открыть с любого устройства. */}
         <div className="flex gap-2 items-center">
@@ -246,7 +246,7 @@ export default function Autoupload() {
         ) : (
           <div className="grid sm:grid-cols-3 gap-2 mb-4">
             {opt.accounts.map((a) => (
-              <label key={a.id} className={`flex items-center gap-2 border rounded-xl px-3 py-2 text-sm text-zinc-200 cursor-pointer ${accountIds.includes(a.id) ? "border-violet-600/60 bg-violet-900/10" : "border-violet-900/30"}`}>
+              <label key={a.id} className={`flex items-center gap-2 border rounded-xl px-3 py-2 text-sm text-zinc-200 cursor-pointer ${accountIds.includes(a.id) ? "border-violet-600/60 bg-violet-900/10" : "border-line"}`}>
                 <input type="checkbox" checked={accountIds.includes(a.id)} onChange={() => toggleAccount(a.id)} className="accent-violet-500" />
                 <span className="truncate">{a.name}</span>
                 {typeof details[a.id] === "string" && <span className="ml-auto text-[10px] text-red-300 truncate" title={details[a.id] as string}>ошибка</span>}
@@ -263,15 +263,15 @@ export default function Autoupload() {
             <option value="">Facebook Page по умолчанию</option>
             {pages.map(([id, name]) => <option key={id} value={id}>{name} · {id}</option>)}
           </select>
-          <label className="flex items-center gap-2 text-xs text-zinc-500">Дата <DatePicker value={f.date} min={mskDay()} onChange={(date) => set({ date })} /></label>
-          <label className="flex items-center gap-2 text-xs text-zinc-500">Нумерация с <input type="number" min={1} value={f.campaignNumber} onChange={(e) => set({ campaignNumber: Number(e.target.value) })} className={`${field} w-24`} /></label>
-          <label className="flex items-center gap-2 text-xs text-zinc-500">Бюджет по умолчанию, $ <input inputMode="decimal" value={f.budget} onChange={(e) => set({ budget: e.target.value })} className={`${field} w-24`} /></label>
+          <label className="flex items-center gap-2 text-xs text-hint">Дата <DatePicker value={f.date} min={mskDay()} onChange={(date) => set({ date })} /></label>
+          <label className="flex items-center gap-2 text-xs text-hint">Нумерация с <input type="number" min={1} value={f.campaignNumber} onChange={(e) => set({ campaignNumber: Number(e.target.value) })} className={`${field} w-24`} /></label>
+          <label className="flex items-center gap-2 text-xs text-hint">Бюджет по умолчанию, $ <input inputMode="decimal" value={f.budget} onChange={(e) => set({ budget: e.target.value })} className={`${field} w-24`} /></label>
           <div className="flex items-center gap-4 text-sm text-zinc-300">
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.oneToOne} onChange={(e) => set({ oneToOne: e.target.checked })} className="accent-violet-500" />1‑1‑1</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.paused} onChange={(e) => set({ paused: e.target.checked })} className="accent-violet-500" />на паузе</label>
           </div>
         </div>
-        <p className="text-[11px] text-zinc-600 mt-2">Каждая кампания создаётся в каждом выбранном кабинете. 1‑1‑1 — вместо кампаний сеты: по кампании на каждый креатив с одним адсетом, лишние убираются в сете. Без «на паузе» всё создаётся ACTIVE и сразу крутится.</p>
+        <p className="text-[11px] text-hint mt-2">Каждая кампания создаётся в каждом выбранном кабинете. 1‑1‑1 — вместо кампаний сеты: по кампании на каждый креатив с одним адсетом, лишние убираются в сете. Без «на паузе» всё создаётся ACTIVE и сразу крутится.</p>
       </div>
 
       <div data-tour="au-adsets" className={card}>
@@ -281,9 +281,9 @@ export default function Autoupload() {
         </div>
         <div className="space-y-3">
           {f.adsets.map((a, i) => (
-            <div key={a.id} className="border border-violet-900/30 rounded-xl p-3">
+            <div key={a.id} className="border border-line rounded-xl p-3">
               <div className="flex flex-wrap gap-2 items-center mb-2">
-                <span className="text-xs text-zinc-500">Общий адсет {i + 1} · клонируется в кампании</span>
+                <span className="text-xs text-hint">Общий адсет {i + 1} · клонируется в кампании</span>
                 <select value={a.target} onChange={(e) => editAdset(i, { target: e.target.value })} className={field}><option>BROAD</option><option>INT</option><option>RETARGET</option></select>
                 {a.target === "RETARGET" && <input placeholder="ID Custom Audience" value={a.customAudienceId ?? ""} onChange={(e) => editAdset(i, { customAudienceId: e.target.value.trim() })} className={field} />}
                 <input placeholder="Метка (TEST1)" value={a.label ?? ""} onChange={(e) => editAdset(i, { label: e.target.value })} className={`${field} w-36`} />
@@ -296,7 +296,7 @@ export default function Autoupload() {
                       <input value={c.code} onChange={(e) => editAdset(i, { creatives: a.creatives.map((x, k) => (k === ci ? { ...x, code: e.target.value } : x)) })}
                              className={`${field} flex-1 py-1 text-xs font-mono`} title="Код креатива — имя объявления" />
                       {/* ＋ — то же объявление ещё раз (как у Артёма). В 1‑1‑1 нельзя: кампания сета — по креативу. */}
-                      {!f.oneToOne && <button type="button" title="Ещё одно такое же объявление" onClick={() => editAdset(i, { creatives: [...a.creatives.slice(0, ci + 1), { ...c }, ...a.creatives.slice(ci + 1)] })} className={`${small} border-violet-900/40 text-zinc-300 py-1`}>＋</button>}
+                      {!f.oneToOne && <button type="button" title="Ещё одно такое же объявление" onClick={() => editAdset(i, { creatives: [...a.creatives.slice(0, ci + 1), { ...c }, ...a.creatives.slice(ci + 1)] })} className={`${small} border-line text-zinc-300 py-1`}>＋</button>}
                       <button type="button" onClick={() => editAdset(i, { creatives: a.creatives.filter((_, k) => k !== ci) })} className={`${small} border-red-900/40 text-red-300 py-1`}>−</button>
                     </div>
                   ))}
@@ -307,7 +307,7 @@ export default function Autoupload() {
           ))}
         </div>
         <button type="button" onClick={() => set({ adsets: [...f.adsets, newAdset()] })} className={`${small} border-violet-700/50 text-violet-200 mt-3`}>＋ Адсет</button>
-        <p className="text-[11px] text-zinc-600 mt-2">Набор уходит в каждую кампанию; у имён по неймингу хвост гео пересоберётся под страну кампании, старые имена уйдут как есть.</p>
+        <p className="text-[11px] text-hint mt-2">Набор уходит в каждую кампанию; у имён по неймингу хвост гео пересоберётся под страну кампании, старые имена уйдут как есть.</p>
       </div>
 
       <div className={card}>
@@ -327,7 +327,7 @@ export default function Autoupload() {
             const children = f.oneToOne ? expandSet(c, i + 1, f.adsets, omitted, f.overrides) : [];
             const total = f.adsets.reduce((s, a) => s + a.creatives.length, 0);
             return (
-              <div key={c.key} className="border border-violet-900/40 rounded-xl p-3">
+              <div key={c.key} className="border border-line rounded-xl p-3">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <b className="text-sm text-zinc-100">
                     {f.oneToOne ? `СЕТ ${i + 1} · ${c.geo} · ${children.length} креативов → ${children.length * Math.max(1, accountIds.length)} кампаний` : `Кампания ${i + 1} · ${c.geo} · ${c.actor}`}
@@ -337,7 +337,7 @@ export default function Autoupload() {
                 </div>
                 <CampaignFields value={c} onChange={(p) => editCampaign(i, p)} accounts={selected} adsets={f.adsets} landings={landings} pages={pages} oneToOne={f.oneToOne} />
                 {!f.oneToOne && (
-                  <div className="mt-2 text-[11px] text-zinc-500 space-y-0.5">
+                  <div className="mt-2 text-[11px] text-hint space-y-0.5">
                     {f.adsets.map((a, ai) => <p key={a.id}>Адсет {ai + 1}: <span className="font-mono text-zinc-400">{a.creatives.map((x) => safeCode(x.code, c.geo)).join(", ") || "—"}</span></p>)}
                   </div>
                 )}
@@ -346,14 +346,14 @@ export default function Autoupload() {
                     <summary className="text-sm text-violet-200 cursor-pointer">Кампании сета ({children.length}{total > children.length ? ` из ${total}` : ""}) — раскрыть, поправить, убрать лишние</summary>
                     <div className="mt-2 space-y-1.5">
                       {children.map((ch) => (
-                        <details key={ch.key} className="border border-violet-900/30 rounded-lg px-3 py-2">
+                        <details key={ch.key} className="border border-line rounded-lg px-3 py-2">
                           <summary className="text-xs text-zinc-300 cursor-pointer flex items-center gap-2">
                             <span className="font-mono">{safeCode(ch.code, ch.row.geo)}</span>
-                            <span className="text-zinc-600">адсет {ch.adsetIndex + 1}</span>
+                            <span className="text-hint">адсет {ch.adsetIndex + 1}</span>
                             {ch.overridden && <span className="text-amber-400">свои настройки</span>}
                             <button type="button" onClick={(e) => { e.preventDefault(); set({ omitted: [...f.omitted, ch.key] }); }} className="ml-auto text-red-300 hover:text-red-200">Убрать из сета</button>
                           </summary>
-                          <p className="text-[11px] text-zinc-500 mt-2 mb-1">Индивидуальные настройки этой кампании — остальное берётся у сета.</p>
+                          <p className="text-[11px] text-hint mt-2 mb-1">Индивидуальные настройки этой кампании — остальное берётся у сета.</p>
                           <CampaignFields value={ch.row} accounts={selected} adsets={[f.adsets[ch.adsetIndex]]} landings={landings} pages={pages} oneToOne
                             onChange={(p) => {
                               const { adsetNames, ...rest } = p;
@@ -376,14 +376,14 @@ export default function Autoupload() {
           })}
         </div>
         <button type="button" onClick={() => set({ campaigns: [...f.campaigns, newCampaign()] })} className={`${small} border-violet-700/50 text-violet-200 mt-3`}>{f.oneToOne ? "＋ Новый сет" : "＋ Кампания"}</button>
-        <p className="text-[11px] text-zinc-600 mt-2">Имя по умолчанию: CAB####_ДД.ММ_ВОРОНКА_МАРКЕР_GEO_ЛЕНДИНГ_ЛИЦО_N. Свой шаблон — токены {"{{CAB}} {{DATE}} {{GEO}} {{FACE}} {{FUNNEL}} {{MARKER}} {{LANDER}} {{N}} {{SET}} {{CREATIVE}} {{ADSET_N}}"}. N растёт у повторов одного GEO. К ссылке допишется трекинг: твой id Torro, пиксель и макросы.</p>
+        <p className="text-[11px] text-hint mt-2">Имя по умолчанию: CAB####_ДД.ММ_ВОРОНКА_МАРКЕР_GEO_ЛЕНДИНГ_ЛИЦО_N. Свой шаблон — токены {"{{CAB}} {{DATE}} {{GEO}} {{FACE}} {{FUNNEL}} {{MARKER}} {{LANDER}} {{N}} {{SET}} {{CREATIVE}} {{ADSET_N}}"}. N растёт у повторов одного GEO. К ссылке допишется трекинг: твой id Torro, пиксель и макросы.</p>
       </div>
 
       <div data-tour="au-check" className={card}>
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 mb-4">
           <p className="sm:col-span-2 text-sm text-zinc-300">{ready === checks.length ? "Готово к проверке" : "Пока не готово"} · {ready} из {checks.length}</p>
           {checks.map(([name, ok, hint]) => (
-            <p key={name} className={`text-xs ${ok ? "text-green-400" : "text-zinc-500"}`}>{ok ? "✓" : "·"} {name}{ok && name !== "Настройки кампаний" ? "" : ` — ${hint}`}</p>
+            <p key={name} className={`text-xs ${ok ? "text-green-400" : "text-hint"}`}>{ok ? "✓" : "·"} {name}{ok && name !== "Настройки кампаний" ? "" : ` — ${hint}`}</p>
           ))}
         </div>
         <div className="flex flex-wrap gap-2 items-center">
@@ -391,7 +391,7 @@ export default function Autoupload() {
           <button type="button" disabled={busy || !fresh} onClick={() => { if (window.confirm(`Создать ${fresh!.summary.campaigns} кампаний, ${fresh!.summary.adsets} адсетов и ${fresh!.summary.ads} объявлений${f.paused ? " на паузе" : " и сразу запустить"}?`)) post("launch"); }} className={primary}>
             {f.paused ? "Создать на паузе" : "Создать и запустить"}
           </button>
-          {busy && <span className="text-xs text-zinc-500">Секунду…</span>}
+          {busy && <span className="text-xs text-hint">Секунду…</span>}
           {plan && !fresh && <span className="text-xs text-amber-400">Параметры изменены — проверь сборку заново</span>}
         </div>
         {err && <div className="mt-3 rounded-xl px-4 py-3 text-sm border bg-red-950/40 border-red-700/30 text-red-300">{err}</div>}
@@ -403,12 +403,12 @@ export default function Autoupload() {
             </p>
             <div className="max-h-80 overflow-y-auto space-y-2">
               {fresh.campaigns.map((c, i) => (
-                <div key={i} className="border border-violet-900/30 rounded-lg px-3 py-2">
+                <div key={i} className="border border-line rounded-lg px-3 py-2">
                   <p className="text-zinc-100 font-mono text-xs">{c.name} · ${c.budgetUsd}/день{c.bidCapUsd !== null ? ` · bid cap $${c.bidCapUsd}` : ""} · старт {c.startLocal.replace("T", " ")}</p>
                   {c.adsets.map((a, k) => (
                     <p key={k} className="text-zinc-400 font-mono text-[11px] pl-3">↳ {a.name}: {a.ads.map((d) => d.name).join(", ")}</p>
                   ))}
-                  <p className="text-zinc-600 text-[10px] pl-3 break-all">{c.landingUrl}</p>
+                  <p className="text-hint text-[10px] pl-3 break-all">{c.landingUrl}</p>
                 </div>
               ))}
             </div>
@@ -418,18 +418,18 @@ export default function Autoupload() {
 
       <div data-tour="au-jobs" className={card}>
         <h2 className={h2}>Заливы</h2>
-        {jobs.length === 0 ? <p className="text-sm text-zinc-500">Пока не было.</p> : (
-          <div className="divide-y divide-violet-900/20">
+        {jobs.length === 0 ? <p className="text-sm text-hint">Пока не было.</p> : (
+          <div className="divide-y divide-line">
             {jobs.map((j) => (
               <div key={j.id} className="py-2.5 flex flex-wrap items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200">{new Date(j.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · {j.summary.campaigns} кампаний · {j.summary.ads} объявлений
-                    <span className="text-zinc-500"> · создано {j.done.campaigns}/{j.summary.campaigns} кампаний, {j.done.ads}/{j.summary.ads} объявлений</span></p>
-                  <p className="text-[11px] text-zinc-500 truncate">{j.names.slice(0, 3).join(", ")}{j.names.length > 3 ? ` +${j.names.length - 3}` : ""}</p>
+                    <span className="text-hint"> · создано {j.done.campaigns}/{j.summary.campaigns} кампаний, {j.done.ads}/{j.summary.ads} объявлений</span></p>
+                  <p className="text-[11px] text-hint truncate">{j.names.slice(0, 3).join(", ")}{j.names.length > 3 ? ` +${j.names.length - 3}` : ""}</p>
                   {j.stage && <p className="text-[11px] text-zinc-400 mt-0.5">{j.stage}</p>}
                   {j.error && <p className="text-[11px] text-red-300 mt-0.5">{j.error}</p>}
                 </div>
-                <span className="text-[11px] px-2 py-1 rounded-full border border-violet-900/40 text-zinc-300 shrink-0">{STATUS[j.status] ?? j.status}</span>
+                <span className="text-[11px] px-2 py-1 rounded-full border border-line text-zinc-300 shrink-0">{STATUS[j.status] ?? j.status}</span>
                 {["creating", "created", "failed"].includes(j.status) && j.done.campaigns > 0 && (
                   <button type="button" onClick={() => cancel(j.id)} className={`${small} border-red-900/40 text-red-300 shrink-0`}>Отменить и удалить</button>
                 )}
@@ -492,12 +492,12 @@ function CampaignFields({ value: c, onChange, accounts, adsets, landings, pages,
       {accounts.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {accounts.map((a) => (
-            <label key={a.id} className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <label key={a.id} className="flex items-center gap-1.5 text-[11px] text-hint">
               Старт {a.name.slice(0, 18)}{a.timezone ? ` (${a.timezone})` : ""}
               <input type="time" value={c.startAtByAccount?.[a.id] ?? "00:00"} onChange={(e) => onChange({ startAtByAccount: { ...c.startAtByAccount, [a.id]: e.target.value } })} className={`${field} py-1`} />
             </label>
           ))}
-          <span className="text-[11px] text-zinc-600 self-center">— время кабинета</span>
+          <span className="text-[11px] text-hint self-center">— время кабинета</span>
         </div>
       )}
       <div className="grid sm:grid-cols-2 gap-2">

@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 // Приложение Meta для автозалива (Decision 093): своё, отдельно от ключей статистики в
 // «Интеграциях». Ключ с ads_management и, если приложение требует, App Secret.
 
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-5";
-const field = "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
+const card = "bg-card border border-line rounded-2xl p-5";
+const field = "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
 const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
 
 interface Key { name: string; hint: string | null; appId: string | null; appName: string | null; canWrite: boolean; expiresAt: string | null; lastError: string | null; hasSecret: boolean }
@@ -45,7 +45,7 @@ export default function UploadApp() {
         {key && !edit && (
           <div className="ml-auto flex gap-2">
             <button type="button" disabled={busy} onClick={check} className={`${small} border-violet-700/50 text-violet-200`}>Проверить и лимит</button>
-            <button type="button" onClick={() => setEdit(true)} className={`${small} border-violet-900/40 text-zinc-300`}>Заменить</button>
+            <button type="button" onClick={() => setEdit(true)} className={`${small} border-line text-zinc-300`}>Заменить</button>
             <button type="button" disabled={busy} onClick={remove} className={`${small} border-red-900/40 text-red-300`}>Отключить</button>
           </div>
         )}
@@ -53,7 +53,7 @@ export default function UploadApp() {
       {key && !edit ? (
         <div className="text-sm space-y-1">
           <p className="text-zinc-200">{key.name} · {key.appName ?? "приложение"}{key.appId ? ` · App ID ${key.appId}` : ""} · ключ …{key.hint}{key.hasSecret ? " · с App Secret" : ""}</p>
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-hint">
             {key.canWrite ? "Право ads_management есть." : "Нет права ads_management — заливать нельзя."}
             {key.expiresAt ? ` Ключ до ${new Date(key.expiresAt).toLocaleDateString("ru-RU")}.` : " Ключ бессрочный."}
             {" "}Статистика, алерты и Live Manager идут ключами из «Интеграций», этим — только залив.
@@ -71,7 +71,7 @@ export default function UploadApp() {
         </div>
       ) : (
         <>
-          <p className="text-[11px] text-zinc-500 mb-2">
+          <p className="text-[11px] text-hint mb-2">
             {key ? "Новый ключ заменит текущий." : fallback
               ? `Сейчас заливает ключ статистики «${fallback}» — он делит лимит со складом и алертами. Подключи отдельное приложение, как у Артёма.`
               : "Своего приложения нет, и у ключей статистики нет права ads_management — заливать нечем."}
@@ -84,7 +84,7 @@ export default function UploadApp() {
           </div>
           <div className="flex gap-2 mt-2">
             <button type="button" disabled={busy || !form.token.trim()} onClick={save} className={`${small} border-violet-700/50 text-violet-200`}>{busy ? "Проверяю…" : "Проверить и подключить"}</button>
-            {key && <button type="button" onClick={() => setEdit(false)} className={`${small} border-violet-900/40 text-zinc-400`}>Отмена</button>}
+            {key && <button type="button" onClick={() => setEdit(false)} className={`${small} border-line text-zinc-400`}>Отмена</button>}
           </div>
         </>
       )}

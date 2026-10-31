@@ -14,8 +14,8 @@ type Kind = "country" | "wa" | "v4";
 const KIND_LABELS: Record<Kind, string> = { country: "страновая", wa: "WhatsApp", v4: "General 4.0 (общая)" };
 
 const field =
-  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm";
+  "bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
 
 export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]; serviceAccount: string | null }) {
   const router = useRouter();
@@ -60,9 +60,9 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
   }
 
   return (
-    <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+    <div className="bg-card border border-line rounded-2xl p-6">
       <h2 className="text-lg font-semibold text-white mb-2">Таблицы General Report</h2>
-      <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+      <p className="text-[13px] text-hint leading-relaxed mb-4">
         Общие таблицы команды. Для General 4.0 нужна одна — общая, с типом «General 4.0».
         Байерские подключаются отдельно, на вкладке «Команда».
         {serviceAccount && (
@@ -74,11 +74,11 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
       </p>
 
       {sheets.length > 0 && (
-        <div className="divide-y divide-violet-900/20 border border-violet-900/25 rounded-xl mb-4">
+        <div className="divide-y divide-line border border-line rounded-xl mb-4">
           {sheets.map((s) => (
             <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 flex-wrap">
               <span className="text-sm text-zinc-200 flex-1 min-w-[120px]">{s.name}</span>
-              <span className="text-[11px] text-zinc-600">{KIND_LABELS[s.kind] ?? s.kind}</span>
+              <span className="text-[11px] text-hint">{KIND_LABELS[s.kind] ?? s.kind}</span>
               <button
                 disabled={busy}
                 onClick={() => send({ method: "DELETE" }, `/api/gr-sheets?id=${s.id}`)}
@@ -92,7 +92,7 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
       )}
 
       {sheets.length === 0 && (
-        <p className="text-[13px] text-zinc-500 leading-relaxed mb-4">
+        <p className="text-[13px] text-hint leading-relaxed mb-4">
           Пока пусто, и отчёт читает таблицы из переменных окружения — как раньше.
           Добавь первую, и источником станет этот список.
         </p>

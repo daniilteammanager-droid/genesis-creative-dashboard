@@ -25,7 +25,7 @@ const chip = (on: boolean) =>
   }`;
 
 const field =
-  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none " +
+  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
   "focus:border-violet-600/50 transition text-white";
 
 // Строка креатива в виде строки отчёта: те же столбцы, что в дереве кампаний.
@@ -132,10 +132,10 @@ export default function CreativesTable() {
     <div>
       {/* ─── Период и баер ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
+        <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
 
-        <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+        <div className="flex gap-1 bg-card border border-line rounded-2xl p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}
@@ -150,16 +150,16 @@ export default function CreativesTable() {
           как поломка, а не как «баеры ещё не подключились». */}
       {!isBuyer && data && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Баеры</span>
+          <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
               <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
               {data.buyers.map((b) => (
                 <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
               ))}
             </div>
           ) : (
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-hint">
               Никто из баеров ещё не подключил ключи — выбирать пока некого
             </span>
           )}
@@ -169,8 +169,8 @@ export default function CreativesTable() {
       {/* ─── Период CRM задет краем ────────────────────────────────────── */}
       {(data?.countries.length ?? 0) > 0 && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Страны</span>
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+          <span className="text-xs text-hint uppercase tracking-wider w-16">Страны</span>
+          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
             <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
             {data!.countries.map((c) => (
               <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
@@ -181,19 +181,19 @@ export default function CreativesTable() {
 
       {data && all.length > 0 && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Лицо</span>
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+          <span className="text-xs text-hint uppercase tracking-wider w-16">Лицо</span>
+          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
             <button onClick={() => setFace("all")} className={chip(face === "all")}>Все</button>
             {faces.map((f) => <button key={f} onClick={() => setFace(f)} className={chip(face === f)}>{f}</button>)}
             <button onClick={() => setFace("none")} className={chip(face === "none")}>Без лица</button>
           </div>
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
             <button onClick={() => setMerge("none")} className={chip(merge === "none")}>Как есть</button>
             <button onClick={() => setMerge("versions")} className={chip(merge === "versions")}>Склеить версии</button>
             <button onClick={() => setMerge("all")} className={chip(merge === "all")} title="Все версии и GEO одного креатива — одна строка, клик раскрывает GEO · лицо">Версии и GEO вместе</button>
           </div>
           <input placeholder="Код креатива, например storytell-t30" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} w-64`} />
-          <button onClick={downloadCsv} className="px-3 py-1.5 rounded-lg text-sm border border-violet-900/40 text-zinc-300 hover:bg-violet-900/20 ml-auto">↓ CSV</button>
+          <button onClick={downloadCsv} className="px-3 py-1.5 rounded-lg text-sm border border-line text-zinc-300 hover:bg-violet-900/20 ml-auto">↓ CSV</button>
         </div>
       )}
 
@@ -232,13 +232,13 @@ export default function CreativesTable() {
       )}
 
       {stale && (
-        <p className="text-[11px] text-zinc-600 mb-3">
+        <p className="text-[11px] text-hint mb-3">
           Показаны цифры за {data!.since} — {data!.until}, новые ещё едут.
         </p>
       )}
 
       {!loading && !error && rows.length === 0 && (
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+        <div className="bg-card border border-line rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-white mb-2">За этот период пусто</h2>
           <p className="text-sm text-zinc-400 leading-relaxed">
             В складе нет расхода за эти дни. Если источник подключён недавно — история ещё
@@ -260,37 +260,37 @@ export default function CreativesTable() {
               ["Сумма депозитов", money(t.depSum), `Профит ${money(t.depSum - t.spend)}`],
               ["ROMI", romi(t.spend, t.depSum), `ROAS ${t.spend ? (t.depSum / t.spend).toFixed(2) : "—"}×`],
             ] as const).map(([label, value, hint]) => (
-              <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
-                <p className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">{label}</p>
+              <div key={label} className="bg-card border border-line rounded-2xl px-5 py-4">
+                <p className="text-[11px] text-hint uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-xl font-semibold text-white">{value}</p>
-                <p className="text-[11px] text-zinc-500 mt-0.5">{hint}</p>
+                <p className="text-[11px] text-hint mt-0.5">{hint}</p>
               </div>
             ))}
           </div>
 
-          <div className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-x-auto">
+          <div className="bg-card border border-line rounded-2xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-violet-900/25">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#111118] z-10">Код креатива</th>
+                <tr className="border-b border-line">
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap sticky left-0 bg-card z-10">Код креатива</th>
                   {["Страны", "Подход", ...COLS.map((c) => c.label)].map((h) => (
-                    <th key={h} onClick={() => sortOn(h)} className={`px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${SORT_KEY[h] ? "cursor-pointer hover:text-violet-300" : ""} ${sort.col === h ? "text-violet-300" : "text-zinc-500"}`}>
+                    <th key={h} onClick={() => sortOn(h)} className={`px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${SORT_KEY[h] ? "cursor-pointer hover:text-violet-300" : ""} ${sort.col === h ? "text-violet-300" : "text-hint"}`}>
                       {h}{sort.col === h ? (sort.desc ? " ↓" : " ↑") : ""}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-violet-900/15">
+              <tbody className="divide-y divide-line/50">
                 {rows.map((r) => (
                   <Fragment key={r.code}>
                   <tr className={`hover:bg-violet-900/10 transition ${r.details && merge === "all" ? "cursor-pointer" : ""}`} onClick={() => merge === "all" && r.details && toggleRow(r.code)}>
-                    <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[48vw] sm:max-w-[280px] truncate sticky left-0 bg-[#111118] z-10" title={r.code}>
-                      {merge === "all" && <span className="text-zinc-600 text-xs mr-1.5">{openRows.has(r.code) ? "▾" : "▸"}</span>}
+                    <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[48vw] sm:max-w-[280px] truncate sticky left-0 bg-card z-10" title={r.code}>
+                      {merge === "all" && <span className="text-hint text-xs mr-1.5">{openRows.has(r.code) ? "▾" : "▸"}</span>}
                       {r.code}
                       {/* Старый формат помечен, но не спрятан: сейчас все деньги
                           именно на нём (Decision 043). */}
                       {r.scheme === "legacy" && (
-                        <span className="ml-2 text-[10px] text-zinc-600 border border-zinc-700/50 rounded px-1 py-0.5">старый</span>
+                        <span className="ml-2 text-[10px] text-hint border border-zinc-700/50 rounded px-1 py-0.5">старый</span>
                       )}
                       {(r.versions ?? 1) > 1 && (
                         <span className="ml-2 text-[10px] text-violet-300 border border-violet-700/40 rounded px-1 py-0.5">{merge === "all" ? "вариантов" : "версий"}: {r.versions}</span>
@@ -298,7 +298,7 @@ export default function CreativesTable() {
                     </td>
                     <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
                       {r.countries.length ? r.countries.slice(0, 3).join(", ") : "—"}
-                      {r.countries.length > 3 && <span className="text-zinc-600"> +{r.countries.length - 3}</span>}
+                      {r.countries.length > 3 && <span className="text-hint"> +{r.countries.length - 3}</span>}
                       {/* Гео в имени разошлось с таргетом: крео открутилось не
                           туда, куда написано. Не ошибка расчёта — повод глянуть. */}
                       {r.geoMismatch && (
@@ -319,12 +319,12 @@ export default function CreativesTable() {
                   </tr>
                   {merge === "all" && openRows.has(r.code) && [...(r.details ?? [])].sort((a, b) => b.spend - a.spend).map((d) => (
                     <tr key={d.code} className="bg-violet-950/10">
-                      <td className="px-3 py-2 pl-8 text-zinc-400 whitespace-nowrap sticky left-0 bg-[#13101b] z-10" title={d.code}>
-                        {d.code}<span className="ml-2 text-[11px] text-zinc-500">{(d.countries.join(", ") || geoOfCode(d.code) || "—")} · {d.faces.join(", ") || "без лица"}</span>
+                      <td className="px-3 py-2 pl-8 text-zinc-400 whitespace-nowrap sticky left-0 bg-panel z-10" title={d.code}>
+                        {d.code}<span className="ml-2 text-[11px] text-hint">{(d.countries.join(", ") || geoOfCode(d.code) || "—")} · {d.faces.join(", ") || "без лица"}</span>
                       </td>
-                      <td className="px-3 py-2 text-zinc-500">{d.countries.join(", ") || "—"}</td>
-                      <td className="px-3 py-2 text-zinc-500">{d.approach}</td>
-                      {COLS.map((c) => <td key={c.label} className="px-3 py-2 whitespace-nowrap text-zinc-500">{c.cell(metrics(d))}</td>)}
+                      <td className="px-3 py-2 text-hint">{d.countries.join(", ") || "—"}</td>
+                      <td className="px-3 py-2 text-hint">{d.approach}</td>
+                      {COLS.map((c) => <td key={c.label} className="px-3 py-2 whitespace-nowrap text-hint">{c.cell(metrics(d))}</td>)}
                     </tr>
                   ))}
                   </Fragment>
@@ -333,7 +333,7 @@ export default function CreativesTable() {
             </table>
           </div>
 
-          <p className="text-[11px] text-zinc-600 mt-3">
+          <p className="text-[11px] text-hint mt-3">
             Страны берутся из настроек таргета адсета, а не из имени креатива: имена пишет человек,
             и старые продолжают работать. Пометка ≠ значит, что гео в коде разошлось с таргетом.
             <br />

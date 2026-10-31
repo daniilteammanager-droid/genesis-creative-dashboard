@@ -44,7 +44,7 @@ const chip = (on: boolean) =>
   }`;
 
 const field =
-  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
+  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
 
 export default function CreativesView() {
   const [view, setView] = useState<"cards" | "table" | "analytics">("cards");
@@ -180,7 +180,7 @@ export default function CreativesView() {
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        <div data-tour="creatives-views" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+        <div data-tour="creatives-views" className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit">
           <button onClick={() => setView("cards")} className={tab(view === "cards")}>Плитка</button>
           <button onClick={() => setView("table")} className={tab(view === "table")}>Таблица</button>
           <button onClick={() => setView("analytics")} className={tab(view === "analytics")}>Аналитика</button>
@@ -194,9 +194,9 @@ export default function CreativesView() {
       {view !== "table" && (
         <>
           <div className="flex flex-wrap items-center gap-3 mb-4">
-            <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
+            <span className="text-xs text-hint uppercase tracking-wider">Период</span>
             <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
               {PERIODS.map((p) => (
                 <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
                         className={chip(since === p.since() && until === p.until())}>{p.label}</button>
@@ -206,24 +206,24 @@ export default function CreativesView() {
 
           {!data?.isBuyer && data && (
             <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Баеры</span>
+              <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
               {data.buyers.length > 0 ? (
-                <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+                <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
                   <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
                   {data.buyers.map((b) => (
                     <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
                   ))}
                 </div>
               ) : (
-                <span className="text-sm text-zinc-500">Никто из баеров ещё не подключил ключи</span>
+                <span className="text-sm text-hint">Никто из баеров ещё не подключил ключи</span>
               )}
             </div>
           )}
 
           {(data?.countries.length ?? 0) > 0 && (
             <div className="flex items-center gap-3 mb-5 flex-wrap">
-              <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Страны</span>
-              <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+              <span className="text-xs text-hint uppercase tracking-wider w-16">Страны</span>
+              <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
                 <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
                 {data!.countries.map((c) => (
                   <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>

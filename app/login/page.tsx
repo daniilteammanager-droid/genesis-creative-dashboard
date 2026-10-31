@@ -78,11 +78,11 @@ function LoginForm() {
   }
 
   const field =
-    "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-    "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white";
+    "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+    "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white flex items-center justify-center p-6">
+    <main className="min-h-screen bg-background text-white flex items-center justify-center p-6">
       <div className="w-full max-w-[400px]">
         <div className="flex flex-col items-center gap-6 mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -92,8 +92,8 @@ function LoginForm() {
           </p>
         </div>
 
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
-          <div className="flex gap-1 mb-5 bg-[#0d0b14] border border-violet-900/40 rounded-xl p-1">
+        <div className="bg-card border border-line rounded-2xl p-6">
+          <div className="flex gap-1 mb-5 bg-panel border border-line rounded-xl p-1">
             {(["signin", "signup"] as const).map((m) => (
               <button
                 key={m}
@@ -165,7 +165,7 @@ function LoginForm() {
                   onChange={(e) => setInviteCode(e.target.value)}
                   className={field}
                 />
-                <p className="text-[11px] text-zinc-600 leading-relaxed">
+                <p className="text-[11px] text-hint leading-relaxed">
                   Приглашение одноразовое, его выдаёт тимлид. Номер баера присвоится сам.
                 </p>
               </>
@@ -206,7 +206,7 @@ function LoginForm() {
 export default function LoginPage() {
   // useSearchParams требует Suspense — иначе страница не соберётся статически.
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0a080f]" />}>
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
       <LoginForm />
     </Suspense>
   );

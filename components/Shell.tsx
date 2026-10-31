@@ -61,11 +61,11 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
 
   const item = "block px-3 py-2 rounded-xl text-sm font-medium transition";
   const iconBtn =
-    "flex items-center justify-center h-8 w-8 rounded-lg text-zinc-500 " +
+    "flex items-center justify-center h-8 w-8 rounded-lg text-hint " +
     "hover:text-violet-300 hover:bg-violet-900/20 transition text-base leading-none";
 
   return (
-    <div className="flex min-h-screen bg-[#0a080f]">
+    <div className="flex min-h-screen bg-background">
       {/* Подложка под выехавшей панелью — только на телефоне. Закрывает по тапу
           мимо: искать крестик ради этого не должно быть нужно. */}
       {open === true && (
@@ -77,8 +77,8 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
       )}
 
       <aside
-        className={`${asideShown} ${asidePlace} flex-shrink-0 bg-[#0d0b14] flex-col
-                    border-r border-violet-900/25`}
+        className={`${asideShown} ${asidePlace} flex-shrink-0 bg-panel flex-col
+                    border-r border-line`}
       >
         <div className="flex items-center justify-between px-4 py-3 md:py-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -111,7 +111,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
 
         {/* Аккаунт — вход в настройки. Команда, приглашения, интеграции и пароль
             живут там, а не в этой панели: сюда они добавлялись бы бесконечно. */}
-        <div className="px-2.5 pb-3 pt-2 border-t border-violet-900/25">
+        <div className="px-2.5 pb-3 pt-2 border-t border-line">
           {profile ? (
             <Link
               data-tour="account"
@@ -123,12 +123,12 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-zinc-200 truncate">{profile.name || profile.email}</p>
-                <p className="text-[11px] text-zinc-600">{profile.buyer_code ?? ROLE_LABELS[profile.role]}</p>
+                <p className="text-[11px] text-hint">{profile.buyer_code ?? ROLE_LABELS[profile.role]}</p>
               </div>
-              <span className="text-zinc-600 text-xs">›</span>
+              <span className="text-hint text-xs">›</span>
             </Link>
           ) : (
-            <p className="px-3 py-2 text-[11px] text-zinc-600 leading-relaxed">
+            <p className="px-3 py-2 text-[11px] text-hint leading-relaxed">
               Профиль не прочитался. Настройки недоступны, остальное работает.
             </p>
           )}
@@ -138,7 +138,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
       {/* Столбец-огрызок вместо убранной панели — только на компе. */}
       <div
         className={`${railShown} w-[52px] flex-shrink-0 flex-col items-center pt-4
-                    bg-[#0d0b14] border-r border-violet-900/25 sticky top-0 h-screen`}
+                    bg-panel border-r border-line sticky top-0 h-screen`}
       >
         <button onClick={toggle} className={iconBtn} aria-label="Показать панель">☰</button>
       </div>

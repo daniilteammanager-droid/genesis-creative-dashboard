@@ -7,9 +7,9 @@ import type { TgadsKeyView } from "@/lib/connections/tgadsKeys";
 // Своя карточка, параллельно источнику Facebook: площадки не пересекаются (Decision 069).
 
 const field =
-  "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm";
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
+  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
+const card = "bg-card border border-line rounded-2xl p-6";
 const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
 const date = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 
@@ -58,12 +58,12 @@ export default function TgadsKeys() {
         название и ключ API. В название впиши лицо (ROMAN, RICKY) — по нему чек разложит кабинет.
       </p>
       {keys.length > 0 && (
-        <div className="divide-y divide-violet-900/20 border border-violet-900/25 rounded-xl mb-4">
+        <div className="divide-y divide-line border border-line rounded-xl mb-4">
           {keys.map((k) => (
             <div key={k.id} className="px-4 py-3 flex items-start gap-3 flex-wrap">
               <div className="flex-1 min-w-[180px]">
-                <p className="text-sm text-zinc-200">{k.name} <span className="text-zinc-600">{k.hint}</span></p>
-                <p className="text-[11px] text-zinc-600 mt-0.5">
+                <p className="text-sm text-zinc-200">{k.name} <span className="text-hint">{k.hint}</span></p>
+                <p className="text-[11px] text-hint mt-0.5">
                   {k.accountTitle} · {k.currency}{k.lastOkAt && ` · работал ${date(k.lastOkAt)}`}
                 </p>
                 {k.lastError && <p className="text-[11px] text-red-300 mt-1">Последняя ошибка: {k.lastError}</p>}
@@ -90,7 +90,7 @@ export default function TgadsKeys() {
           {busy ? "Проверяю…" : keys.length ? "Добавить ещё кабинет" : "Подключить Telegram Ads"}
         </button>
       </form>
-      <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+      <p className="text-[11px] text-hint leading-relaxed mt-2">
         Ключ — в настройках кабинета Telegram Ads, раздел Ads API. Кабинет на строку: добавил новый кабинет —
         добавь его ключ. Расход в TON переводится в доллары по курсу Coinbase своего дня. Страна — из названия
         объявления: «Static 2 Mexico», «Snow 1 Spain».

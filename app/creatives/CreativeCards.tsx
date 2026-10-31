@@ -21,7 +21,7 @@ const chip = (on: boolean) =>
   }`;
 
 const field =
-  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
+  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
 
 const money = (v: number | null) =>
   v === null ? "—" : `$${v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -190,11 +190,11 @@ export default function CreativeCards({
             placeholder="Поиск крео…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm"
+            className="w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm"
           />
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
               {TABS.map((t) => (
                 <button key={t.id} onClick={() => { setTab(t.id); setLimit(PAGE); }} className={chip(tab === t.id)}>
                   {t.label} <span className="text-[11px] opacity-60">{counts[t.id]}</span>
@@ -209,7 +209,7 @@ export default function CreativeCards({
                     className={`px-4 py-2 rounded-xl text-sm font-semibold transition border ${
                       onlyWithSpend
                         ? "bg-violet-900/40 text-violet-200 border-violet-700/40"
-                        : "bg-[#0d0b14] text-zinc-500 border-violet-900/40 hover:text-violet-300"
+                        : "bg-panel text-hint border-line hover:text-violet-300"
                     }`}>
               Только с расходом
             </button>
@@ -234,7 +234,7 @@ export default function CreativeCards({
 
             {dirty && (
               <button onClick={() => { setSearch(""); setTab("all"); setSort("none"); setMedium("all"); setApproach("all"); setOnlyWithSpend(true); }}
-                      className="px-3 py-2 rounded-xl text-sm text-zinc-500 hover:text-violet-300 transition">
+                      className="px-3 py-2 rounded-xl text-sm text-hint hover:text-violet-300 transition">
                 сбросить
               </button>
             )}
@@ -256,14 +256,14 @@ export default function CreativeCards({
       {data && !loading && (
         <>
           {withoutFile > 0 && (
-            <p className="text-[11px] text-zinc-600 mb-3">
+            <p className="text-[11px] text-hint mb-3">
               У {withoutFile} из {rows.length} крео файла в R2 нет — они крутятся, но в дашборд не загружены.
               Загрузка не влияет на цифры, только на превью.
             </p>
           )}
 
           {rows.length === 0 ? (
-            <p className="text-zinc-500 text-sm py-8">За этот период не крутилось ни одного крео.</p>
+            <p className="text-hint text-sm py-8">За этот период не крутилось ни одного крео.</p>
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -274,10 +274,10 @@ export default function CreativeCards({
                   const romi = r.spend > 0 ? ((revenue - r.spend) / r.spend) * 100 : null;
                   return (
                     <div key={r.code} onClick={() => setSelected(r)}
-                         className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition">
+                         className="bg-card border border-line rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition">
                       <MediaWide file={match?.file} />
 
-                      <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-violet-900/20">
+                      <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-line">
                         <div className="min-w-0 flex-1">
                           <div className="text-base font-bold text-white truncate" title={r.code}>{r.code}</div>
                           <div className="flex items-center gap-1.5 flex-wrap mt-1">
@@ -294,7 +294,7 @@ export default function CreativeCards({
                                     className="text-[10px] font-medium bg-amber-800/25 text-amber-300/90 border border-amber-700/40 px-1.5 py-0.5 rounded-full">≈ похоже</span>
                             )}
                             {!match && (
-                              <span className="text-[10px] font-medium bg-zinc-800/60 text-zinc-500 border border-zinc-700/40 px-1.5 py-0.5 rounded-full">файл не загружен</span>
+                              <span className="text-[10px] font-medium bg-zinc-800/60 text-hint border border-zinc-700/40 px-1.5 py-0.5 rounded-full">файл не загружен</span>
                             )}
                             {r.geoMismatch && (
                               <span title="Гео в имени не совпало со странами таргета"
@@ -326,7 +326,7 @@ export default function CreativeCards({
                           ["Показы", num(r.impressions)],
                         ] as const).map(([label, value]) => (
                           <div key={label}>
-                            <p className="text-[10px] text-zinc-600 uppercase tracking-wider">{label}</p>
+                            <p className="text-[10px] text-hint uppercase tracking-wider">{label}</p>
                             <p className="text-zinc-200">{value}</p>
                           </div>
                         ))}

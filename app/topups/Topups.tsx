@@ -7,9 +7,9 @@ import type { Topup } from "@/lib/topups/requests";
 // ботом в платёжный чат, статус и хэш возвращаются сюда.
 
 const field =
-  "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm";
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-5 sm:p-6";
+  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
+const card = "bg-card border border-line rounded-2xl p-5 sm:p-6";
 const pill = "text-[11px] px-2.5 py-1 rounded-full border transition";
 
 const TIMES = [
@@ -153,32 +153,32 @@ export default function Topups({ categories, networks }: { categories: Record<st
         <div className="flex items-center gap-2 flex-wrap mb-3">
           {(["all", "pending", "paid", "rejected", "expired"] as const).map((s) => (
             <button key={s} type="button" onClick={() => setFilter(s)}
-                    className={`${pill} ${filter === s ? "border-violet-500 text-white bg-violet-900/30" : "border-violet-900/40 text-zinc-400"}`}>
+                    className={`${pill} ${filter === s ? "border-violet-500 text-white bg-violet-900/30" : "border-line text-zinc-400"}`}>
               {s === "all" ? "Все" : STATUS[s].label}
             </button>
           ))}
-          {paidTotal && <span className="text-xs text-zinc-500 ml-auto">Оплачено: {paidTotal}</span>}
+          {paidTotal && <span className="text-xs text-hint ml-auto">Оплачено: {paidTotal}</span>}
         </div>
-        {view === null ? <p className="text-sm text-zinc-500">Загружаю…</p> : rows.length === 0 ? (
-          <p className="text-sm text-zinc-500">Заявок нет.</p>
+        {view === null ? <p className="text-sm text-hint">Загружаю…</p> : rows.length === 0 ? (
+          <p className="text-sm text-hint">Заявок нет.</p>
         ) : (
-          <div className="divide-y divide-violet-900/20">
+          <div className="divide-y divide-line">
             {rows.map((r) => (
               <div key={r.id} className="py-3 flex gap-3 flex-wrap items-start">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200">
-                    <span className="text-zinc-500">#{r.number}</span> {r.kind}{r.target && ` · ${r.target}`} · <b>{money(r.amount)} {r.asset}</b>
-                    {r.fee > 0 && <span className="text-zinc-500"> · комиссия {money(r.fee)}</span>}
-                    <span className="text-zinc-500"> · {r.network}</span>
+                    <span className="text-hint">#{r.number}</span> {r.kind}{r.target && ` · ${r.target}`} · <b>{money(r.amount)} {r.asset}</b>
+                    {r.fee > 0 && <span className="text-hint"> · комиссия {money(r.fee)}</span>}
+                    <span className="text-hint"> · {r.network}</span>
                   </p>
-                  <p className="text-[11px] text-zinc-500 mt-0.5 break-all">
+                  <p className="text-[11px] text-hint mt-0.5 break-all">
                     {view.admin && `${r.author} · `}{stamp(r.created_at)} · {r.address}{r.comment && ` · ${r.comment}`}
                   </p>
                   <p className="text-[11px] text-zinc-400 mt-1">{detail(r)}</p>
                   {r.tx_hash && (
                     <p className="text-[11px] mt-0.5 break-all">
                       <a href={TX[r.network] + r.tx_hash} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">Транзакция ↗</a>
-                      <span className="text-zinc-500"> · {r.tx_hash}</span>
+                      <span className="text-hint"> · {r.tx_hash}</span>
                     </p>
                   )}
                 </div>

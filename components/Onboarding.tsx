@@ -115,20 +115,20 @@ export default function Onboarding({ profile }: { profile: Profile }) {
       )}
 
       <div role="dialog" aria-modal aria-label="Обучение"
-           className="fixed z-[70] bg-[#111118] border border-violet-700/50 rounded-2xl p-5 shadow-2xl shadow-violet-950/60" style={tip}>
+           className="fixed z-[70] bg-card border border-violet-700/50 rounded-2xl p-5 shadow-2xl shadow-violet-950/60" style={tip}>
         <div className="flex items-center gap-1 mb-3">
           {steps.map((_, k) => <span key={k} className={`h-1 flex-1 rounded-full ${k <= i ? "bg-violet-500" : "bg-violet-900/40"}`} />)}
         </div>
         <h2 className="text-base font-semibold text-white mb-1.5">{s.title}</h2>
         <p className="text-sm text-zinc-300 leading-relaxed">{s.text}</p>
         {clickStep && <p className="text-sm text-violet-300 mt-2">👆 Нажми на подсвеченное</p>}
-        {searching && !rect && <p className="text-xs text-zinc-500 mt-2">Открываю раздел…</p>}
+        {searching && !rect && <p className="text-xs text-hint mt-2">Открываю раздел…</p>}
         <div className="flex items-center gap-2 mt-4">
-          {!last && <button type="button" onClick={finish} className="text-xs text-zinc-500 hover:text-zinc-300 mr-auto">Пропустить</button>}
+          {!last && <button type="button" onClick={finish} className="text-xs text-hint hover:text-zinc-300 mr-auto">Пропустить</button>}
           {last && <span className="mr-auto" />}
-          <span className="text-xs text-zinc-600">{i + 1} / {steps.length}</span>
+          <span className="text-xs text-hint">{i + 1} / {steps.length}</span>
           {i > 0 && (
-            <button type="button" onClick={() => setI(i - 1)} className="px-3 py-1.5 rounded-lg text-sm text-zinc-300 border border-violet-900/40 hover:bg-violet-900/20">Назад</button>
+            <button type="button" onClick={() => setI(i - 1)} className="px-3 py-1.5 rounded-lg text-sm text-zinc-300 border border-line hover:bg-violet-900/20">Назад</button>
           )}
           {!clickStep && (
             <button type="button" onClick={next}

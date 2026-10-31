@@ -171,12 +171,12 @@ export default function CreativeUploadModal({
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-start md:items-center justify-center p-4 md:p-6" onClick={onClose}>
       <div
-        className="w-full max-w-[640px] bg-[#0d0b14] border border-violet-900/40 rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 max-h-[88vh] flex flex-col"
+        className="w-full max-w-[640px] bg-panel border border-line rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 max-h-[88vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-violet-900/20">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
           <h2 className="text-lg font-semibold text-white">Загрузить крео</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-hint hover:text-white text-xl leading-none">✕</button>
         </div>
 
         <div className="p-6 overflow-y-auto">
@@ -186,12 +186,12 @@ export default function CreativeUploadModal({
             onDrop={handleDrop}
             onClick={() => inputRef.current?.click()}
             className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-2xl px-6 py-10 cursor-pointer transition ${
-              dragActive ? "border-violet-500 bg-violet-900/10" : "border-violet-900/40 hover:border-violet-600/50"
+              dragActive ? "border-violet-500 bg-violet-900/10" : "border-line hover:border-violet-600/50"
             }`}
           >
             <span className="text-3xl opacity-70">📁</span>
             <p className="text-sm text-zinc-300">Перетащи файлы сюда или нажми, чтобы выбрать</p>
-            <p className="text-xs text-zinc-600">mp4, mov, jpg, jpeg, png, webp — можно сразу несколько</p>
+            <p className="text-xs text-hint">mp4, mov, jpg, jpeg, png, webp — можно сразу несколько</p>
             <input
               ref={inputRef}
               type="file"
@@ -203,10 +203,10 @@ export default function CreativeUploadModal({
           </div>
 
           <div className="mt-4 flex items-center gap-2">
-            <span className="text-xs text-zinc-500">Лицо:</span>
+            <span className="text-xs text-hint">Лицо:</span>
             {(["ROMAN", "RICKY"] as const).map((f) => (
               <button key={f} type="button" onClick={() => setFace(f)}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition ${face === f ? "border-violet-500 bg-violet-900/30 text-white" : "border-violet-900/40 text-zinc-400 hover:text-white"}`}>
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition ${face === f ? "border-violet-500 bg-violet-900/30 text-white" : "border-line text-zinc-400 hover:text-white"}`}>
                 {f === "ROMAN" ? "Роман" : "Рики"}
               </button>
             ))}
@@ -216,7 +216,7 @@ export default function CreativeUploadModal({
           {items.length > 0 && (
             <div className="mt-5 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                <p className="text-xs text-hint uppercase tracking-wider">
                   Готово {doneCount}/{items.length}
                 </p>
                 {queuedCount > 0 && (
@@ -287,14 +287,14 @@ function UploadRow({
   const editable = status === "queued" || status === "error";
 
   return (
-    <div className="bg-[#111118] border border-violet-900/20 rounded-xl px-3 py-2.5">
+    <div className="bg-card border border-line rounded-xl px-3 py-2.5">
       <div className="flex items-center justify-between gap-2 mb-1">
         {editable ? (
           <input
             type="text"
             value={name}
             onChange={(e) => onRename(e.target.value)}
-            className="text-sm text-zinc-200 bg-transparent border-b border-violet-900/40 focus:border-violet-500 outline-none flex-1 min-w-0 py-0.5"
+            className="text-sm text-zinc-200 bg-transparent border-b border-line focus:border-violet-500 outline-none flex-1 min-w-0 py-0.5"
           />
         ) : (
           <span className="text-sm text-zinc-200 truncate">{name}</span>
@@ -302,7 +302,7 @@ function UploadRow({
         <div className="flex items-center gap-2 flex-shrink-0">
           <StatusBadge status={status} />
           {status === "queued" && (
-            <button onClick={onRemove} className="text-zinc-600 hover:text-red-400 text-sm leading-none" title="Убрать">✕</button>
+            <button onClick={onRemove} className="text-hint hover:text-red-400 text-sm leading-none" title="Убрать">✕</button>
           )}
         </div>
       </div>
@@ -336,8 +336,8 @@ function UploadRow({
 
 function StatusBadge({ status }: { status: FileStatus }) {
   const map: Record<FileStatus, { label: string; cls: string }> = {
-    queued:     { label: "В очереди",      cls: "text-zinc-500" },
-    checking:   { label: "Проверка…",      cls: "text-zinc-500" },
+    queued:     { label: "В очереди",      cls: "text-hint" },
+    checking:   { label: "Проверка…",      cls: "text-hint" },
     exists:     { label: "Уже существует", cls: "text-amber-400" },
     uploading:  { label: "Загрузка…",      cls: "text-violet-400" },
     processing: { label: "Обрабатывается", cls: "text-violet-400" },

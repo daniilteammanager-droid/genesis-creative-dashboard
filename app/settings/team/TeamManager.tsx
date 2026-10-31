@@ -113,8 +113,8 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
   }
 
   const field =
-    "bg-[#0d0b14] border border-violet-900/40 rounded-lg px-2.5 py-1.5 text-sm outline-none " +
-    "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white";
+    "bg-panel border border-line rounded-lg px-2.5 py-1.5 text-sm outline-none " +
+    "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
   return (
     <div className="space-y-4">
@@ -122,8 +122,8 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
         <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm">{error}</div>
       )}
 
-      <div className="bg-[#111118] border border-violet-900/30 rounded-2xl divide-y divide-violet-900/20">
-        {people.length === 0 && <p className="text-sm text-zinc-600 p-5">Пока никого нет.</p>}
+      <div className="bg-card border border-line rounded-2xl divide-y divide-line">
+        {people.length === 0 && <p className="text-sm text-hint p-5">Пока никого нет.</p>}
 
         {people.map((p) => {
           const isMe = p.id === meId;
@@ -134,7 +134,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                   {p.name || "без имени"}
                   {isMe && <span className="text-violet-400/70 ml-1.5 text-[11px]">это ты</span>}
                 </p>
-                <p className="text-[11px] text-zinc-600 truncate">{p.email}</p>
+                <p className="text-[11px] text-hint truncate">{p.email}</p>
               </div>
 
               <select
@@ -166,14 +166,14 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                 className={`text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-40 ${
                   p.status === "active"
                     ? "bg-green-900/30 text-green-400 border-green-800/30 hover:border-green-600/50"
-                    : "bg-zinc-800/50 text-zinc-500 border-zinc-700/40 hover:border-zinc-500/50"
+                    : "bg-zinc-800/50 text-hint border-zinc-700/40 hover:border-zinc-500/50"
                 }`}
               >
                 {p.status === "active" ? "активен" : "отключён"}
               </button>
 
               <span className="text-[11px] w-16 text-right">
-                {busy === p.id ? <span className="text-zinc-500">…</span>
+                {busy === p.id ? <span className="text-hint">…</span>
                  : saved === p.id ? <span className="text-green-400">сохранено</span>
                  : null}
               </span>
@@ -182,7 +182,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                   выдаёт он, баеру там нечего вводить. */}
               {p.role === "buyer" && (Object.keys(SHEET_FIELDS) as SheetField[]).map((which) => (
                 <div key={which} className="w-full flex items-center gap-2">
-                  <span className="text-[11px] text-zinc-600 whitespace-nowrap w-[72px]">{SHEET_FIELDS[which].label}</span>
+                  <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">{SHEET_FIELDS[which].label}</span>
                   <input
                     type="text"
                     placeholder="ключ таблицы"
@@ -197,8 +197,8 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
               ))}
               {p.role === "buyer" && budgets[p.id] && (
                 <div className="w-full flex items-center gap-2">
-                  <span className="text-[11px] text-zinc-600 whitespace-nowrap w-[72px]">AI-лимит</span>
-                  <span className="text-sm text-zinc-500">$</span>
+                  <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">AI-лимит</span>
+                  <span className="text-sm text-hint">$</span>
                   <input
                     type="text" inputMode="decimal"
                     value={budgetDraft[p.id] ?? String(budgets[p.id].limit)}
@@ -208,7 +208,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                     onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                     className={`${field} w-20 disabled:opacity-50`}
                   />
-                  <span className="text-[11px] text-zinc-600">в месяц · потрачено ${budgets[p.id].used.toFixed(2)}</span>
+                  <span className="text-[11px] text-hint">в месяц · потрачено ${budgets[p.id].used.toFixed(2)}</span>
                 </div>
               )}
             </div>
@@ -216,8 +216,8 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
         })}
       </div>
 
-      <p className="text-[11px] text-zinc-600 leading-relaxed">
-        Код баера — вида <code className="text-zinc-500">b5</code> или просто <code className="text-zinc-500">5</code>,
+      <p className="text-[11px] text-hint leading-relaxed">
+        Код баера — вида <code className="text-hint">b5</code> или просто <code className="text-hint">5</code>,
         пустое поле убирает код. Последнего владельца разжаловать нельзя, иначе администрировать станет некому.
         Таблицы General 3.0 и 4.0 проверяются при сохранении: если она не открыта на чтение сервисному аккаунту,
         сохранить её не получится. AI-лимит — сколько долларов в месяц баер может потратить на AI-разборы своих крео

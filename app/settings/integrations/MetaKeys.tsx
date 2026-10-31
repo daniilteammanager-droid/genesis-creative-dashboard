@@ -8,9 +8,9 @@ import type { MetaKeyView } from "@/lib/connections/metaKeys";
 // Это источник Facebook; Telegram Ads — своей карточкой рядом (Decision 069).
 
 const field =
-  "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm";
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
+  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
+const card = "bg-card border border-line rounded-2xl p-6";
 const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
 
 interface State { keys: MetaKeyView[]; source: string | null; backfilledFrom: string | null; backfillDone: boolean; dolphinHint: string | null; fbtoolHint: string | null }
@@ -148,7 +148,7 @@ export default function MetaKeys() {
                   className={`text-[12px] px-3 py-1.5 rounded-lg border transition disabled:cursor-not-allowed ${
             shown === s.id
               ? "border-violet-600/50 text-violet-200 bg-violet-900/20"
-              : "border-violet-900/30 text-zinc-600 hover:text-zinc-400"}`}>
+              : "border-line text-hint hover:text-zinc-400"}`}>
             {s.label}{!s.ready && " · скоро"}
           </button>
         ))}
@@ -169,7 +169,7 @@ export default function MetaKeys() {
                 </button>
               </div>
               {fbAccounts && (
-                <div className="divide-y divide-violet-900/20 border border-violet-900/25 rounded-xl mb-3">
+                <div className="divide-y divide-line border border-line rounded-xl mb-3">
                   {fbAccounts.map((a) => (
                     <div key={a.id} className="px-4 py-2.5 flex items-start gap-3">
                       <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${a.ok ? "bg-green-500" : "bg-red-500"}`} />
@@ -192,7 +192,7 @@ export default function MetaKeys() {
               </button>
             </form>
           )}
-          <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+          <p className="text-[11px] text-hint leading-relaxed mt-2">
             Ключ — в FB Tool, раздел API. Статистика идёт из FB Tool вживую, через твои аккаунты в нём: разлогиненный
             аккаунт данных не отдаёт, пока его не перелогинишь в FB Tool. В Facebook напрямую дашборд не ходит.
             Страна — из нейминга адсета или РК.
@@ -223,7 +223,7 @@ export default function MetaKeys() {
               </button>
             </form>
           )}
-          <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+          <p className="text-[11px] text-hint leading-relaxed mt-2">
             Расход, показы и клики — из статистики самого Dolphin. В Facebook дашборд от имени аккаунтов не ходит:
             у них свои прокси. Страна берётся из нейминга адсета или РК — Dolphin таргет не отдаёт.
           </p>
@@ -231,12 +231,12 @@ export default function MetaKeys() {
       )}
 
       {shown === "meta" && keys.length > 0 && (
-        <div className="divide-y divide-violet-900/20 border border-violet-900/25 rounded-xl mb-4">
+        <div className="divide-y divide-line border border-line rounded-xl mb-4">
           {keys.map((k) => (
             <div key={k.id} className="px-4 py-3 flex items-start gap-3 flex-wrap">
               <div className="flex-1 min-w-[180px]">
-                <p className="text-sm text-zinc-200">{k.name} <span className="text-zinc-600">{k.hint}</span></p>
-                <p className="text-[11px] text-zinc-600 mt-0.5">
+                <p className="text-sm text-zinc-200">{k.name} <span className="text-hint">{k.hint}</span></p>
+                <p className="text-[11px] text-hint mt-0.5">
                   {k.appId && `приложение ${k.appId} · `}
                   {k.expiresAt ? `действует до ${date(k.expiresAt)}` : "бессрочный"}
                   {k.lastOkAt && ` · работал ${date(k.lastOkAt)}`}
@@ -269,7 +269,7 @@ export default function MetaKeys() {
       )}
 
       {state?.source && (
-        <p className="text-[12px] text-zinc-500 mb-4">
+        <p className="text-[12px] text-hint mb-4">
           История: {state.backfillDone ? "загружена полностью" : state.backfilledFrom
             ? `загружена с ${date(state.backfilledFrom)}, догружается дальше`
             : "начнёт догружаться в ближайшие 15 минут"}.
@@ -287,7 +287,7 @@ export default function MetaKeys() {
           {busy ? "Проверяю…" : keys.length ? "Добавить ещё ключ" : "Подключить Meta"}
         </button>
       </form>
-      <p className="text-[11px] text-zinc-600 leading-relaxed mt-2">
+      <p className="text-[11px] text-hint leading-relaxed mt-2">
         Нужны права <code>ads_read</code> и <code>ads_management</code>. Ключ проверяется при добавлении и обратно
         не читается. Кабинеты, которые он видит, сами закрепятся за тобой.
       </p>

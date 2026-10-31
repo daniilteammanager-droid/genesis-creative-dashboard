@@ -33,8 +33,8 @@ const Icon = () => (
   </svg>
 );
 
-const trigger = "inline-flex items-center gap-2 bg-[#0d0b14] border border-violet-900/40 hover:border-violet-600/60 rounded-xl px-3 py-2 text-sm text-white transition whitespace-nowrap";
-const panel = "z-[80] bg-[#111118] border border-violet-800/50 rounded-2xl shadow-2xl shadow-violet-950/60 p-3 " +
+const trigger = "inline-flex items-center gap-2 bg-panel border border-line hover:border-violet-600/60 rounded-xl px-3 py-2 text-sm text-white transition whitespace-nowrap";
+const panel = "z-[80] bg-card border border-violet-800/50 rounded-2xl shadow-2xl shadow-violet-950/60 p-3 " +
   "fixed inset-x-3 bottom-3 sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:mt-2";
 
 function Month({ y, m, cell, onPick, onHover, nav }: {
@@ -49,7 +49,7 @@ function Month({ y, m, cell, onPick, onHover, nav }: {
         <button type="button" onClick={nav?.next} className={`w-8 h-8 rounded-lg text-zinc-400 hover:bg-violet-900/30 hover:text-white ${nav?.next ? "" : "invisible"}`} aria-label="Следующий месяц">›</button>
       </div>
       <div className="grid grid-cols-7 gap-y-1 text-center" onMouseLeave={() => onHover?.(null)}>
-        {WEEKDAYS.map((w, i) => <span key={w} className={`text-[11px] uppercase pb-1 ${i > 4 ? "text-violet-400/70" : "text-zinc-600"}`}>{w}</span>)}
+        {WEEKDAYS.map((w, i) => <span key={w} className={`text-[11px] uppercase pb-1 ${i > 4 ? "text-violet-400/70" : "text-hint"}`}>{w}</span>)}
         {monthGrid(y, m).map((d) => (
           <button key={d.iso} type="button" onClick={() => onPick(d.iso)} onMouseEnter={() => onHover?.(d.iso)}
                   className={`h-9 text-sm transition ${d.inMonth ? "" : "opacity-35"} ${cell(d.iso)}`}>{d.day}</button>
@@ -107,7 +107,7 @@ export function DateRange({ since, until, onChange, min, max = mskDay(), classNa
               <Month y={view.y} m={view.m} cell={cell} onPick={pick} onHover={setHover}
                      nav={{ prev: () => setView(shiftMonth(view.y, view.m, -1)), next: () => setView(shiftMonth(view.y, view.m, 1)), prevPhoneOnly: true }} />
             </div>
-            <p className="text-[11px] text-zinc-500 mt-2 px-1">{start ? `С ${dayLabel(start)} — выбери последний день` : "Выбери первый и последний день периода"}</p>
+            <p className="text-[11px] text-hint mt-2 px-1">{start ? `С ${dayLabel(start)} — выбери последний день` : "Выбери первый и последний день периода"}</p>
           </div>
         </>
       )}
@@ -139,7 +139,7 @@ export function DatePicker({ value, onChange, min, max, className = "" }: Common
                    nav={{ prev: () => setView(shiftMonth(view.y, view.m, -1)), next: () => setView(shiftMonth(view.y, view.m, 1)) }} />
             <div className="flex justify-between mt-2 px-1">
               <button type="button" onClick={() => { if (!off(today)) { onChange(today); setOpen(false); } }} className="text-xs text-violet-300 hover:text-white">Сегодня</button>
-              <button type="button" onClick={() => setOpen(false)} className="text-xs text-zinc-500 hover:text-zinc-300">Закрыть</button>
+              <button type="button" onClick={() => setOpen(false)} className="text-xs text-hint hover:text-zinc-300">Закрыть</button>
             </div>
           </div>
         </>

@@ -23,11 +23,11 @@ export default function ReportsPage() {
   const [view, setView] = useState<View>("campaigns");
 
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white p-8">
+    <main className="min-h-screen bg-background text-white p-8">
       <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Live Manager</h1>
 
-        <div data-tour="reports-views" className="flex gap-1 mb-6 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit">
+        <div data-tour="reports-views" className="flex gap-1 mb-6 bg-card border border-line rounded-2xl p-1 w-fit">
           {VIEWS.map((v) => (
             <button
               key={v.id}

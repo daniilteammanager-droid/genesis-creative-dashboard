@@ -37,7 +37,7 @@ export function fmtOptMoney(n: number | null): string {
 }
 
 export function romiClass(romi: number | null): string {
-  if (romi === null) return "text-zinc-600";
+  if (romi === null) return "text-hint";
   if (romi >= 0.5) return "text-green-400";
   if (romi >= 0) return "text-yellow-400";
   return "text-red-400";
@@ -104,8 +104,8 @@ export const GRANULARITIES: { id: Granularity; label: string }[] = [
 
 export function SummaryCard({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
   return (
-    <div className="bg-[#111118] border border-violet-900/20 rounded-2xl px-4 py-3.5">
-      <p className="text-[11px] text-zinc-500 uppercase tracking-wider mb-1.5">{label}</p>
+    <div className="bg-card border border-line rounded-2xl px-4 py-3.5">
+      <p className="text-[11px] text-hint uppercase tracking-wider mb-1.5">{label}</p>
       <p className={`text-xl font-semibold tabular-nums ${
         tone === "good" ? "text-green-400" : tone === "bad" ? "text-red-400" : "text-white"
       }`}>{value}</p>
@@ -168,8 +168,8 @@ export function ChartTooltip({
 }: TooltipContentProps & { money?: string[]; percent?: string[]; plain?: string[] }) {
   if (!active || !payload || payload.length === 0) return null;
   return (
-    <div className="bg-[#151320] border border-violet-900/40 rounded-lg px-3 py-2 text-xs shadow-xl">
-      <p className="text-zinc-500 mb-1">{label}</p>
+    <div className="bg-raised border border-line rounded-lg px-3 py-2 text-xs shadow-xl">
+      <p className="text-hint mb-1">{label}</p>
       {payload.map((entry) => {
         const key = String(entry.dataKey);
         const v = typeof entry.value === "number" ? entry.value : null;

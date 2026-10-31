@@ -95,12 +95,12 @@ export default function MediaLibrary({
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-start md:items-center justify-center p-4 md:p-6" onClick={onClose}>
       <div
-        className="w-full max-w-[820px] bg-[#0d0b14] border border-violet-900/40 rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 max-h-[88vh] flex flex-col"
+        className="w-full max-w-[820px] bg-panel border border-line rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 max-h-[88vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-violet-900/20">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
           <h2 className="text-lg font-semibold text-white">Медиатека</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-hint hover:text-white text-xl leading-none">✕</button>
         </div>
 
         <div className="p-6 overflow-y-auto space-y-6">
@@ -116,11 +116,11 @@ export default function MediaLibrary({
             placeholder="Поиск по названию..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-[#111118] border border-violet-900/40 rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600"
+            className="w-full bg-card border border-line rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-hint"
           />
 
           {missing.length > 0 && (
-            <div className="bg-[#111118] border border-amber-700/30 rounded-2xl p-5">
+            <div className="bg-card border border-amber-700/30 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-amber-300">
                   Ещё не загружено ({missing.length}{!showIgnored && ignoredCount > 0 ? `, скрыто ${ignoredCount}` : ""})
@@ -128,7 +128,7 @@ export default function MediaLibrary({
                 {ignoredCount > 0 && (
                   <button
                     onClick={() => setShowIgnored((v) => !v)}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                    className="text-xs text-hint hover:text-zinc-300 transition"
                   >
                     {showIgnored ? "Скрыть проигнорированные" : "Показать проигнорированные"}
                   </button>
@@ -142,7 +142,7 @@ export default function MediaLibrary({
                       key={r.creative}
                       className={`flex items-center gap-1.5 text-xs pl-2.5 pr-1.5 py-1 rounded-lg border ${
                         ignored
-                          ? "bg-zinc-900/40 text-zinc-600 border-zinc-800 line-through"
+                          ? "bg-zinc-900/40 text-hint border-zinc-800 line-through"
                           : "bg-amber-900/20 text-amber-300/80 border-amber-700/30"
                       }`}
                     >
@@ -163,11 +163,11 @@ export default function MediaLibrary({
           )}
 
           {possibleMatches.length > 0 && (
-            <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
+            <div className="bg-card border border-line rounded-2xl p-5">
               <h3 className="text-sm font-bold text-zinc-300 mb-1">
                 Похоже, уже загружено под другим гео ({possibleMatches.length})
               </h3>
-              <p className="text-xs text-zinc-600 mb-3">
+              <p className="text-xs text-hint mb-3">
                 Точного файла нет, но по базовому названию совпадает с уже загруженным — превью на карточке подставится автоматически.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -187,13 +187,13 @@ export default function MediaLibrary({
 
           <SuffixManager suffixes={matchSuffixes} onChanged={onSuffixesChanged} />
 
-          <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
+          <div className="bg-card border border-line rounded-2xl p-5">
             <h3 className="text-sm font-bold text-zinc-300 mb-4">Загружено ({files.length})</h3>
             <div className="space-y-2">
               {files.map((file) => (
                 <FileRow key={file.key} file={file} note={notes[getFileBaseName(file.key)]} onRefresh={onRefresh} />
               ))}
-              {files.length === 0 && <p className="text-sm text-zinc-600">Ничего не найдено.</p>}
+              {files.length === 0 && <p className="text-sm text-hint">Ничего не найдено.</p>}
             </div>
           </div>
         </div>
@@ -249,7 +249,7 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
   }
 
   return (
-    <div className="flex items-center gap-3 bg-[#0d0b14] border border-violet-900/20 rounded-xl px-3 py-2.5">
+    <div className="flex items-center gap-3 bg-panel border border-line rounded-xl px-3 py-2.5">
       <div className="w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-zinc-900 flex items-center justify-center">
         {file.posterUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -276,7 +276,7 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
           <p className="text-sm text-zinc-200 truncate">{filename}</p>
         )}
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
-          <span className="text-[11px] text-zinc-600">{getApproach(getFileBaseName(file.key), file.key)}</span>
+          <span className="text-[11px] text-hint">{getApproach(getFileBaseName(file.key), file.key)}</span>
           <ProcessingBadges file={file} note={note} />
         </div>
         {error && <p className="text-[11px] text-red-400 mt-0.5">{error}</p>}
@@ -294,7 +294,7 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
           </>
         ) : (
           <>
-            <button onClick={() => setEditing(true)} disabled={busy} className="text-xs px-2.5 py-1 rounded-lg border border-violet-900/40 text-zinc-300 hover:border-violet-600/50 transition disabled:opacity-50">
+            <button onClick={() => setEditing(true)} disabled={busy} className="text-xs px-2.5 py-1 rounded-lg border border-line text-zinc-300 hover:border-violet-600/50 transition disabled:opacity-50">
               Переименовать
             </button>
             <button onClick={handleDelete} disabled={busy} className="text-xs px-2.5 py-1 rounded-lg border border-red-900/40 text-red-400 hover:border-red-600/50 transition disabled:opacity-50">
@@ -324,7 +324,7 @@ function ProcessingBadges({ file, note }: { file: MediaFile; note: CreativeNote 
         <span
           key={b.label}
           className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-            b.ok ? "bg-green-900/20 text-green-400/90 border-green-700/30" : "bg-zinc-800/50 text-zinc-500 border-zinc-700/40"
+            b.ok ? "bg-green-900/20 text-green-400/90 border-green-700/30" : "bg-zinc-800/50 text-hint border-zinc-700/40"
           }`}
         >
           {b.ok ? "✓" : "⏳"} {b.label}
@@ -364,9 +364,9 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
   }
 
   return (
-    <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-5">
+    <div className="bg-card border border-line rounded-2xl p-5">
       <h3 className="text-sm font-bold text-zinc-300 mb-1">Суффиксы для мэтчинга по базовому имени</h3>
-      <p className="text-xs text-zinc-600 mb-3">
+      <p className="text-xs text-hint mb-3">
         "edit1-ar" совпадёт с "edit1-es", если "ar" и "es" здесь — крео с одинаковой базой, но разным гео/вариантом в конце названия.
       </p>
       <div className="flex flex-wrap gap-2 mb-3">
@@ -383,7 +383,7 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
             </button>
           </span>
         ))}
-        {suffixes.length === 0 && <p className="text-xs text-zinc-600">Пусто — мэтчинг по базовому имени выключен.</p>}
+        {suffixes.length === 0 && <p className="text-xs text-hint">Пусто — мэтчинг по базовому имени выключен.</p>}
       </div>
       <div className="flex gap-2">
         <input
@@ -392,7 +392,7 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
           onChange={(e) => setNewSuffix(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addSuffix()}
           placeholder="например: uk"
-          className="flex-1 bg-[#0d0b14] border border-violet-900/40 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600"
+          className="flex-1 bg-panel border border-line rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-600/50 transition placeholder:text-hint"
         />
         <button
           onClick={addSuffix}
@@ -409,8 +409,8 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
 
 function StatCard({ label, value, colorClass = "text-white" }: { label: string; value: string; colorClass?: string }) {
   return (
-    <div className="bg-[#111118] border border-violet-900/30 rounded-xl px-4 py-3">
-      <div className="text-zinc-500 text-xs mb-1 truncate">{label}</div>
+    <div className="bg-card border border-line rounded-xl px-4 py-3">
+      <div className="text-hint text-xs mb-1 truncate">{label}</div>
       <div className={`text-lg font-bold tabular-nums truncate ${colorClass}`}>{value}</div>
     </div>
   );

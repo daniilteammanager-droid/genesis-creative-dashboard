@@ -24,7 +24,7 @@ const int = (v: number) => v.toLocaleString("ru-RU");
 const pct = (v: number | null, d = 2) =>
   v === null || !Number.isFinite(v) ? "—" : `${v.toFixed(d)}%`;
 
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
+const card = "bg-card border border-line rounded-2xl p-6";
 
 const sum = (rows: CreativeRow[], f: (r: CreativeRow) => number | null) =>
   rows.reduce((s, r) => s + (f(r) ?? 0), 0);
@@ -138,7 +138,7 @@ export default function CreativeAnalytics({
       </div>
     );
   }
-  if (!a) return <p className="text-zinc-500 text-sm py-8">За этот период считать нечего.</p>;
+  if (!a) return <p className="text-hint text-sm py-8">За этот период считать нечего.</p>;
 
   const maxFunnel = Math.max(...a.funnel.map((f) => f.count), 1);
 
@@ -147,7 +147,7 @@ export default function CreativeAnalytics({
       {/* ─── Воронка ─── */}
       <div className={card}>
         <h2 className="text-base font-bold mb-1">Воронка потерь</h2>
-        <p className="text-zinc-500 text-xs mb-5">
+        <p className="text-hint text-xs mb-5">
           Первые две ступени из Meta, остальные из выгрузок Torro. Конверсия — к предыдущей ступени,
           цена — расход периода на эту ступень.
         </p>
@@ -162,15 +162,15 @@ export default function CreativeAnalytics({
                   {int(f.count)}
                 </span>
               </div>
-              <div className="w-20 text-xs text-zinc-500 tabular-nums text-right">{pct(f.conv)}</div>
+              <div className="w-20 text-xs text-hint tabular-nums text-right">{pct(f.conv)}</div>
               <div className="w-24 text-xs text-zinc-300 tabular-nums text-right">{money(f.cost)}</div>
             </div>
           ))}
         </div>
-        <div className="flex gap-6 mt-5 pt-4 border-t border-violet-900/20 text-sm flex-wrap">
-          <span className="text-zinc-500">Расход <span className="text-zinc-200">{money(a.spend)}</span></span>
-          <span className="text-zinc-500">Доход <span className="text-zinc-200">{money(a.revenue)}</span></span>
-          <span className="text-zinc-500">
+        <div className="flex gap-6 mt-5 pt-4 border-t border-line text-sm flex-wrap">
+          <span className="text-hint">Расход <span className="text-zinc-200">{money(a.spend)}</span></span>
+          <span className="text-hint">Доход <span className="text-zinc-200">{money(a.revenue)}</span></span>
+          <span className="text-hint">
             ROMI <span className={a.spend > 0 && a.revenue >= a.spend ? "text-green-400" : "text-zinc-200"}>
               {a.spend > 0 ? pct(((a.revenue - a.spend) / a.spend) * 100, 0) : "—"}
             </span>
@@ -187,12 +187,12 @@ export default function CreativeAnalytics({
       {/* ─── Тексты и версии ─── */}
       <div className={card}>
         <h2 className="text-base font-bold mb-1">Тексты и версии</h2>
-        <p className="text-zinc-500 text-xs mb-5">
+        <p className="text-hint text-xs mb-5">
           Считается только по новому неймингу — сейчас это {a.v2} из {a.rows.length} крео ({pct(a.v2Share, 0)}).
           Отвечает на вопрос, работает сам текст или конкретное исполнение.
         </p>
         {a.byText.length === 0 ? (
-          <p className="text-zinc-500 text-sm">Крео нового формата за период не было.</p>
+          <p className="text-hint text-sm">Крео нового формата за период не было.</p>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <GroupTable title="По тексту" subtitle="подход и номер текста" rows={a.byText.slice(0, 12)} bare />
@@ -220,24 +220,24 @@ function GroupTable({ title, subtitle, rows, bare }: { title: string; subtitle: 
   const body = (
     <>
       <h2 className={bare ? "text-sm font-bold mb-1" : "text-base font-bold mb-1"}>{title}</h2>
-      <p className="text-zinc-500 text-xs mb-4">{subtitle}</p>
+      <p className="text-hint text-xs mb-4">{subtitle}</p>
       {rows.length === 0 ? (
-        <p className="text-zinc-500 text-sm">Нет данных.</p>
+        <p className="text-hint text-sm">Нет данных.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-violet-900/25">
+              <tr className="border-b border-line">
                 {["", "Крео", "Расход", "Цена ПДП", "Цена диа", "Деп", "ROMI", "Винеры"].map((h, i) => (
-                  <th key={h + i} className={`py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap ${i === 0 ? "text-left" : "text-right px-2"}`}>{h}</th>
+                  <th key={h + i} className={`py-2 text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap ${i === 0 ? "text-left" : "text-right px-2"}`}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-violet-900/15">
+            <tbody className="divide-y divide-line/50">
               {rows.map((r) => (
                 <tr key={r.name}>
                   <td className="py-2 text-zinc-200 max-w-[180px] truncate" title={r.name}>{r.name}</td>
-                  <td className="py-2 px-2 text-right text-zinc-500 tabular-nums">{r.creatives}</td>
+                  <td className="py-2 px-2 text-right text-hint tabular-nums">{r.creatives}</td>
                   <td className="py-2 px-2 text-right text-zinc-200 tabular-nums">{money(r.spend)}</td>
                   <td className="py-2 px-2 text-right text-zinc-300 tabular-nums">{money(r.costPdp)}</td>
                   <td className="py-2 px-2 text-right text-zinc-300 tabular-nums">{money(r.costDia)}</td>

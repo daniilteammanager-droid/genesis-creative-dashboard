@@ -66,17 +66,17 @@ export default function AiPanel({ buyerId, buyerLabel, creo, onClose, onDone }: 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
       <aside onClick={(e) => e.stopPropagation()} role="dialog" aria-label="AI-разбор крео"
-             className="w-full sm:w-[30rem] h-full overflow-y-auto bg-[#111118] border-l border-violet-900/40 p-5 shadow-2xl">
+             className="w-full sm:w-[30rem] h-full overflow-y-auto bg-card border-l border-line p-5 shadow-2xl">
         <div className="flex items-start gap-3 mb-4">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-violet-300 mb-1">✦ AI-разбор · {buyerLabel}</p>
             <h2 className="text-sm font-semibold text-white break-words">{creo}</h2>
-            <p className="text-[11px] text-zinc-500 mt-1">Все страны за 30 дней, модель Claude Opus 5.5</p>
+            <p className="text-[11px] text-hint mt-1">Все страны за 30 дней, модель Claude Opus 5.5</p>
           </div>
-          <button onClick={onClose} aria-label="Закрыть" className="text-zinc-500 hover:text-white text-lg leading-none">×</button>
+          <button onClick={onClose} aria-label="Закрыть" className="text-hint hover:text-white text-lg leading-none">×</button>
         </div>
 
-        {state === "load" && <p className="text-sm text-zinc-500">Загружаю…</p>}
+        {state === "load" && <p className="text-sm text-hint">Загружаю…</p>}
         {state !== "load" && !ready && <p className="text-sm text-amber-300/80">AI-разборы ещё не подключены: на сервере нет ключа ANTHROPIC_API_KEY.</p>}
         {state !== "load" && ready && (
           <>
@@ -84,7 +84,7 @@ export default function AiPanel({ buyerId, buyerLabel, creo, onClose, onDone }: 
               <div className="mb-4">
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   {v && <span className={`px-2 py-0.5 rounded-md border text-xs ${v.tone}`}>{v.label}</span>}
-                  <span className="text-[11px] text-zinc-500">
+                  <span className="text-[11px] text-hint">
                     {new Date(a.created_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {WHY[a.trigger] ?? ""}
                   </span>
                 </div>
@@ -92,14 +92,14 @@ export default function AiPanel({ buyerId, buyerLabel, creo, onClose, onDone }: 
               </div>
             ) : state === "idle" && <p className="text-sm text-zinc-400 mb-4">Разбора ещё нет. Модель посмотрит транскрипт и воронку по странам, сравнит со средними команды и скажет, что делать с крео.</p>}
 
-            {same && <p className="text-xs text-zinc-500 mb-3">Цифры с прошлого разбора не изменились — разбор тот же, лимит не потрачен.</p>}
+            {same && <p className="text-xs text-hint mb-3">Цифры с прошлого разбора не изменились — разбор тот же, лимит не потрачен.</p>}
             {err && <p className="text-xs text-red-400 mb-3">{err}</p>}
             <div className="flex flex-wrap items-center gap-3">
               <button onClick={run} disabled={state === "run"}
                       className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-sm text-white font-medium">
                 {state === "run" ? "Модель разбирает… ~15 с" : a ? "Разобрать заново" : "Разобрать"}
               </button>
-              {budget && <span className="text-[11px] text-zinc-500">Лимит баера: ${budget.used.toFixed(2)} из ${budget.limit} в этом месяце</span>}
+              {budget && <span className="text-[11px] text-hint">Лимит баера: ${budget.used.toFixed(2)} из ${budget.limit} в этом месяце</span>}
             </div>
           </>
         )}

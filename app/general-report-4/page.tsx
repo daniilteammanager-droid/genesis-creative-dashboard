@@ -248,8 +248,8 @@ export default function GeneralReport4Page() {
   const smallChip = (active: boolean) =>
     `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
       active ? "bg-violet-600 text-white"
-        : "bg-[#111118] border border-violet-900/30 text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
-  const label = "text-xs text-zinc-600 uppercase tracking-wider mr-1";
+        : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
+  const label = "text-xs text-hint uppercase tracking-wider mr-1";
 
   const td = (c: Col) => `px-3 py-2 tabular-nums whitespace-nowrap ${c.key ? "bg-violet-950/25 border-x border-violet-800/30" : ""}`;
 
@@ -261,12 +261,12 @@ export default function GeneralReport4Page() {
   ));
 
   return (
-    <main className="min-h-screen bg-[#0a080f] text-white p-4 md:p-8">
+    <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 4.0</h1>
 
         {sources.some((x) => x.kind === "main") && (
-          <div data-tour="gr4-tabs" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit mb-6">
+          <div data-tour="gr4-tabs" className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit mb-6">
             <button onClick={() => setTab("table")} className={chip(tab === "table")}>Таблица</button>
             <button onClick={() => setTab("report")} className={chip(tab === "report")}>Отчёт</button>
           </div>
@@ -274,7 +274,7 @@ export default function GeneralReport4Page() {
         {tab === "report" && sources.some((x) => x.kind === "main") ? <Report /> : <>
 
         {sources.length > 1 && (
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 w-fit flex-wrap mb-6">
+          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit flex-wrap mb-6">
             {sources.map((s) => (
               <button key={s.id} onClick={() => pickSource(s.id)} className={chip(activeSource === s.id)}>{s.label}</button>
             ))}
@@ -298,12 +298,12 @@ export default function GeneralReport4Page() {
 
         {data && !loading && !error && (
           <>
-            <div className="flex items-center gap-4 mb-6 text-xs text-zinc-600 flex-wrap">
-              <span>Строк: <span className="text-zinc-500">{rows.length}</span></span>
+            <div className="flex items-center gap-4 mb-6 text-xs text-hint flex-wrap">
+              <span>Строк: <span className="text-hint">{rows.length}</span></span>
               <span>•</span>
-              <span>Последний день: <span className="text-zinc-500">{rows.reduce((m, r) => (r.date > m ? r.date : m), "") || "—"}</span></span>
+              <span>Последний день: <span className="text-hint">{rows.reduce((m, r) => (r.date > m ? r.date : m), "") || "—"}</span></span>
               <span>•</span>
-              <span>Из таблиц: <span className="text-zinc-500">{new Date(data.generatedAt).toLocaleString("ru-RU")}</span> · сами обновляются раз в 15 минут</span>
+              <span>Из таблиц: <span className="text-hint">{new Date(data.generatedAt).toLocaleString("ru-RU")}</span> · сами обновляются раз в 15 минут</span>
               <button onClick={refresh} disabled={refreshing} className="text-violet-300 hover:text-violet-200 disabled:opacity-50">
                 {refreshing ? "обновляю…" : "↻ Обновить из таблиц"}
               </button>
@@ -316,7 +316,7 @@ export default function GeneralReport4Page() {
 
             {/* Итого за выбранный период — с теми же фильтрами и датами, что и таблица */}
             <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider">
+              <p className="text-xs text-hint uppercase tracking-wider">
                 Итого · {PRESETS.find((p) => p.id === preset)?.label}
                 {range && ` ${range.from.slice(8, 10)}.${range.from.slice(5, 7)}–${range.to.slice(8, 10)}.${range.to.slice(5, 7)}`}
                 {activeFilters.length ? " · с фильтрами" : ""}
@@ -324,7 +324,7 @@ export default function GeneralReport4Page() {
               <button onClick={() => setCardsOpen((v) => !v)} className={smallChip(cardsOpen)}>⚙ Настроить</button>
             </div>
             {cardsOpen && (
-              <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-4 mb-4 flex flex-wrap gap-2">
+              <div className="bg-card border border-line rounded-2xl p-4 mb-4 flex flex-wrap gap-2">
                 {cards.map((c) => (
                   <button key={c.id} className={smallChip(visibleCards.includes(c.id))}
                     onClick={() => { const v = toggleIn(visibleCards, c.id); if (v.length) { setVisibleCards(v); save(CARDS_KEY, v); } }}>
@@ -340,9 +340,9 @@ export default function GeneralReport4Page() {
             </div>
 
             {/* Фильтры: в каждом разрезе можно выбрать несколько значений */}
-            <div data-tour="gr4-filters" className="bg-[#111118] border border-violet-900/25 rounded-2xl p-4 mb-4">
+            <div data-tour="gr4-filters" className="bg-card border border-line rounded-2xl p-4 mb-4">
               <button onClick={() => setFiltersOpen((v) => !v)} className="flex items-center gap-2 text-sm text-zinc-300 w-full text-left">
-                <span className="text-zinc-500">{filtersOpen ? "▾" : "▸"}</span>
+                <span className="text-hint">{filtersOpen ? "▾" : "▸"}</span>
                 Фильтры
                 {activeFilters.length > 0 && (
                   <span className="text-xs text-violet-300">
@@ -351,7 +351,7 @@ export default function GeneralReport4Page() {
                 )}
                 {activeFilters.length > 0 && (
                   <span onClick={(e) => { e.stopPropagation(); setFilters({}); }}
-                    className="ml-auto text-xs text-zinc-500 hover:text-red-300 cursor-pointer">сбросить</span>
+                    className="ml-auto text-xs text-hint hover:text-red-300 cursor-pointer">сбросить</span>
                 )}
               </button>
               {filtersOpen && (
@@ -402,23 +402,23 @@ export default function GeneralReport4Page() {
             </div>
 
             {groups.length >= 2 && CHART_DEFS.filter((c) => visibleCharts.includes(c.id)).map((c) => (
-              <div key={c.id} className="bg-[#111118] border border-violet-900/20 rounded-2xl p-4 mb-4">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">{c.label}</p>
+              <div key={c.id} className="bg-card border border-line rounded-2xl p-4 mb-4">
+                <p className="text-xs text-hint uppercase tracking-wider mb-2">{c.label}</p>
                 {c.render(chartData)}
               </div>
             ))}
 
-            <div className="bg-[#111118] border border-violet-900/20 rounded-2xl overflow-hidden">
+            <div className="bg-card border border-line rounded-2xl overflow-hidden">
               <div className="overflow-x-auto max-h-[75vh]">
                 <table className="w-full text-sm">
-                  <thead className="bg-[#0f0d18] sticky top-0 z-10">
+                  <thead className="bg-panel sticky top-0 z-10">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#0f0d18] z-20 border-t-4 border-t-zinc-600">
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-panel z-20 border-t-4 border-t-zinc-600">
                         {period === "all" ? DIM_LABELS[by ?? "country"] : "Период"}
                       </th>
                       {cols.map((c) => (
                         <th key={c.id} className={`px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap border-t-4 ${GROUP_BAR[c.group]} ${
-                          c.key ? "text-white bg-violet-950/40" : "text-zinc-500"}`}>
+                          c.key ? "text-white bg-violet-950/40" : "text-hint"}`}>
                           {c.id === "fold" || c.id === FOLD_FROM
                             ? <button onClick={toggleFold} title={c.id === "fold" ? "Развернуть колонки трафика" : "Свернуть колонки Ad Clicks — Подписки"}
                                 className="uppercase tracking-wider hover:text-violet-300">{c.id === "fold" ? c.label : `◂ ${c.label}`}</button>
@@ -435,25 +435,25 @@ export default function GeneralReport4Page() {
                         <Fragment key={g.key}>
                           {period !== "all" && (
                             <tr onClick={() => expandable && toggleOpen(g.key)}
-                              className={`border-t border-violet-900/30 bg-[#16131f] ${expandable ? "cursor-pointer hover:bg-violet-900/15" : ""}`}>
-                              <td className="px-3 py-2 whitespace-nowrap font-semibold text-violet-200 sticky left-0 bg-[#16131f]">
-                                {expandable && <span className="text-zinc-500 mr-1.5">{isOpen(g.key) ? "▾" : "▸"}</span>}
+                              className={`border-t border-line bg-raised ${expandable ? "cursor-pointer hover:bg-violet-900/15" : ""}`}>
+                              <td className="px-3 py-2 whitespace-nowrap font-semibold text-violet-200 sticky left-0 bg-raised">
+                                {expandable && <span className="text-hint mr-1.5">{isOpen(g.key) ? "▾" : "▸"}</span>}
                                 {g.label}
                               </td>
                               {renderCells(g, prev)}
                             </tr>
                           )}
                           {isOpen(g.key) && g.children?.map((c) => (
-                            <tr key={c.key} className="border-t border-violet-900/10 hover:bg-violet-900/5">
-                              <td className={`px-3 py-1.5 whitespace-nowrap sticky left-0 bg-[#111118] ${period === "all" ? "text-zinc-200" : "pl-8 text-zinc-400"}`}>
+                            <tr key={c.key} className="border-t border-line/50 hover:bg-violet-900/5">
+                              <td className={`px-3 py-1.5 whitespace-nowrap sticky left-0 bg-card ${period === "all" ? "text-zinc-200" : "pl-8 text-zinc-400"}`}>
                                 {c.label}
                               </td>
                               {renderCells(c)}
                             </tr>
                           ))}
                           {period === "all" && !g.children && (
-                            <tr className="border-t border-violet-900/10">
-                              <td className="px-3 py-2 sticky left-0 bg-[#111118] text-zinc-200">Все</td>
+                            <tr className="border-t border-line/50">
+                              <td className="px-3 py-2 sticky left-0 bg-card text-zinc-200">Все</td>
                               {renderCells(g)}
                             </tr>
                           )}
@@ -461,13 +461,13 @@ export default function GeneralReport4Page() {
                       );
                     })}
                     {groups.length === 0 && (
-                      <tr><td colSpan={cols.length + 1} className="px-4 py-12 text-center text-zinc-600 text-sm">Нет данных под выбранные фильтры.</td></tr>
+                      <tr><td colSpan={cols.length + 1} className="px-4 py-12 text-center text-hint text-sm">Нет данных под выбранные фильтры.</td></tr>
                     )}
                   </tbody>
                   {groups.length > 0 && (
                     <tfoot className="sticky bottom-0">
-                      <tr className="bg-[#0f0d18] border-t-2 border-violet-700/40 font-semibold">
-                        <td className="px-3 py-3 text-xs text-violet-400 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-[#0f0d18]">
+                      <tr className="bg-panel border-t-2 border-violet-700/40 font-semibold">
+                        <td className="px-3 py-3 text-xs text-violet-400 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-panel">
                           Итого{period !== "all" ? ` (${groups.length})` : ""}
                         </td>
                         {renderCells(total)}

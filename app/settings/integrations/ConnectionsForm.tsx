@@ -7,10 +7,10 @@ import type { ConnectionView } from "@/lib/connections/store";
 // склад совпадал с CRM целиком. Ключи Meta — отдельной карточкой (MetaKeys).
 
 const field =
-  "w-full bg-[#0d0b14] border border-violet-900/40 rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-zinc-600 text-white text-sm";
+  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
+  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
 
-const card = "bg-[#111118] border border-violet-900/30 rounded-2xl p-6";
+const card = "bg-card border border-line rounded-2xl p-6";
 
 export default function ConnectionsForm({
   initial,
@@ -101,7 +101,7 @@ export default function ConnectionsForm({
           autoComplete="off"
           className={`${field} mb-3`}
         />
-        <label className="block text-[11px] text-zinc-600 mb-1">id баера в Torro</label>
+        <label className="block text-[11px] text-hint mb-1">id баера в Torro</label>
         <input type="text" inputMode="numeric" placeholder="5183" value={torroBuyer}
                onChange={(e) => setTorroBuyer(e.target.value)} className={field} />
 
@@ -136,7 +136,7 @@ export default function ConnectionsForm({
             <span className={`text-[11px] px-2.5 py-1 rounded-full border ${
               grSheetId
                 ? "bg-green-900/30 text-green-400 border-green-800/30"
-                : "bg-zinc-800/60 text-zinc-500 border-zinc-700/40"
+                : "bg-zinc-800/60 text-hint border-zinc-700/40"
             }`}>
               {grSheetId ? "подключена" : "не подключена"}
             </span>

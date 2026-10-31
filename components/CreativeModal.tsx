@@ -106,11 +106,11 @@ export default function CreativeModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1200px] bg-[#0d0b14] border border-violet-900/40 rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:max-h-[88vh] flex flex-col md:flex-row"
+        className="w-full max-w-[1200px] bg-panel border border-line rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:max-h-[88vh] flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         {/* LEFT: media */}
-        <div className="bg-[#080710] flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
+        <div className="bg-background flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
           {mediaFile ? (
             isVideo(mediaFile.url) ? (
               // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -132,7 +132,7 @@ export default function CreativeModal({
         {/* RIGHT: analytics panel */}
         <div className="flex flex-col flex-1 min-w-0 overflow-y-auto md:max-h-[88vh]">
           {/* Header */}
-          <div className="flex items-start justify-between gap-3 p-5 border-b border-violet-900/30 flex-shrink-0">
+          <div className="flex items-start justify-between gap-3 p-5 border-b border-line flex-shrink-0">
             <div className="min-w-0 flex-1">
               <h2 className="text-2xl font-bold text-white leading-tight truncate">{item.creative}</h2>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -150,10 +150,10 @@ export default function CreativeModal({
                 disabled={!supabaseAvailable}
                 className={`w-9 h-9 flex items-center justify-center rounded-xl transition text-xl ${
                   !supabaseAvailable
-                    ? "text-zinc-700 opacity-30 cursor-not-allowed bg-[#1a1826]"
+                    ? "text-zinc-700 opacity-30 cursor-not-allowed bg-raised"
                     : note?.favorite
                     ? "text-yellow-400 bg-yellow-900/30 hover:bg-yellow-900/50"
-                    : "text-zinc-600 bg-[#1a1826] hover:text-yellow-400 hover:bg-[#221e35]"
+                    : "text-hint bg-raised hover:text-yellow-400 hover:bg-violet-900/40"
                 }`}
                 title={!supabaseAvailable ? "Избранное временно недоступно" : note?.favorite ? "Убрать из избранного" : "В избранное"}
               >
@@ -161,7 +161,7 @@ export default function CreativeModal({
               </button>
               <button
                 onClick={onClose}
-                className="flex-shrink-0 text-zinc-400 hover:text-white bg-[#1a1826] hover:bg-[#221e35] rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
+                className="flex-shrink-0 text-zinc-400 hover:text-white bg-raised hover:bg-violet-900/40 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
                 aria-label="Закрыть"
               >
                 ✕
@@ -185,7 +185,7 @@ export default function CreativeModal({
             </div>
 
             {/* Расшифровка */}
-            <div className="bg-[#0f0d18] border border-violet-900/20 rounded-xl p-4">
+            <div className="bg-panel border border-line rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-violet-400/50 text-xs uppercase tracking-widest">Расшифровка</div>
                 {!transcriptionEditing && supabaseAvailable && (
@@ -197,7 +197,7 @@ export default function CreativeModal({
                   </button>
                 )}
                 {!supabaseAvailable && (
-                  <span className="text-xs text-zinc-600 italic">Сохранение временно недоступно</span>
+                  <span className="text-xs text-hint italic">Сохранение временно недоступно</span>
                 )}
               </div>
               {transcriptionEditing ? (
@@ -206,7 +206,7 @@ export default function CreativeModal({
                     value={transcriptionDraft}
                     onChange={(e) => setTranscriptionDraft(e.target.value)}
                     rows={6} autoFocus placeholder="Расшифровка пока не добавлена"
-                    className="w-full bg-[#1a1826] border border-violet-900/30 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600 mb-3"
+                    className="w-full bg-raised border border-line rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-hint mb-3"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -224,7 +224,7 @@ export default function CreativeModal({
                 <>
                   {transcriptionText
                     ? <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">{transcriptionText}</p>
-                    : <p className="text-zinc-600 text-sm italic">Расшифровка пока не добавлена</p>
+                    : <p className="text-hint text-sm italic">Расшифровка пока не добавлена</p>
                   }
                   {transcriptionStatus === "saved" && <p className="text-green-400 text-xs mt-2">✓ Сохранено</p>}
                 </>
@@ -232,7 +232,7 @@ export default function CreativeModal({
             </div>
 
             {/* Заметки */}
-            <div className="bg-[#0f0d18] border border-violet-900/20 rounded-xl p-4">
+            <div className="bg-panel border border-line rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-violet-400/50 text-xs uppercase tracking-widest">Заметки</div>
                 {!noteEditing && supabaseAvailable && (
@@ -244,7 +244,7 @@ export default function CreativeModal({
                   </button>
                 )}
                 {!supabaseAvailable && (
-                  <span className="text-xs text-zinc-600 italic">Сохранение временно недоступно</span>
+                  <span className="text-xs text-hint italic">Сохранение временно недоступно</span>
                 )}
               </div>
               {noteEditing ? (
@@ -253,7 +253,7 @@ export default function CreativeModal({
                     value={noteDraft}
                     onChange={(e) => setNoteDraft(e.target.value)}
                     rows={4} autoFocus placeholder="Добавьте заметку..."
-                    className="w-full bg-[#1a1826] border border-violet-900/30 rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-zinc-600 mb-3"
+                    className="w-full bg-raised border border-line rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-hint mb-3"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -271,7 +271,7 @@ export default function CreativeModal({
                 <>
                   {noteText
                     ? <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">{noteText}</p>
-                    : <p className="text-zinc-600 text-sm italic">Заметка пока не добавлена</p>
+                    : <p className="text-hint text-sm italic">Заметка пока не добавлена</p>
                   }
                   {noteStatus === "saved" && <p className="text-green-400 text-xs mt-2">✓ Сохранено</p>}
                 </>
@@ -290,12 +290,12 @@ function ModalMetric({ label, value, romiValue }: { label: string; value: string
     ? isNaN(romiValue) ? "text-zinc-300" : romiValue >= 150 ? "text-green-300" : romiValue >= 0 ? "text-yellow-300" : "text-red-300"
     : "text-white";
   const borderColor = isRomi
-    ? isNaN(romiValue) ? "border-violet-900/20" : romiValue >= 150 ? "border-green-800/50" : romiValue >= 0 ? "border-yellow-800/50" : "border-red-800/50"
-    : "border-violet-900/20";
+    ? isNaN(romiValue) ? "border-line" : romiValue >= 150 ? "border-green-800/50" : romiValue >= 0 ? "border-yellow-800/50" : "border-red-800/50"
+    : "border-line";
 
   return (
-    <div className={`bg-[#111118]/60 border rounded-xl p-4 ${borderColor}`}>
-      <div className="text-zinc-500 text-xs mb-1.5">{label}</div>
+    <div className={`bg-card/60 border rounded-xl p-4 ${borderColor}`}>
+      <div className="text-hint text-xs mb-1.5">{label}</div>
       <div className={`text-lg font-bold truncate ${valueColor}`}>{value || "—"}</div>
     </div>
   );

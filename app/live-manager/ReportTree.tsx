@@ -14,7 +14,7 @@ const chip = (on: boolean) =>
   }`;
 
 const field =
-  "bg-[#0d0b14] border border-violet-900/40 rounded-xl px-3 py-2 text-sm outline-none " +
+  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
   "focus:border-violet-600/50 transition text-white";
 const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
 
@@ -49,7 +49,7 @@ const INDENT = ["", "pl-8", "pl-16"] as const;
 
 const isOn = (s?: LiveState) => s?.status === "ACTIVE";
 const pill = (s?: LiveState) => {
-  if (!s) return <span className="text-zinc-600">—</span>;
+  if (!s) return <span className="text-hint">—</span>;
   const eff = s.effective || s.status;
   const cls = eff === "ACTIVE" ? "border-green-700/40 text-green-300" : /DISAPPROVED|WITH_ISSUES/.test(eff) ? "border-red-800/40 text-red-300" : "border-zinc-700 text-zinc-400";
   return <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${cls}`} title={eff}>{eff.replace(/_/g, " ")}</span>;
@@ -72,18 +72,18 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
 
   return (
     <>
-      <tr className={`hover:bg-violet-900/10 transition border-b border-violet-900/15 ${node.outside ? "opacity-70" : ""} ${selected.has(node.id) ? "bg-violet-900/15" : ""}`}>
+      <tr className={`hover:bg-violet-900/10 transition border-b border-line/50 ${node.outside ? "opacity-70" : ""} ${selected.has(node.id) ? "bg-violet-900/15" : ""}`}>
         {/* На телефоне закреплённое имя — не шире половины экрана, иначе цифрам
             не остаётся места и таблица не листается вбок. */}
         {/* Имя — полностью: на ПК переносится строкой, на телефоне свёрнуто в одну строку и
             раскрывается тапом по имени (стрелка слева раскрывает адсеты и объявления). */}
-        <td className={`px-3 py-2.5 sticky left-0 bg-[#111118] z-10 max-w-[48vw] sm:max-w-[640px] ${INDENT[depth]}`}>
+        <td className={`px-3 py-2.5 sticky left-0 bg-card z-10 max-w-[48vw] sm:max-w-[640px] ${INDENT[depth]}`}>
           <div className="flex items-center gap-2 max-w-full min-w-0">
             <input type="checkbox" checked={selected.has(node.id)} disabled={!s?.canEdit} onChange={() => select(node.id)}
                    className="shrink-0 accent-violet-500 disabled:opacity-20" aria-label="Выбрать" />
             <div className="text-left flex items-center gap-2 max-w-full min-w-0">
               <button type="button" onClick={() => expandable && toggle(node.id)} aria-label={isOpen ? "Свернуть" : "Раскрыть"}
-                      className={`text-zinc-600 text-xs w-4 shrink-0 ${expandable ? "cursor-pointer hover:text-zinc-300" : "opacity-0 cursor-default"}`}>{isOpen ? "▾" : "▸"}</button>
+                      className={`text-hint text-xs w-4 shrink-0 ${expandable ? "cursor-pointer hover:text-zinc-300" : "opacity-0 cursor-default"}`}>{isOpen ? "▾" : "▸"}</button>
               <button type="button" title={node.name}
                       onClick={() => (window.matchMedia("(max-width: 639px)").matches ? setFull((v) => !v) : expandable && toggle(node.id))}
                       className={`text-left min-w-0 sm:whitespace-normal sm:break-words ${full ? "whitespace-normal break-all" : "truncate"} ${depth === 0 ? "text-zinc-100" : "text-zinc-300"} ${expandable ? "cursor-pointer" : "cursor-default sm:cursor-text"}`}>
@@ -109,10 +109,10 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
             )}
             {s ? pill(s) : node.lastStatus ? (
               // Живого статуса нет (кабинет пропал или не читается) — последний известный из склада.
-              <span className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 whitespace-nowrap" title="Последний известный статус из склада">
+              <span className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 text-hint whitespace-nowrap" title="Последний известный статус из склада">
                 {node.lastStatus.replace(/_/g, " ")} · история
               </span>
-            ) : <span className="text-zinc-600">—</span>}
+            ) : <span className="text-hint">—</span>}
           </div>
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap text-zinc-400">{s?.dailyBudget ? money(s.dailyBudget) : "—"}</td>
@@ -338,9 +338,9 @@ export default function ReportTree() {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <span className="text-xs text-zinc-600 uppercase tracking-wider">Период</span>
+        <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
-        <div data-tour="reports-periods" className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+        <div data-tour="reports-periods" className="flex gap-1 bg-card border border-line rounded-2xl p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}
@@ -355,16 +355,16 @@ export default function ReportTree() {
           как поломка, а не как «баеры ещё не подключились». */}
       {!isBuyer && data && (
         <div className="flex items-center gap-3 mb-5 flex-wrap">
-          <span className="text-xs text-zinc-600 uppercase tracking-wider w-16">Баеры</span>
+          <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
               <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
               {data.buyers.map((b) => (
                 <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
               ))}
             </div>
           ) : (
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-hint">
               Никто из баеров ещё не подключил ключи — выбирать пока некого
             </span>
           )}
@@ -374,7 +374,7 @@ export default function ReportTree() {
       {/* Live Manager: фильтры, обновление, столбцы. */}
       {data && data.nodes.length > 0 && (
         <div data-tour="reports-live" className="flex items-center gap-2 mb-4 flex-wrap">
-          <div className="flex gap-1 bg-[#111118] border border-violet-900/40 rounded-2xl p-1">
+          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1">
             {LEVELS.map((l) => <button key={l.id} onClick={() => setLevel(l.id)} className={chip(level === l.id)}>{l.label}</button>)}
           </div>
           <input placeholder="Кампания, ID, кабинет…" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} w-56`} />
@@ -399,11 +399,11 @@ export default function ReportTree() {
           <button type="button" disabled={Boolean(busy)} onClick={() => { setBusy("Тяну свежий расход…"); setRefresh(true); }}
                   className={`${small} border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>↻ Обновить сейчас</button>
           <div className="relative">
-            <button type="button" onClick={() => setShowCols((v) => !v)} className={`${small} border-violet-900/40 text-zinc-300 hover:bg-violet-900/20`}>☷ Столбцы</button>
+            <button type="button" onClick={() => setShowCols((v) => !v)} className={`${small} border-line text-zinc-300 hover:bg-violet-900/20`}>☷ Столбцы</button>
             {showCols && (
-              <div className="absolute z-30 mt-1 w-56 max-h-80 overflow-y-auto bg-[#111118] border border-violet-900/40 rounded-xl p-2 shadow-xl">
-                <div className="flex items-center gap-1 px-1 pb-2 mb-1 border-b border-violet-900/30">
-                  <select value="" onChange={(e) => applyPreset(e.target.value)} className="flex-1 bg-[#0d0b14] border border-violet-900/40 rounded-lg px-2 py-1 text-xs text-white">
+              <div className="absolute z-30 mt-1 w-56 max-h-80 overflow-y-auto bg-card border border-line rounded-xl p-2 shadow-xl">
+                <div className="flex items-center gap-1 px-1 pb-2 mb-1 border-b border-line">
+                  <select value="" onChange={(e) => applyPreset(e.target.value)} className="flex-1 bg-panel border border-line rounded-lg px-2 py-1 text-xs text-white">
                     <option value="">Наборы…</option>
                     {Object.keys(prefs.presets).map((k) => <option key={k} value={k}>{k}</option>)}
                   </select>
@@ -417,34 +417,34 @@ export default function ReportTree() {
               </div>
             )}
           </div>
-          {busy && <span className="text-xs text-zinc-500">{busy}</span>}
+          {busy && <span className="text-xs text-hint">{busy}</span>}
         </div>
       )}
 
       {data && data.cabinets.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
-          <button type="button" onClick={() => setCab("")} className={`shrink-0 px-3 py-2 rounded-xl border text-sm ${cab === "" ? "border-violet-500 bg-violet-900/25 text-white" : "border-violet-900/40 text-zinc-400"}`}>
-            Все кабинеты <span className="text-zinc-500">{data.cabinets.length}</span>
+          <button type="button" onClick={() => setCab("")} className={`shrink-0 px-3 py-2 rounded-xl border text-sm ${cab === "" ? "border-violet-500 bg-violet-900/25 text-white" : "border-line text-zinc-400"}`}>
+            Все кабинеты <span className="text-hint">{data.cabinets.length}</span>
           </button>
           {cabinets.map((c) => {
             const gone = c.status === "MISSING", ban = c.status ? BAN.has(c.status) : false;
             return (
-              <div key={c.accountId} className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-sm ${cab === c.accountId ? "border-violet-500 bg-violet-900/25" : "border-violet-900/40"} ${c.hidden ? "opacity-50" : ""}`}>
-                <button type="button" onClick={() => toggleIn("pinnedCabs", c.accountId)} title={c.pinned ? "Открепить" : "Закрепить"} className={c.pinned ? "text-amber-300" : "text-zinc-600 hover:text-zinc-400"}>★</button>
+              <div key={c.accountId} className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-sm ${cab === c.accountId ? "border-violet-500 bg-violet-900/25" : "border-line"} ${c.hidden ? "opacity-50" : ""}`}>
+                <button type="button" onClick={() => toggleIn("pinnedCabs", c.accountId)} title={c.pinned ? "Открепить" : "Закрепить"} className={c.pinned ? "text-amber-300" : "text-hint hover:text-zinc-400"}>★</button>
                 <button type="button" onClick={() => setCab(cab === c.accountId ? "" : c.accountId)} className="text-left" title={`${c.accountId}${gone && c.lastStatus ? ` · до пропажи: ${c.lastStatus}` : ""}`}>
                   <span className="text-zinc-100">{prefs.alias[c.accountId] || c.name}</span>
                   {gone && <span className="ml-1.5 text-[10px] px-1 rounded border border-red-800/50 text-red-300">ПРОПАЛ</span>}
                   {ban && <span className="ml-1.5 text-[10px] px-1 rounded border border-red-800/50 text-red-300">{c.status === "UNSETTLED" ? "UNSETTLED" : "БАН"}</span>}
-                  <span className="block text-[10px] text-zinc-500">{money(c.spend)}</span>
+                  <span className="block text-[10px] text-hint">{money(c.spend)}</span>
                 </button>
-                <button type="button" title="Своё название" className="text-zinc-600 hover:text-zinc-300 text-xs"
+                <button type="button" title="Своё название" className="text-hint hover:text-zinc-300 text-xs"
                         onClick={() => { const v = window.prompt("Название кабинета у тебя (пусто — как в Meta):", prefs.alias[c.accountId] ?? ""); if (v !== null) setPrefs((p) => ({ ...p, alias: { ...p.alias, [c.accountId]: v.trim() } })); }}>✎</button>
-                <button type="button" title={c.hidden ? "Показать" : "Скрыть"} onClick={() => toggleIn("hiddenCabs", c.accountId)} className="text-zinc-600 hover:text-zinc-300 text-xs">{c.hidden ? "◉" : "×"}</button>
+                <button type="button" title={c.hidden ? "Показать" : "Скрыть"} onClick={() => toggleIn("hiddenCabs", c.accountId)} className="text-hint hover:text-zinc-300 text-xs">{c.hidden ? "◉" : "×"}</button>
               </div>
             );
           })}
           {prefs.hiddenCabs.length > 0 && (
-            <button type="button" onClick={() => setShowHiddenCabs((v) => !v)} className="shrink-0 px-3 py-2 rounded-xl border border-violet-900/40 text-xs text-zinc-400">
+            <button type="button" onClick={() => setShowHiddenCabs((v) => !v)} className="shrink-0 px-3 py-2 rounded-xl border border-line text-xs text-zinc-400">
               {showHiddenCabs ? "Спрятать скрытые" : `Скрытые: ${prefs.hiddenCabs.length}`}
             </button>
           )}
@@ -452,12 +452,12 @@ export default function ReportTree() {
       )}
 
       {selected.size > 0 && (
-        <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap mb-3 bg-[#1a1426] border border-violet-700/40 rounded-xl px-3 py-2">
+        <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap mb-3 bg-raised border border-violet-700/40 rounded-xl px-3 py-2">
           <span className="text-sm text-zinc-200 mr-1">Выбрано: {selected.size}</span>
           <button type="button" disabled={Boolean(busy)} onClick={() => bulk(true)} className={`${small} border-green-700/50 text-green-300 hover:bg-green-900/20`}>▶ Запустить</button>
           <button type="button" disabled={Boolean(busy)} onClick={() => bulk(false)} className={`${small} border-zinc-600 text-zinc-300 hover:bg-zinc-800`}>⏸ Пауза</button>
           <button type="button" disabled={Boolean(busy)} onClick={budget} className={`${small} border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>$ Бюджет</button>
-          <button type="button" onClick={() => setSelected(new Set())} className={`${small} border-transparent text-zinc-500 hover:text-zinc-300 ml-auto`}>Снять</button>
+          <button type="button" onClick={() => setSelected(new Set())} className={`${small} border-transparent text-hint hover:text-zinc-300 ml-auto`}>Снять</button>
         </div>
       )}
 
@@ -478,7 +478,7 @@ export default function ReportTree() {
       )}
 
       {!loading && !error && (data?.nodes.length ?? 0) === 0 && (
-        <div className="bg-[#111118] border border-violet-900/30 rounded-2xl p-6">
+        <div className="bg-card border border-line rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-white mb-2">За этот период пусто</h2>
           <p className="text-sm text-zinc-400 leading-relaxed">
             В складе нет расхода за эти дни. Если источник подключён недавно — история ещё
@@ -508,24 +508,24 @@ export default function ReportTree() {
                 ? ["Вне подключённых кабинетов", `${money(data!.outside.depSum)} · ${n(data!.outside.campaigns)} РК`]
                 : ["Строк", n(shown.length)],
             ] as const).map(([label, value]) => (
-              <div key={label} className="bg-[#111118] border border-violet-900/30 rounded-2xl px-5 py-4">
-                <p className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">{label}</p>
+              <div key={label} className="bg-card border border-line rounded-2xl px-5 py-4">
+                <p className="text-[11px] text-hint uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-xl font-semibold text-white">{value}</p>
               </div>
             ))}
           </div>
 
-          <div className="bg-[#111118] border border-violet-900/30 rounded-2xl overflow-x-auto">
+          <div className="bg-card border border-line rounded-2xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-violet-900/25">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider sticky left-0 bg-[#111118] z-10 max-w-[48vw] sm:max-w-none">
+                <tr className="border-b border-line">
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider sticky left-0 bg-card z-10 max-w-[48vw] sm:max-w-none">
                     Кампания / адсет / объявление
                   </th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Статус</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Бюджет в день</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap">Статус</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap">Бюджет в день</th>
                   {cols.map((c) => (
-                    <th key={c.label} className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{c.label}</th>
+                    <th key={c.label} className="px-3 py-2.5 text-left text-xs font-semibold text-hint uppercase tracking-wider whitespace-nowrap">{c.label}</th>
                   ))}
                 </tr>
               </thead>
@@ -538,7 +538,7 @@ export default function ReportTree() {
             </table>
           </div>
 
-          <p className="text-[11px] text-zinc-600 mt-3 leading-relaxed">
+          <p className="text-[11px] text-hint mt-3 leading-relaxed">
             Подписки, диалоги, депы и квалы — из Torro. На кампании — срез Torro по её имени, на
             объявлении — связка «кампания × объявление»; одно имя в двух адсетах кампании делить
             нечем, тогда цифры только на кампании. Внизу — кампании, которые есть в Torro, но их
