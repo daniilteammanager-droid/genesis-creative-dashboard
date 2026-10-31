@@ -8,6 +8,7 @@ import { isVideo, getApproach } from "@/lib/creatives/media";
 import { legacyTile } from "@/lib/creatives/tile";
 import { noteKey } from "@/lib/creatives/notes";
 import CreativeStats from "./CreativeStats";
+import CreativeAi from "./CreativeAi";
 
 // Модалка крео — общая для легаси-библиотеки и новой картотеки: видео, расшифровка,
 // заметка, избранное и все цифры крео со склада за выбранный период и по неделям
@@ -265,6 +266,7 @@ export default function CreativeModal({
 
           {/* Справа: все цифры крео за период и по неделям */}
           <div className="flex-1 min-w-0 p-5 md:overflow-y-auto">
+            <CreativeAi key={item.creative} code={item.creative} />
             <CreativeStats code={item.creative} fallback={m} fallbackLabel="Цифры с карточки" />
           </div>
         </div>

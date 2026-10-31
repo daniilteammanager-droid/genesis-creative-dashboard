@@ -97,6 +97,27 @@ export async function creoFacts(buyerId: string, creo: string): Promise<CreoFact
 
 // ── Разбор ──────────────────────────────────────────────────────────────────
 
+// Модалка крео: чьё это крео — баеры, у кого оно крутилось за 30 дней или уже есть разбор.
+// Баеру — только он сам. Имя крео — как в Отчётах (в модалке легаси регистр бывает другим).
+const likeExact = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
+export async function creoBuyers(me: Profile, creo: string): Promise<{ id: string; label: string; creo: string }[]> {
+  const want = creo.trim().toLowerCase();
+  const report = await teamReport(me);
+  const idOf = new Map(report.buyers.map((b) => [b.label, b.id]));
+  const labelOf = new Map(report.buyers.map((b) => [b.id, b.label]));
+  const out = new Map<string, { id: string; label: string; creo: string }>();
+  for (const c of report.cells) {
+    const id = idOf.get(c.buyer);
+    if (id && c.creo.toLowerCase() === want && !out.has(id)) out.set(id, { id, label: c.buyer, creo: c.creo });
+  }
+  const { data } = await db().from("ai_creo_analyses").select("buyer_id, creo").eq("status", "done").ilike("creo", likeExact(creo.trim())).limit(50);
+  for (const a of data ?? []) {
+    const id = a.buyer_id as string;
+    if (!out.has(id)) out.set(id, { id, label: labelOf.get(id) ?? "Баер", creo: a.creo as string });
+  }
+  return [...out.values()].filter((b) => me.role !== "buyer" || b.id === me.id);
+}
+
 export async function latest(buyerId: string, creo: string): Promise<(Analysis & { data_hash: string | null }) | null> {
   const { data } = await db().from("ai_creo_analyses").select(`${COLS}, data_hash`)
     .eq("buyer_id", buyerId).eq("creo", creo).eq("status", "done").order("created_at", { ascending: false }).limit(1);
