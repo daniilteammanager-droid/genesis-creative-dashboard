@@ -5,7 +5,7 @@ import { MediaSquare, MediaWide } from "./CreativeMedia";
 import RomiBadge from "./RomiBadge";
 
 // Карточка крео — одна на легаси-библиотеку и новую картотеку (31.10.2026): превью,
-// имя, подход, страны, подсказки про файл, ROMI и пять цифр. Цифры готовит lib/creatives/tile.
+// имя, подход, страны, подсказки про файл, ROMI и шесть цифр. Цифры готовит lib/creatives/tile.
 
 const TAG = "text-[11px] font-medium px-1.5 py-0.5 rounded-md border whitespace-nowrap";
 
@@ -86,6 +86,7 @@ function Metrics({ m }: { m: TileMetrics }) {
       <Cell label="Цена ПДП" value={formatUsd(m.cpdp)} />
       <Cell label="Цена ДИА" value={formatUsd(m.cdia)} />
       <Cell label="Цена депа" value={formatUsd(m.cdep)} />
+      <Cell label="Средний депозит" value={formatUsd(m.avgDep)} />
     </div>
   );
 }

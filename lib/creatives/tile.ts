@@ -11,6 +11,7 @@ export interface TileMetrics {
   cpdp: number | null; // цена ПДП
   cdia: number | null; // цена диалога
   cdep: number | null; // цена депа: спенд / депы
+  avgDep: number | null; // средний депозит: сумма депов / депы — тот же знаменатель, что у цены депа
 }
 
 // Цена — из сумм за период, а не усреднением по дням (Decision 024).
@@ -33,18 +34,20 @@ export function warehouseTile(r: CreativeRow): TileMetrics {
     cpdp: costPer(r.spend, r.subscribers),
     cdia: costPer(r.spend, r.dialogs),
     cdep: costPer(r.spend, r.depCount),
+    avgDep: costPer(revenue, r.depCount),
   };
 }
 
 // В CSV легаси pdp и dia — уже цены, депы — количество.
 export function legacyTile(r: LegacyRow): TileMetrics {
-  const spend = num(r.spend);
+  const spend = num(r.spend), revenue = num(r.revenue), deps = num(r.deposits);
   return {
     spend,
-    revenue: num(r.revenue),
+    revenue,
     romi: num(r.romi),
     cpdp: num(r.pdp),
     cdia: num(r.dia),
-    cdep: spend === null ? null : costPer(spend, num(r.deposits)),
+    cdep: spend === null ? null : costPer(spend, deps),
+    avgDep: revenue === null ? null : costPer(revenue, deps),
   };
 }

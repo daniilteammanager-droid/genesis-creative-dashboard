@@ -104,5 +104,6 @@ export function metricsOf(s: Sums) {
     subToDia: s.subs > 0 ? (s.dia / s.subs) * 100 : null,
     cdep: price(s.spend, s.deps),
     diaToDep: s.dia > 0 ? (s.deps / s.dia) * 100 : null,
+    avgDep: ratio(s.rev, s.deps),   // средний депозит: сумма депов / депы
   };
 }

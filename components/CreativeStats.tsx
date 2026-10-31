@@ -73,7 +73,7 @@ export default function CreativeStats({ code, fallback, fallbackLabel }: { code:
           <Group title={fallbackLabel} tiles={[
             ["Спенд", formatUsd(fallback.spend)], ["Ревенью", formatUsd(fallback.revenue)],
             ["ROMI", formatRomi(fallback.romi), tone(fallback.romi)], ["Цена ПДП", formatUsd(fallback.cpdp)],
-            ["Цена ДИА", formatUsd(fallback.cdia)], ["Цена депа", formatUsd(fallback.cdep)],
+            ["Цена ДИА", formatUsd(fallback.cdia)], ["Цена депа", formatUsd(fallback.cdep)], ["Средний депозит", formatUsd(fallback.avgDep)],
           ]} />
         </div>
       )}
@@ -101,7 +101,7 @@ function Numbers({ d }: { d: CreativeDetail }) {
         ["ПДП", count(s.subs)], ["Цена ПДП", formatUsd(m.cpdp)], ["Клик → ПДП", pct(m.clickToSub)],
         ["ДИА", count(s.dia)], ["Цена ДИА", formatUsd(m.cdia)], ["ПДП → ДИА", pct(m.subToDia)],
         ["Депы", count(s.deps)], ["Цена депа", formatUsd(m.cdep)], ["ДИА → деп", pct(m.diaToDep)],
-        ["Сумма депов", formatUsd(s.rev)],
+        ["Сумма депов", formatUsd(s.rev)], ["Средний депозит", formatUsd(m.avgDep)],
       ]} />
       <Weeks d={d} />
     </>

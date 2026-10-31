@@ -37,6 +37,9 @@ assert.equal(m.roas, 2);
 assert.equal(m.cpm, 10);
 assert.equal(m.cpdp, 15);
 assert.equal(m.cdep, 150);
+assert.equal(m.avgDep, 300);                                   // средний депозит: $300 / 1 деп
+assert.equal(metricsOf({ spend: 0, impressions: 0, clicks: 0, subs: 0, dia: 4, deps: 2, rev: 1700 }).avgDep, 850); // без спенда тоже есть
+assert.equal(metricsOf({ spend: 50, impressions: 0, clicks: 0, subs: 0, dia: 0, deps: 0, rev: 0 }).avgDep, null);
 assert.equal(m.subToDia, 40);
 assert.equal(metricsOf(d.weeks[1].sums).romi, null);
 // Депы без спенда (поздние депы со старого трафика): цены нет, а не $0.
