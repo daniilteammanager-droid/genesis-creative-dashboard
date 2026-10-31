@@ -18,10 +18,7 @@ import { DatePicker } from "@/components/DatePicker";
 // считает сервер (plan.ts), сеты раскрывает sets.ts — здесь только ввод и показ.
 
 const CTA_LABEL: Record<string, string> = { LEARN_MORE: "Узнать больше", SIGN_UP: "Регистрация", MESSAGE_PAGE: "Написать нам" };
-const card = "bg-card border border-line rounded-2xl p-5";
-const field = "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
-const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
-const primary = "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50";
+const card = "card p-5";
 const h2 = "text-base font-semibold text-white mb-3";
 const DRAFT = "autoupload.draft.v2";
 
@@ -223,12 +220,12 @@ export default function Autoupload() {
         </div>
         {/* Сохранённые сборки (Decision 092) — на сервере: открыть с любого устройства. */}
         <div className="flex gap-2 items-center">
-          <button type="button" onClick={saveDraft} className={`${small} border-violet-700/50 text-violet-200`}>💾 Сохранить сборку</button>
-          <select value="" onChange={(e) => openDraft(e.target.value)} onFocus={loadDrafts} className={field}>
+          <button type="button" onClick={saveDraft} className={`btn border-violet-700/50 text-violet-200`}>💾 Сохранить сборку</button>
+          <select value="" onChange={(e) => openDraft(e.target.value)} onFocus={loadDrafts} className="field">
             <option value="">Сохранённые сборки{drafts.length ? ` · ${drafts.length}` : ""}</option>
             {drafts.map((d) => <option key={d.id} value={d.id}>{d.name} · {new Date(d.updated_at).toLocaleDateString("ru-RU")}</option>)}
           </select>
-          {drafts.length > 0 && <button type="button" title="Удалить сборку" onClick={deleteDraft} className={`${small} border-red-900/40 text-red-300`}>✕</button>}
+          {drafts.length > 0 && <button type="button" title="Удалить сборку" onClick={deleteDraft} className={`btn border-red-900/40 text-red-300`}>✕</button>}
         </div>
       </div>
 
@@ -237,7 +234,7 @@ export default function Autoupload() {
       <div data-tour="au-base" className={card}>
         <div className="flex items-center gap-2 mb-3">
           <h2 className={`${h2} mb-0`}>01 · Кабинеты и основа</h2>
-          <button type="button" disabled={refreshing} onClick={refreshAccounts} className={`${small} border-violet-700/50 text-violet-200 ml-auto`}>
+          <button type="button" disabled={refreshing} onClick={refreshAccounts} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>
             {refreshing ? "Обновляю…" : "↻ Обновить кабинеты"}
           </button>
         </div>
@@ -255,17 +252,17 @@ export default function Autoupload() {
           </div>
         )}
         <div className="grid sm:grid-cols-3 gap-2">
-          <select value={f.pixelId} onChange={(e) => set({ pixelId: e.target.value })} className={field}>
+          <select value={f.pixelId} onChange={(e) => set({ pixelId: e.target.value })} className="field">
             <option value="">{accountIds.length ? (pixels.length ? "Общий пиксель" : "Нет общего пикселя у кабинетов") : "Сначала кабинеты"}</option>
             {pixels.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.id}</option>)}
           </select>
-          <select value={f.pageId} onChange={(e) => set({ pageId: e.target.value })} className={field}>
+          <select value={f.pageId} onChange={(e) => set({ pageId: e.target.value })} className="field">
             <option value="">Facebook Page по умолчанию</option>
             {pages.map(([id, name]) => <option key={id} value={id}>{name} · {id}</option>)}
           </select>
           <label className="flex items-center gap-2 text-xs text-hint">Дата <DatePicker value={f.date} min={mskDay()} onChange={(date) => set({ date })} /></label>
-          <label className="flex items-center gap-2 text-xs text-hint">Нумерация с <input type="number" min={1} value={f.campaignNumber} onChange={(e) => set({ campaignNumber: Number(e.target.value) })} className={`${field} w-24`} /></label>
-          <label className="flex items-center gap-2 text-xs text-hint">Бюджет по умолчанию, $ <input inputMode="decimal" value={f.budget} onChange={(e) => set({ budget: e.target.value })} className={`${field} w-24`} /></label>
+          <label className="flex items-center gap-2 text-xs text-hint">Нумерация с <input type="number" min={1} value={f.campaignNumber} onChange={(e) => set({ campaignNumber: Number(e.target.value) })} className={`field w-24`} /></label>
+          <label className="flex items-center gap-2 text-xs text-hint">Бюджет по умолчанию, $ <input inputMode="decimal" value={f.budget} onChange={(e) => set({ budget: e.target.value })} className={`field w-24`} /></label>
           <div className="flex items-center gap-4 text-sm text-zinc-300">
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.oneToOne} onChange={(e) => set({ oneToOne: e.target.checked })} className="accent-violet-500" />1‑1‑1</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.paused} onChange={(e) => set({ paused: e.target.checked })} className="accent-violet-500" />на паузе</label>
@@ -277,46 +274,46 @@ export default function Autoupload() {
       <div data-tour="au-adsets" className={card}>
         <div className="flex items-center gap-2 mb-3">
           <h2 className={`${h2} mb-0`}>Креативы · общий набор</h2>
-          <button type="button" onClick={() => setUploading(true)} className={`${small} border-violet-700/50 text-violet-200 ml-auto`}>⬆ Загрузить новые в Медиатеку</button>
+          <button type="button" onClick={() => setUploading(true)} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>⬆ Загрузить новые в Медиатеку</button>
         </div>
         <div className="space-y-3">
           {f.adsets.map((a, i) => (
             <div key={a.id} className="border border-line rounded-xl p-3">
               <div className="flex flex-wrap gap-2 items-center mb-2">
                 <span className="text-xs text-hint">Общий адсет {i + 1} · клонируется в кампании</span>
-                <select value={a.target} onChange={(e) => editAdset(i, { target: e.target.value })} className={field}><option>BROAD</option><option>INT</option><option>RETARGET</option></select>
-                {a.target === "RETARGET" && <input placeholder="ID Custom Audience" value={a.customAudienceId ?? ""} onChange={(e) => editAdset(i, { customAudienceId: e.target.value.trim() })} className={field} />}
-                <input placeholder="Метка (TEST1)" value={a.label ?? ""} onChange={(e) => editAdset(i, { label: e.target.value })} className={`${field} w-36`} />
-                <button type="button" onClick={() => set({ adsets: f.adsets.filter((_, k) => k !== i) })} disabled={f.adsets.length === 1} className={`${small} border-red-900/40 text-red-300 ml-auto`}>Убрать</button>
+                <select value={a.target} onChange={(e) => editAdset(i, { target: e.target.value })} className="field"><option>BROAD</option><option>INT</option><option>RETARGET</option></select>
+                {a.target === "RETARGET" && <input placeholder="ID Custom Audience" value={a.customAudienceId ?? ""} onChange={(e) => editAdset(i, { customAudienceId: e.target.value.trim() })} className="field" />}
+                <input placeholder="Метка (TEST1)" value={a.label ?? ""} onChange={(e) => editAdset(i, { label: e.target.value })} className={`field w-36`} />
+                <button type="button" onClick={() => set({ adsets: f.adsets.filter((_, k) => k !== i) })} disabled={f.adsets.length === 1} className={`btn border-red-900/40 text-red-300 ml-auto`}>Убрать</button>
               </div>
               {a.creatives.length > 0 && (
                 <div className="space-y-1 mb-2">
                   {a.creatives.map((c, ci) => (
                     <div key={`${c.key}-${ci}`} className="flex items-center gap-2">
                       <input value={c.code} onChange={(e) => editAdset(i, { creatives: a.creatives.map((x, k) => (k === ci ? { ...x, code: e.target.value } : x)) })}
-                             className={`${field} flex-1 py-1 text-xs font-mono`} title="Код креатива — имя объявления" />
+                             className={`field flex-1 py-1 text-xs font-mono`} title="Код креатива — имя объявления" />
                       {/* ＋ — то же объявление ещё раз (как у Артёма). В 1‑1‑1 нельзя: кампания сета — по креативу. */}
-                      {!f.oneToOne && <button type="button" title="Ещё одно такое же объявление" onClick={() => editAdset(i, { creatives: [...a.creatives.slice(0, ci + 1), { ...c }, ...a.creatives.slice(ci + 1)] })} className={`${small} border-line text-zinc-300 py-1`}>＋</button>}
-                      <button type="button" onClick={() => editAdset(i, { creatives: a.creatives.filter((_, k) => k !== ci) })} className={`${small} border-red-900/40 text-red-300 py-1`}>−</button>
+                      {!f.oneToOne && <button type="button" title="Ещё одно такое же объявление" onClick={() => editAdset(i, { creatives: [...a.creatives.slice(0, ci + 1), { ...c }, ...a.creatives.slice(ci + 1)] })} className={`btn border-line text-zinc-300 py-1`}>＋</button>}
+                      <button type="button" onClick={() => editAdset(i, { creatives: a.creatives.filter((_, k) => k !== ci) })} className={`btn border-red-900/40 text-red-300 py-1`}>−</button>
                     </div>
                   ))}
                 </div>
               )}
-              <button type="button" onClick={() => setPickerFor(i)} className={`${small} border-violet-700/50 text-violet-200`}>▦ Креативы из медиатеки</button>
+              <button type="button" onClick={() => setPickerFor(i)} className={`btn border-violet-700/50 text-violet-200`}>▦ Креативы из медиатеки</button>
             </div>
           ))}
         </div>
-        <button type="button" onClick={() => set({ adsets: [...f.adsets, newAdset()] })} className={`${small} border-violet-700/50 text-violet-200 mt-3`}>＋ Адсет</button>
+        <button type="button" onClick={() => set({ adsets: [...f.adsets, newAdset()] })} className={`btn border-violet-700/50 text-violet-200 mt-3`}>＋ Адсет</button>
         <p className="text-[11px] text-hint mt-2">Набор уходит в каждую кампанию; у имён по неймингу хвост гео пересоберётся под страну кампании, старые имена уйдут как есть.</p>
       </div>
 
       <div className={card}>
         <h2 className={h2}>Текст</h2>
         <div className="grid sm:grid-cols-2 gap-2">
-          <input placeholder="Заголовок" value={f.text.headline} onChange={(e) => set({ text: { ...f.text, headline: e.target.value } })} className={field} />
-          <select value={f.text.cta} onChange={(e) => set({ text: { ...f.text, cta: e.target.value } })} className={field}>{CTAS.map((v) => <option key={v} value={v}>{CTA_LABEL[v] ?? v}</option>)}</select>
-          <textarea placeholder="Основной текст" value={f.text.primaryText} onChange={(e) => set({ text: { ...f.text, primaryText: e.target.value } })} className={`${field} sm:col-span-2 min-h-20`} />
-          <input placeholder="Описание" value={f.text.description} onChange={(e) => set({ text: { ...f.text, description: e.target.value } })} className={`${field} sm:col-span-2`} />
+          <input placeholder="Заголовок" value={f.text.headline} onChange={(e) => set({ text: { ...f.text, headline: e.target.value } })} className="field" />
+          <select value={f.text.cta} onChange={(e) => set({ text: { ...f.text, cta: e.target.value } })} className="field">{CTAS.map((v) => <option key={v} value={v}>{CTA_LABEL[v] ?? v}</option>)}</select>
+          <textarea placeholder="Основной текст" value={f.text.primaryText} onChange={(e) => set({ text: { ...f.text, primaryText: e.target.value } })} className={`field sm:col-span-2 min-h-20`} />
+          <input placeholder="Описание" value={f.text.description} onChange={(e) => set({ text: { ...f.text, description: e.target.value } })} className={`field sm:col-span-2`} />
         </div>
       </div>
 
@@ -332,8 +329,8 @@ export default function Autoupload() {
                   <b className="text-sm text-zinc-100">
                     {f.oneToOne ? `СЕТ ${i + 1} · ${c.geo} · ${children.length} креативов → ${children.length * Math.max(1, accountIds.length)} кампаний` : `Кампания ${i + 1} · ${c.geo} · ${c.actor}`}
                   </b>
-                  <button type="button" onClick={() => duplicate(i)} className={`${small} border-violet-700/50 text-violet-200 ml-auto`}>{f.oneToOne ? "Дублировать весь сет" : "Дублировать"}</button>
-                  <button type="button" onClick={() => remove(i)} disabled={f.campaigns.length === 1} className={`${small} border-red-900/40 text-red-300`}>{f.oneToOne ? "Удалить сет" : "Удалить"}</button>
+                  <button type="button" onClick={() => duplicate(i)} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>{f.oneToOne ? "Дублировать весь сет" : "Дублировать"}</button>
+                  <button type="button" onClick={() => remove(i)} disabled={f.campaigns.length === 1} className={`btn border-red-900/40 text-red-300`}>{f.oneToOne ? "Удалить сет" : "Удалить"}</button>
                 </div>
                 <CampaignFields value={c} onChange={(p) => editCampaign(i, p)} accounts={selected} adsets={f.adsets} landings={landings} pages={pages} oneToOne={f.oneToOne} />
                 {!f.oneToOne && (
@@ -375,7 +372,7 @@ export default function Autoupload() {
             );
           })}
         </div>
-        <button type="button" onClick={() => set({ campaigns: [...f.campaigns, newCampaign()] })} className={`${small} border-violet-700/50 text-violet-200 mt-3`}>{f.oneToOne ? "＋ Новый сет" : "＋ Кампания"}</button>
+        <button type="button" onClick={() => set({ campaigns: [...f.campaigns, newCampaign()] })} className={`btn border-violet-700/50 text-violet-200 mt-3`}>{f.oneToOne ? "＋ Новый сет" : "＋ Кампания"}</button>
         <p className="text-[11px] text-hint mt-2">Имя по умолчанию: CAB####_ДД.ММ_ВОРОНКА_МАРКЕР_GEO_ЛЕНДИНГ_ЛИЦО_N. Свой шаблон — токены {"{{CAB}} {{DATE}} {{GEO}} {{FACE}} {{FUNNEL}} {{MARKER}} {{LANDER}} {{N}} {{SET}} {{CREATIVE}} {{ADSET_N}}"}. N растёт у повторов одного GEO. К ссылке допишется трекинг: твой id Torro, пиксель и макросы.</p>
       </div>
 
@@ -387,8 +384,8 @@ export default function Autoupload() {
           ))}
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          <button type="button" disabled={busy} onClick={() => post("preview")} className={`${small} border-violet-700/50 text-violet-200 py-2.5`}>Проверить сборку</button>
-          <button type="button" disabled={busy || !fresh} onClick={() => { if (window.confirm(`Создать ${fresh!.summary.campaigns} кампаний, ${fresh!.summary.adsets} адсетов и ${fresh!.summary.ads} объявлений${f.paused ? " на паузе" : " и сразу запустить"}?`)) post("launch"); }} className={primary}>
+          <button type="button" disabled={busy} onClick={() => post("preview")} className={`btn border-violet-700/50 text-violet-200 py-2.5`}>Проверить сборку</button>
+          <button type="button" disabled={busy || !fresh} onClick={() => { if (window.confirm(`Создать ${fresh!.summary.campaigns} кампаний, ${fresh!.summary.adsets} адсетов и ${fresh!.summary.ads} объявлений${f.paused ? " на паузе" : " и сразу запустить"}?`)) post("launch"); }} className="btn btn-primary">
             {f.paused ? "Создать на паузе" : "Создать и запустить"}
           </button>
           {busy && <span className="text-xs text-hint">Секунду…</span>}
@@ -431,7 +428,7 @@ export default function Autoupload() {
                 </div>
                 <span className="text-[11px] px-2 py-1 rounded-full border border-line text-zinc-300 shrink-0">{STATUS[j.status] ?? j.status}</span>
                 {["creating", "created", "failed"].includes(j.status) && j.done.campaigns > 0 && (
-                  <button type="button" onClick={() => cancel(j.id)} className={`${small} border-red-900/40 text-red-300 shrink-0`}>Отменить и удалить</button>
+                  <button type="button" onClick={() => cancel(j.id)} className={`btn border-red-900/40 text-red-300 shrink-0`}>Отменить и удалить</button>
                 )}
               </div>
             ))}
@@ -470,41 +467,41 @@ function CampaignFields({ value: c, onChange, accounts, adsets, landings, pages,
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        <select value={c.geo} onChange={(e) => onChange({ geo: e.target.value, landingUrl: "" })} className={field}>{GEOS.map((g) => <option key={g}>{g}</option>)}</select>
-        <select value={c.actor} onChange={(e) => onChange({ actor: e.target.value, landingUrl: "" })} className={field}>{ACTORS.map((a) => <option key={a}>{a}</option>)}</select>
-        <select value={c.funnel} onChange={(e) => onChange({ funnel: e.target.value, lander: FUNNEL_LANDERS[e.target.value][0] })} className={field}><option>TG</option><option>WA</option></select>
-        <select value={c.marker} onChange={(e) => onChange({ marker: e.target.value })} className={field}>{MARKERS.map((m) => <option key={m}>{m}</option>)}</select>
-        <select value={c.lander} onChange={(e) => onChange({ lander: e.target.value })} className={field}>{lander.map((l) => <option key={l}>{l}</option>)}</select>
-        <select value={c.landingUrl || choices[0]?.url || ""} onChange={(e) => onChange({ landingUrl: e.target.value })} className={field} title="Последние пять ссылок Torro под GEO и лицо">
+        <select value={c.geo} onChange={(e) => onChange({ geo: e.target.value, landingUrl: "" })} className="field">{GEOS.map((g) => <option key={g}>{g}</option>)}</select>
+        <select value={c.actor} onChange={(e) => onChange({ actor: e.target.value, landingUrl: "" })} className="field">{ACTORS.map((a) => <option key={a}>{a}</option>)}</select>
+        <select value={c.funnel} onChange={(e) => onChange({ funnel: e.target.value, lander: FUNNEL_LANDERS[e.target.value][0] })} className="field"><option>TG</option><option>WA</option></select>
+        <select value={c.marker} onChange={(e) => onChange({ marker: e.target.value })} className="field">{MARKERS.map((m) => <option key={m}>{m}</option>)}</select>
+        <select value={c.lander} onChange={(e) => onChange({ lander: e.target.value })} className="field">{lander.map((l) => <option key={l}>{l}</option>)}</select>
+        <select value={c.landingUrl || choices[0]?.url || ""} onChange={(e) => onChange({ landingUrl: e.target.value })} className="field" title="Последние пять ссылок Torro под GEO и лицо">
           {choices.length === 0 && <option value="">Нет ссылки MVP</option>}
           {choices.map((l) => <option key={l.id} value={l.url}>{l.name}</option>)}
         </select>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center">
-        <select value={c.pageId ?? ""} onChange={(e) => onChange({ pageId: e.target.value })} className={field}>
+        <select value={c.pageId ?? ""} onChange={(e) => onChange({ pageId: e.target.value })} className="field">
           <option value="">FP по умолчанию</option>
           {pages.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
-        <input inputMode="decimal" placeholder="Бюджет $ (по умолч.)" value={String(c.budgetUsd ?? "")} onChange={(e) => onChange({ budgetUsd: e.target.value })} className={field} />
+        <input inputMode="decimal" placeholder="Бюджет $ (по умолч.)" value={String(c.budgetUsd ?? "")} onChange={(e) => onChange({ budgetUsd: e.target.value })} className="field" />
         <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={Boolean(c.bidCapEnabled)} onChange={(e) => onChange({ bidCapEnabled: e.target.checked })} className="accent-violet-500" />Bid cap</label>
-        <input inputMode="decimal" placeholder="Bid cap, $" disabled={!c.bidCapEnabled} value={String(c.bidCapUsd ?? "")} onChange={(e) => onChange({ bidCapUsd: e.target.value })} className={`${field} disabled:opacity-40`} />
+        <input inputMode="decimal" placeholder="Bid cap, $" disabled={!c.bidCapEnabled} value={String(c.bidCapUsd ?? "")} onChange={(e) => onChange({ bidCapUsd: e.target.value })} className={`field disabled:opacity-40`} />
       </div>
       {accounts.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {accounts.map((a) => (
             <label key={a.id} className="flex items-center gap-1.5 text-[11px] text-hint">
               Старт {a.name.slice(0, 18)}{a.timezone ? ` (${a.timezone})` : ""}
-              <input type="time" value={c.startAtByAccount?.[a.id] ?? "00:00"} onChange={(e) => onChange({ startAtByAccount: { ...c.startAtByAccount, [a.id]: e.target.value } })} className={`${field} py-1`} />
+              <input type="time" value={c.startAtByAccount?.[a.id] ?? "00:00"} onChange={(e) => onChange({ startAtByAccount: { ...c.startAtByAccount, [a.id]: e.target.value } })} className={`field py-1`} />
             </label>
           ))}
           <span className="text-[11px] text-hint self-center">— время кабинета</span>
         </div>
       )}
       <div className="grid sm:grid-cols-2 gap-2">
-        <input placeholder={oneToOne ? "Шаблон названий кампаний (необязательно)" : "Своё имя кампании (необязательно)"} value={c.campaignName ?? ""} onChange={(e) => onChange({ campaignName: e.target.value })} className={`${field} font-mono text-xs`} />
+        <input placeholder={oneToOne ? "Шаблон названий кампаний (необязательно)" : "Своё имя кампании (необязательно)"} value={c.campaignName ?? ""} onChange={(e) => onChange({ campaignName: e.target.value })} className={`field font-mono text-xs`} />
         {adsets.map((a, ai) => (
           <input key={a.id} placeholder={`Имя адсета ${adsets.length > 1 ? ai + 1 : ""}: {{GEO}}_${a.target}_{{ADSET_N}}`} value={c.adsetNames?.[ai] ?? ""}
-                 onChange={(e) => { const names = [...(c.adsetNames ?? [])]; names[ai] = e.target.value; onChange({ adsetNames: names }); }} className={`${field} font-mono text-xs`} />
+                 onChange={(e) => { const names = [...(c.adsetNames ?? [])]; names[ai] = e.target.value; onChange({ adsetNames: names }); }} className={`field font-mono text-xs`} />
         ))}
       </div>
     </div>

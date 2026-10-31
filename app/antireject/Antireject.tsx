@@ -7,9 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 // подтверждение; уникализация с заменой видео), история и лендинги Torro. Уникализация
 // из библиотеки — своя вкладка «Уникализация».
 
-const card = "bg-card border border-line rounded-2xl p-5";
-const field = "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
-const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
+const card = "card p-5";
 
 interface Rejected { ad_id: string; account_id: string; ad_name: string | null; campaign_name: string | null; status: string; reason: string | null; first_seen_at: string }
 interface Event { id: string; created_at: string; kind: "rejected" | "action"; ad_id: string; ad_name: string | null; campaign_name: string | null; actor: string | null; text: string | null; ok: boolean | null; status: string | null }
@@ -76,7 +74,7 @@ export default function Antireject() {
   if (!v) return <div className="w-full px-4 md:px-8 py-6 text-hint">Загружаю…</div>;
   const pick = (label: string, value: string, set: (s: string) => void) => (
     <label className="flex items-center gap-2 text-xs text-hint">{label}
-      <select value={value} onChange={(e) => set(e.target.value)} className={field}>{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+      <select value={value} onChange={(e) => set(e.target.value)} className="field">{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
     </label>
   );
 
@@ -87,7 +85,7 @@ export default function Antireject() {
           <h1 className="text-2xl font-semibold text-white">Антиотклон</h1>
           <p className="text-sm text-hint mt-1">Отклонённые объявления твоих кабинетов. Выбери действие, проверь изменение и подтверди — то же, что кнопки под алертом в боте.</p>
         </div>
-        <button type="button" disabled={scanning} onClick={scan} className={`${small} border-violet-700/50 text-violet-200 py-2`}>{scanning ? "Проверяю…" : "↻ Проверить сейчас"}</button>
+        <button type="button" disabled={scanning} onClick={scan} className={`btn border-violet-700/50 text-violet-200 py-2`}>{scanning ? "Проверяю…" : "↻ Проверить сейчас"}</button>
       </div>
 
       <div data-tour="ar-settings" className={`${card} flex flex-wrap gap-3 items-center`}>
@@ -113,10 +111,10 @@ export default function Antireject() {
                   {!r.ad_id.startsWith("tg:") && (
                     <div className="flex flex-wrap gap-1.5">
                       {(Object.keys(KIND) as Kind[]).map((k) => (
-                        <button key={k} type="button" onClick={() => open(r.ad_id, k)} className={`${small} ${panel?.adId === r.ad_id && panel.kind === k ? "border-violet-500 text-white" : "border-line text-zinc-300"}`}>{KIND[k]}</button>
+                        <button key={k} type="button" onClick={() => open(r.ad_id, k)} className={`btn ${panel?.adId === r.ad_id && panel.kind === k ? "border-violet-500 text-white" : "border-line text-zinc-300"}`}>{KIND[k]}</button>
                       ))}
-                      <button type="button" onClick={() => uniq(r.ad_id)} className={`${small} border-line text-zinc-300`}>🎬 Уникализация</button>
-                      <a href={`https://adsmanager.facebook.com/adsmanager/manage/ads?act=${r.account_id}&selected_ad_ids=${r.ad_id}`} target="_blank" rel="noreferrer" className={`${small} border-line text-hint`}>Ads Manager ↗</a>
+                      <button type="button" onClick={() => uniq(r.ad_id)} className={`btn border-line text-zinc-300`}>🎬 Уникализация</button>
+                      <a href={`https://adsmanager.facebook.com/adsmanager/manage/ads?act=${r.account_id}&selected_ad_ids=${r.ad_id}`} target="_blank" rel="noreferrer" className={`btn border-line text-hint`}>Ads Manager ↗</a>
                     </div>
                   )}
                 </div>
@@ -130,7 +128,7 @@ export default function Antireject() {
                     {!panel.confirm && !panel.done && (
                       <div className="flex flex-wrap gap-1.5">
                         {(panel.choices ?? []).map((c) => (
-                          <button key={c.value} type="button" disabled={panel.loading} onClick={() => choose(c.value)} className={`${small} border-line text-zinc-200 text-xs`}>{c.label}</button>
+                          <button key={c.value} type="button" disabled={panel.loading} onClick={() => choose(c.value)} className={`btn border-line text-zinc-200 text-xs`}>{c.label}</button>
                         ))}
                       </div>
                     )}
@@ -139,8 +137,8 @@ export default function Antireject() {
                         <p className="text-xs text-zinc-200 break-all">{panel.confirm.describe}</p>
                         <p className="text-[11px] text-hint">Объявление уйдёт на повторную проверку Meta.</p>
                         <div className="flex gap-2">
-                          <button type="button" disabled={panel.loading} onClick={confirm} className={`${small} border-green-700/50 text-green-300`}>✅ Подтвердить и отправить в Meta</button>
-                          <button type="button" onClick={() => setPanel(null)} className={`${small} border-line text-zinc-400`}>Отмена</button>
+                          <button type="button" disabled={panel.loading} onClick={confirm} className={`btn border-green-700/50 text-green-300`}>✅ Подтвердить и отправить в Meta</button>
+                          <button type="button" onClick={() => setPanel(null)} className={`btn border-line text-zinc-400`}>Отмена</button>
                         </div>
                       </div>
                     )}

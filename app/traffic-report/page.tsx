@@ -71,7 +71,6 @@ const SORTS: { id: SortBy; label: string }[] = [
 const chip = (on: boolean) =>
   `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
     on ? "bg-violet-600 text-white" : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
-const control = "bg-panel border border-line rounded-xl px-3 py-2 text-sm text-white";
 // Избранное — «баер × крео» (id баера, имя крео): отметка во всех странах сразу.
 const favKey = (buyerId: string, creo: string) => `${buyerId}\u0000${creo}`;
 
@@ -200,7 +199,7 @@ export default function TrafficReportPage() {
         )}
 
         {/* Фильтры как в General 4.0: в каждом разрезе можно выбрать несколько значений */}
-        <div data-tour="traffic-dims" className="bg-card border border-line rounded-2xl p-4 mb-4">
+        <div data-tour="traffic-dims" className="card p-4 mb-4">
           <button onClick={() => setFiltersOpen((v) => !v)} className="flex items-center gap-2 text-sm text-zinc-300 w-full text-left">
             <span className="text-hint">{filtersOpen ? "▾" : "▸"}</span>
             Фильтры
@@ -226,7 +225,7 @@ export default function TrafficReportPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-2">
+        <div className="stats mb-2">
           <SummaryCard label="Спенд" value={t ? usd0(t.sums.spend) : "…"} />
           <SummaryCard label="Ревенью" value={t ? usd0(t.sums.rev) : "…"} />
           <SummaryCard label="ROMI" value={t ? show(t.m.romi, romiText) : "…"} tone={t && t.m.romi !== null ? (t.m.romi >= 0 ? "good" : "bad") : undefined} />
@@ -239,7 +238,7 @@ export default function TrafficReportPage() {
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
 
-        <section data-tour="traffic-tree" className="bg-card border border-line rounded-2xl p-4 md:p-5">
+        <section data-tour="traffic-tree" className="card p-4 md:p-5">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-400 mb-3">
             <span className="text-hint">ROMI:</span>
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.red}`} />{ROMI_CUTS.red}%</span>
@@ -260,18 +259,18 @@ export default function TrafficReportPage() {
                         className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${mode === m.id ? "bg-violet-600 text-white" : "text-zinc-400 hover:text-violet-300"}`}>{m.label}</button>
               ))}
             </div>
-            <select id="traffic-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className={control} aria-label="Сортировка крео">
+            <select id="traffic-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="field" aria-label="Сортировка крео">
               {SORTS.map((s) => <option key={s.id} value={s.id}>Крео {s.label}</option>)}
             </select>
             <button onClick={() => setOnlyFav((v) => !v)} aria-pressed={onlyFav} title="Только отмеченные звездой крео — отчёт и итоги по ним"
                     className={chip(onlyFav)}>★ Только избранные{favs.size ? ` · ${favs.size}` : ""}</button>
             <button onClick={expandAll} className={chip(false)}>Развернуть всё</button>
             <button onClick={collapseAll} className={chip(false)}>Свернуть всё</button>
-            <select id="traffic-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage | "")} className={control} aria-label="Этап крео">
+            <select id="traffic-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage | "")} className="field" aria-label="Этап крео">
               <option value="">Все этапы</option>
               {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
-            <input id="traffic-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск крео" className={`${control} min-w-[10rem] flex-1 max-w-xs`} />
+            <input id="traffic-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск крео" className={`field min-w-[10rem] flex-1 max-w-xs`} />
           </div>
 
           <div className="overflow-auto max-h-[70vh] rounded-xl border border-line [color-scheme:dark]">

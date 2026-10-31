@@ -6,11 +6,8 @@ import type { ConnectionView } from "@/lib/connections/store";
 // Torro CRM — только по API (Decision 061): выгрузки в таблицы убраны, чтобы
 // склад совпадал с CRM целиком. Ключи Meta — отдельной карточкой (MetaKeys).
 
-const field =
-  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
 
-const card = "bg-card border border-line rounded-2xl p-6";
+const card = "card p-6";
 
 export default function ConnectionsForm({
   initial,
@@ -99,15 +96,15 @@ export default function ConnectionsForm({
           value={torroToken}
           onChange={(e) => setTorroToken(e.target.value)}
           autoComplete="off"
-          className={`${field} mb-3`}
+          className={`field w-full mb-3`}
         />
         <label className="block text-[11px] text-hint mb-1">id баера в Torro</label>
         <input type="text" inputMode="numeric" placeholder="5183" value={torroBuyer}
-               onChange={(e) => setTorroBuyer(e.target.value)} className={field} />
+               onChange={(e) => setTorroBuyer(e.target.value)} className="field w-full" />
 
         <div className="flex items-center gap-3 mt-3 flex-wrap">
           <button type="submit" disabled={busy}
-                  className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                  className="btn btn-primary">
             {busy ? "Проверяю…" : "Проверить и сохранить"}
           </button>
           {view?.torroConnected && (

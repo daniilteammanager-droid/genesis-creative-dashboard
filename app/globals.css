@@ -63,6 +63,13 @@
     border-radius: var(--radius-2xl);
   }
 
+  /* Ряд карточек итогов (SummaryCard): столько колонок, сколько влезает, без сиротки во втором ряду на ПК. */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+    gap: 0.75rem;
+  }
+
   /* Подпись над цифрой или фильтром. */
   .label {
     font-size: 11px;

@@ -8,6 +8,7 @@ import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/me
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { toLegacy } from "./toLegacy";
+import { Spinner } from "@/components/ui";
 
 // Плитка новой картотеки: то же, что на легаси-странице, но за выбранный период.
 //
@@ -20,8 +21,6 @@ const chip = (on: boolean) =>
     on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm" : "text-zinc-400 hover:text-violet-300"
   }`;
 
-const field =
-  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
 
 const money = (v: number | null) =>
   v === null ? "—" : `$${v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -190,11 +189,11 @@ export default function CreativeCards({
             placeholder="Поиск крео…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm"
+            className="field w-full"
           />
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 card p-1 flex-wrap">
               {TABS.map((t) => (
                 <button key={t.id} onClick={() => { setTab(t.id); setLimit(PAGE); }} className={chip(tab === t.id)}>
                   {t.label} <span className="text-[11px] opacity-60">{counts[t.id]}</span>
@@ -214,19 +213,19 @@ export default function CreativeCards({
               Только с расходом
             </button>
 
-            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={field}>
+            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="field">
               {SORTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
 
             {mediums.length > 0 && (
-              <select value={medium} onChange={(e) => { setMedium(e.target.value); setLimit(PAGE); }} className={field}>
+              <select value={medium} onChange={(e) => { setMedium(e.target.value); setLimit(PAGE); }} className="field">
                 <option value="all">Носитель: все</option>
                 {mediums.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
 
             {approaches.length > 0 && (
-              <select value={approach} onChange={(e) => { setApproach(e.target.value); setLimit(PAGE); }} className={field}>
+              <select value={approach} onChange={(e) => { setApproach(e.target.value); setLimit(PAGE); }} className="field">
                 <option value="all">Подход: все</option>
                 {approaches.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
@@ -249,7 +248,7 @@ export default function CreativeCards({
       )}
       {loading && (
         <div className="flex items-center justify-center py-16">
-          <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+          <Spinner />
         </div>
       )}
 
@@ -274,7 +273,7 @@ export default function CreativeCards({
                   const romi = r.spend > 0 ? ((revenue - r.spend) / r.spend) * 100 : null;
                   return (
                     <div key={r.code} onClick={() => setSelected(r)}
-                         className="bg-card border border-line rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition">
+                         className="card overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition">
                       <MediaWide file={match?.file} />
 
                       <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-line">

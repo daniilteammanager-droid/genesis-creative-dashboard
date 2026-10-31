@@ -6,6 +6,8 @@ import type { LiveState } from "@/lib/reports-live/manage";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, SORTS, money, n, romi, sortBy, totalsOf } from "./columns";
 import { DateRange } from "@/components/DatePicker";
+import { Spinner } from "@/components/ui";
+import { SummaryCard } from "@/components/general-report/shared";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -13,10 +15,6 @@ const chip = (on: boolean) =>
        : "text-zinc-400 hover:text-violet-300"
   }`;
 
-const field =
-  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
-  "focus:border-violet-600/50 transition text-white";
-const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
 
 const daysAgo = (days: number) => mskDaysAgo(days);
 
@@ -340,7 +338,7 @@ export default function ReportTree() {
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
-        <div data-tour="reports-periods" className="flex gap-1 bg-card border border-line rounded-2xl p-1">
+        <div data-tour="reports-periods" className="flex gap-1 card p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}
@@ -357,7 +355,7 @@ export default function ReportTree() {
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 card p-1 flex-wrap">
               <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
               {data.buyers.map((b) => (
                 <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
@@ -374,32 +372,32 @@ export default function ReportTree() {
       {/* Live Manager: фильтры, обновление, столбцы. */}
       {data && data.nodes.length > 0 && (
         <div data-tour="reports-live" className="flex items-center gap-2 mb-4 flex-wrap">
-          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1">
+          <div className="flex gap-1 card p-1">
             {LEVELS.map((l) => <button key={l.id} onClick={() => setLevel(l.id)} className={chip(level === l.id)}>{l.label}</button>)}
           </div>
-          <input placeholder="Кампания, ID, кабинет…" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} w-56`} />
-          <select value={statusF} onChange={(e) => setStatusF(e.target.value as typeof statusF)} className={field}>
+          <input placeholder="Кампания, ID, кабинет…" value={q} onChange={(e) => setQ(e.target.value)} className={`field w-56`} />
+          <select value={statusF} onChange={(e) => setStatusF(e.target.value as typeof statusF)} className="field">
             <option value="all">Все статусы</option><option value="active">Активные</option><option value="paused">Стопнутые</option>
           </select>
-          <select value={sort} onChange={(e) => setSort(e.target.value)} className={field}>
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="field">
             {SORTS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
           </select>
-          <select value={geo} onChange={(e) => setGeo(e.target.value)} className={field}>
+          <select value={geo} onChange={(e) => setGeo(e.target.value)} className="field">
             <option value="all">Все GEO</option>
             {geos.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
-          <select value={face} onChange={(e) => setFace(e.target.value)} className={field}>
+          <select value={face} onChange={(e) => setFace(e.target.value)} className="field">
             <option value="all">Все лица</option>
             {faces.map((f) => <option key={f} value={f}>{f}</option>)}
             <option value="none">Без лица</option>
           </select>
-          <select value={every} onChange={(e) => setEvery(Number(e.target.value))} className={field}>
+          <select value={every} onChange={(e) => setEvery(Number(e.target.value))} className="field">
             {EVERY.map((e) => <option key={e.ms} value={e.ms}>{e.label}</option>)}
           </select>
           <button type="button" disabled={Boolean(busy)} onClick={() => { setBusy("Тяну свежий расход…"); setRefresh(true); }}
-                  className={`${small} border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>↻ Обновить сейчас</button>
+                  className={`btn border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>↻ Обновить сейчас</button>
           <div className="relative">
-            <button type="button" onClick={() => setShowCols((v) => !v)} className={`${small} border-line text-zinc-300 hover:bg-violet-900/20`}>☷ Столбцы</button>
+            <button type="button" onClick={() => setShowCols((v) => !v)} className={`btn border-line text-zinc-300 hover:bg-violet-900/20`}>☷ Столбцы</button>
             {showCols && (
               <div className="absolute z-30 mt-1 w-56 max-h-80 overflow-y-auto bg-card border border-line rounded-xl p-2 shadow-xl">
                 <div className="flex items-center gap-1 px-1 pb-2 mb-1 border-b border-line">
@@ -454,10 +452,10 @@ export default function ReportTree() {
       {selected.size > 0 && (
         <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap mb-3 bg-raised border border-violet-700/40 rounded-xl px-3 py-2">
           <span className="text-sm text-zinc-200 mr-1">Выбрано: {selected.size}</span>
-          <button type="button" disabled={Boolean(busy)} onClick={() => bulk(true)} className={`${small} border-green-700/50 text-green-300 hover:bg-green-900/20`}>▶ Запустить</button>
-          <button type="button" disabled={Boolean(busy)} onClick={() => bulk(false)} className={`${small} border-zinc-600 text-zinc-300 hover:bg-zinc-800`}>⏸ Пауза</button>
-          <button type="button" disabled={Boolean(busy)} onClick={budget} className={`${small} border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>$ Бюджет</button>
-          <button type="button" onClick={() => setSelected(new Set())} className={`${small} border-transparent text-hint hover:text-zinc-300 ml-auto`}>Снять</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => bulk(true)} className={`btn border-green-700/50 text-green-300 hover:bg-green-900/20`}>▶ Запустить</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => bulk(false)} className={`btn border-zinc-600 text-zinc-300 hover:bg-zinc-800`}>⏸ Пауза</button>
+          <button type="button" disabled={Boolean(busy)} onClick={budget} className={`btn border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>$ Бюджет</button>
+          <button type="button" onClick={() => setSelected(new Set())} className={`btn border-transparent text-hint hover:text-zinc-300 ml-auto`}>Снять</button>
         </div>
       )}
 
@@ -473,12 +471,12 @@ export default function ReportTree() {
 
       {loading && !data && (
         <div className="flex items-center justify-center py-20">
-          <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+          <Spinner />
         </div>
       )}
 
       {!loading && !error && (data?.nodes.length ?? 0) === 0 && (
-        <div className="bg-card border border-line rounded-2xl p-6">
+        <div className="card p-6">
           <h2 className="text-lg font-semibold text-white mb-2">За этот период пусто</h2>
           <p className="text-sm text-zinc-400 leading-relaxed">
             В складе нет расхода за эти дни. Если источник подключён недавно — история ещё
@@ -491,7 +489,7 @@ export default function ReportTree() {
       {!loading && !error && (data?.nodes.length ?? 0) > 0 && (
         <>
           {/* Итоги того, что на экране (с фильтрами), — как карточки у Артёма. */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-5">
+          <div className="stats mb-5">
             {([
               ["Расход", money(totals.spend)],
               ["Клики FB", n(totals.clicks)],
@@ -507,15 +505,10 @@ export default function ReportTree() {
               data!.outside
                 ? ["Вне подключённых кабинетов", `${money(data!.outside.depSum)} · ${n(data!.outside.campaigns)} РК`]
                 : ["Строк", n(shown.length)],
-            ] as const).map(([label, value]) => (
-              <div key={label} className="bg-card border border-line rounded-2xl px-5 py-4">
-                <p className="text-[11px] text-hint uppercase tracking-wider mb-1">{label}</p>
-                <p className="text-xl font-semibold text-white">{value}</p>
-              </div>
-            ))}
+            ] as const).map(([label, value]) => <SummaryCard key={label} label={label} value={value} />)}
           </div>
 
-          <div className="bg-card border border-line rounded-2xl overflow-x-auto">
+          <div className="card overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line">

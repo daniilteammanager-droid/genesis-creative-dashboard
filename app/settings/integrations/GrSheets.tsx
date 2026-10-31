@@ -13,9 +13,6 @@ export interface GrSheet {
 type Kind = "country" | "wa" | "v4";
 const KIND_LABELS: Record<Kind, string> = { country: "страновая", wa: "WhatsApp", v4: "General 4.0 (общая)" };
 
-const field =
-  "bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
 
 export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]; serviceAccount: string | null }) {
   const router = useRouter();
@@ -60,7 +57,7 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
   }
 
   return (
-    <div className="bg-card border border-line rounded-2xl p-6">
+    <div className="card p-6">
       <h2 className="text-lg font-semibold text-white mb-2">Таблицы General Report</h2>
       <p className="text-[13px] text-hint leading-relaxed mb-4">
         Общие таблицы команды. Для General 4.0 нужна одна — общая, с типом «General 4.0».
@@ -101,18 +98,18 @@ export default function GrSheets({ sheets, serviceAccount }: { sheets: GrSheet[]
       <form onSubmit={add} className="flex gap-2 flex-wrap items-start">
         <input type="text" placeholder="Имя, например EU" value={name}
                onChange={(e) => setName(e.target.value)} required
-               className={`${field} flex-1 min-w-[140px]`} />
+               className={`field flex-1 min-w-[140px]`} />
         <input type="text" placeholder="Ключ таблицы" value={sheetId}
                onChange={(e) => setSheetId(e.target.value)} required
-               className={`${field} flex-1 min-w-[160px]`} />
+               className={`field flex-1 min-w-[160px]`} />
         {/* Тип обязателен: у WA-таблиц другой парсер, и ошибка здесь даёт
             таблицу, которая разберётся молча и неверно. */}
         <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}
-                className={`${field} cursor-pointer`}>
+                className={`field cursor-pointer`}>
           {(Object.keys(KIND_LABELS) as Kind[]).map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
         </select>
         <button type="submit" disabled={busy}
-                className="px-4 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                className="btn btn-primary">
           {busy ? "Проверяю…" : "Добавить"}
         </button>
       </form>

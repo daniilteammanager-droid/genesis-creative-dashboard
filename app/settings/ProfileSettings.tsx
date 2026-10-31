@@ -6,15 +6,9 @@ import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import { WORK_AREAS, startPageOf } from "@/lib/nav";
 
-const field =
-  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
-const card = "bg-card border border-line rounded-2xl p-6";
+const card = "card p-6";
 
-const button =
-  "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 " +
-  "text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50";
 
 export default function ProfileSettings({ profile }: { profile: Profile }) {
   const router = useRouter();
@@ -135,9 +129,9 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             placeholder="Имя"
             value={name}
             onChange={(e) => { setName(e.target.value); setNameMsg(null); }}
-            className={`${field} flex-1 min-w-[200px]`}
+            className={`field w-full flex-1 min-w-[200px]`}
           />
-          <button type="submit" disabled={nameBusy} className={button}>
+          <button type="submit" disabled={nameBusy} className="btn btn-primary">
             {nameBusy ? "Секунду…" : "Сохранить"}
           </button>
         </form>
@@ -154,7 +148,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
       <div className={card}>
         <h2 className="text-lg font-semibold text-white mb-2">Стартовая страница</h2>
         <p className="text-sm text-hint mb-4">Что открывается при входе в дашборд.</p>
-        <select value={start} onChange={(e) => saveStart(e.target.value)} className={field}>
+        <select value={start} onChange={(e) => saveStart(e.target.value)} className="field w-full">
           {WORK_AREAS.map((a) => <option key={a.href} value={a.href}>{a.label}</option>)}
         </select>
         {startMsg && <p className="text-xs text-hint mt-2">{startMsg}</p>}
@@ -171,7 +165,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             onChange={(e) => setCurrent(e.target.value)}
             required
             autoComplete="current-password"
-            className={field}
+            className="field w-full"
           />
           <input
             type="password"
@@ -181,7 +175,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             required
             minLength={8}
             autoComplete="new-password"
-            className={field}
+            className="field w-full"
           />
           <input
             type="password"
@@ -191,7 +185,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             required
             minLength={8}
             autoComplete="new-password"
-            className={`${field} ${next2 && next1 !== next2 ? "border-red-700/60" : ""}`}
+            className={`field w-full ${next2 && next1 !== next2 ? "border-red-700/60" : ""}`}
           />
 
           {pwdMsg && (
@@ -206,7 +200,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
             </div>
           )}
 
-          <button type="submit" disabled={pwdBusy} className={button}>
+          <button type="submit" disabled={pwdBusy} className="btn btn-primary">
             {pwdBusy ? "Секунду…" : "Сменить пароль"}
           </button>
         </form>
@@ -219,7 +213,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
       <div className={card}>
         <h2 className="text-lg font-semibold text-white mb-2">Обучение</h2>
         <p className="text-sm text-zinc-400 leading-relaxed mb-4">Короткий тур по разделам дашборда — откроется поверх страницы.</p>
-        <button onClick={restartTour} className={button}>Пройти обучение ещё раз</button>
+        <button onClick={restartTour} className="btn btn-primary">Пройти обучение ещё раз</button>
       </div>
 
       <div className={card}>

@@ -71,7 +71,7 @@ export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-line rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="card w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b border-line space-y-2">
           <div className="flex items-center gap-2">
             <h3 className="text-white font-semibold">Моя медиатека</h3>
@@ -89,7 +89,7 @@ export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace
             ))}
           </div>
           <input autoFocus placeholder={`Найти по коду — всего ${items.length}`} value={q} onChange={(e) => setQ(e.target.value)}
-                 className="w-full bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white" />
+                 className="field w-full" />
           {approach !== null && (
             <button type="button" onClick={() => (version === null ? setApproach(null) : setVersion(null))} className="text-xs text-violet-300">
               ← {version === null ? "Все подходы" : "Версии"}
@@ -139,7 +139,7 @@ export default function LibraryPicker({ items, added, defaultFace, onAdd, onFace
         <div className="p-4 border-t border-line flex items-center gap-3">
           <span className="text-xs text-hint">{picked.size ? `${picked.size} выбрано` : "Отметь креативы в папке версии"}</span>
           <button type="button" disabled={!picked.size} onClick={() => onAdd(items.filter((c) => picked.has(c.key) && !added.has(c.key)))}
-                  className="ml-auto px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white disabled:opacity-50">Добавить в адсет</button>
+                  className="btn btn-primary ml-auto">Добавить в адсет</button>
         </div>
       </div>
     </div>

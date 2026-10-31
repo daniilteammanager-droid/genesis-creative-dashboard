@@ -27,7 +27,7 @@ export default function ReportsPage() {
       <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Live Manager</h1>
 
-        <div data-tour="reports-views" className="flex gap-1 mb-6 bg-card border border-line rounded-2xl p-1 w-fit">
+        <div data-tour="reports-views" className="flex gap-1 mb-6 card p-1 w-fit">
           {VIEWS.map((v) => (
             <button
               key={v.id}

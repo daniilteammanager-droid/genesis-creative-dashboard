@@ -6,11 +6,7 @@ import type { TgadsKeyView } from "@/lib/connections/tgadsKeys";
 // Кабинеты Telegram Ads (Decision 068): строка на кабинет — название и ключ API.
 // Своя карточка, параллельно источнику Facebook: площадки не пересекаются (Decision 069).
 
-const field =
-  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
-const card = "bg-card border border-line rounded-2xl p-6";
-const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
+const card = "card p-6";
 const date = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 export default function TgadsKeys() {
@@ -72,7 +68,7 @@ export default function TgadsKeys() {
                       onClick={() => confirm === k.id
                         ? call({ method: "DELETE" }, `/api/tgads-keys?id=${k.id}`, "Кабинет отключён. История в дашборде осталась").then(() => setConfirm(null))
                         : setConfirm(k.id)}
-                      className={`${pill} border-red-800/40 text-red-300 hover:bg-red-900/20`}>
+                      className={`btn btn-sm border-red-800/40 text-red-300 hover:bg-red-900/20`}>
                 {confirm === k.id ? "точно удалить?" : "удалить"}
               </button>
             </div>
@@ -82,11 +78,11 @@ export default function TgadsKeys() {
 
       <form onSubmit={add} className="space-y-2.5">
         <input type="text" placeholder="Название, например «TG ADS Испания ROMAN»" value={name}
-               onChange={(e) => setName(e.target.value)} className={field} />
+               onChange={(e) => setName(e.target.value)} className="field w-full" />
         <input type="password" placeholder="Ключ API Telegram Ads" value={token} autoComplete="off"
-               onChange={(e) => setToken(e.target.value)} className={field} />
+               onChange={(e) => setToken(e.target.value)} className="field w-full" />
         <button type="submit" disabled={busy || !token.trim()}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                className="btn btn-primary">
           {busy ? "Проверяю…" : keys.length ? "Добавить ещё кабинет" : "Подключить Telegram Ads"}
         </button>
       </form>

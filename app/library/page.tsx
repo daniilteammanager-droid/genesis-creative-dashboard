@@ -13,6 +13,8 @@ import { MediaWide, MediaSquare } from "@/components/CreativeMedia";
 import MediaLibrary from "@/components/MediaLibrary";
 import { useProfile } from "@/components/Shell";
 import CreativeUploadModal from "./CreativeUploadModal";
+import { Icon } from "@/components/ui";
+import { SummaryCard } from "@/components/general-report/shared";
 
 type CreativeCardProps = {
   item: CreativeRow;
@@ -376,7 +378,7 @@ export default function Home() {
       <div className="w-full">
 
         {/* Вкладки этой страницы */}
-        <div data-tour="legacy-tabs" className="flex gap-1 mb-6 bg-card border border-line rounded-2xl p-1 w-fit">
+        <div data-tour="legacy-tabs" className="flex gap-1 mb-6 card p-1 w-fit">
           {(["creatives", "analytics"] as const).map((t) => (
             <button
               key={t}
@@ -402,7 +404,7 @@ export default function Home() {
                 placeholder="Поиск крео..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-card border border-line rounded-xl px-4 py-3 mb-3 outline-none focus:border-violet-600/50 transition placeholder:text-hint"
+                className="field w-full mb-3"
               />
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -436,7 +438,7 @@ export default function Home() {
                   <select
                     value={activeSort}
                     onChange={(e) => setActiveSort(e.target.value as typeof activeSort)}
-                    className="bg-card border border-line text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
+                    className="field cursor-pointer"
                   >
                     <option value="none">Sort: default</option>
                     <option value="romi">ROMI ↓</option>
@@ -447,7 +449,7 @@ export default function Home() {
                   <select
                     value={activeApproach}
                     onChange={(e) => setActiveApproach(e.target.value)}
-                    className="bg-card border border-line text-zinc-300 text-sm rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-violet-600/50 transition"
+                    className="field cursor-pointer"
                   >
                     <option value="all">All approaches</option>
                     {approaches.map((ap) => (
@@ -467,16 +469,16 @@ export default function Home() {
                   {/* Медиатека легаси — вся команда, баеру не показываем: его — в Креативах (Decision 077). */}
                   {!isBuyer && <button
                     onClick={() => setShowLibrary(true)}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5"
+                    className="btn"
                   >
-                    📁 Медиатека
+                    <Icon name="folder" />Медиатека
                   </button>}
 
                   <button
                     onClick={() => setShowUpload(true)}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5"
+                    className="btn btn-primary"
                   >
-                    ⬆ Загрузить
+                    <Icon name="upload" />Загрузить
                   </button>
                 </div>
               </div>
@@ -603,7 +605,7 @@ const CreativeCard = memo(function CreativeCard({
   return (
     <div
       onClick={() => onSelect(item)}
-      className="bg-card border border-line rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition"
+      className="card overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition"
     >
       {/* Desktop: full-width media at top */}
       <div className="hidden md:block">
@@ -690,29 +692,20 @@ function MetricCell({ label, value, emphasis }: { label: string; value: string; 
 
 // ─── Summary panel ────────────────────────────────────────────────────────────
 
-function SummaryCard({ label, value, colorClass = "text-white" }: { label: string; value: string; colorClass?: string }) {
-  return (
-    <div className="bg-card border border-line rounded-xl px-4 py-3">
-      <div className="text-hint text-xs mb-1 truncate">{label}</div>
-      <div className={`text-lg font-bold tabular-nums truncate ${colorClass}`}>{value}</div>
-    </div>
-  );
-}
-
 function SummaryPanel({ summary }: {
   summary: { total: number; totalSpend: number; totalRevenue: number; totalDeposits: number; totalRomi: number; winners: number; losers: number; tests: number; };
 }) {
   const romiColor = summary.totalRomi >= 150 ? "text-green-300" : summary.totalRomi >= 0 ? "text-yellow-300" : "text-red-300";
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div className="stats mb-6">
       <SummaryCard label="Всего крео"     value={String(summary.total)} />
-      <SummaryCard label="Total ROMI"     value={formatRomiPct(summary.totalRomi)}         colorClass={romiColor} />
-      <SummaryCard label="Winners"        value={String(summary.winners)}                  colorClass="text-green-300" />
-      <SummaryCard label="Losers"         value={String(summary.losers)}                   colorClass="text-red-300" />
+      <SummaryCard label="Total ROMI"     value={formatRomiPct(summary.totalRomi)}         valueClass={romiColor} />
+      <SummaryCard label="Winners"        value={String(summary.winners)}                  valueClass="text-green-300" />
+      <SummaryCard label="Losers"         value={String(summary.losers)}                   valueClass="text-red-300" />
       <SummaryCard label="Total Spend"    value={formatSummaryNumber(summary.totalSpend)} />
       <SummaryCard label="Total Revenue"  value={formatSummaryNumber(summary.totalRevenue)} />
       <SummaryCard label="Total Deposits" value={formatSummaryNumber(summary.totalDeposits)} />
-      <SummaryCard label="Tests"          value={String(summary.tests)}                    colorClass="text-purple-300" />
+      <SummaryCard label="Tests"          value={String(summary.tests)}                    valueClass="text-purple-300" />
     </div>
   );
 }
@@ -805,7 +798,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
   return (
     <div className="space-y-6 pb-8">
       {/* ROMI Distribution */}
-      <div className="bg-card border border-line rounded-2xl p-6">
+      <div className="card p-6">
         <h2 className="text-base font-bold mb-1">ROMI Distribution</h2>
         <p className="text-hint text-xs mb-5">{romiWithData} из {rows.length} крео с данными ROMI</p>
         <div className="space-y-3">
@@ -826,7 +819,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
 
       {/* Spend + Winners by Approach */}
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-card border border-line rounded-2xl p-6">
+        <div className="card p-6">
           <h2 className="text-base font-bold mb-5">Spend by Approach</h2>
           <div className="space-y-3">
             {spendByApproach.map(([approach, spend]) => (
@@ -841,7 +834,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
           </div>
         </div>
 
-        <div className="bg-card border border-line rounded-2xl p-6">
+        <div className="card p-6">
           <h2 className="text-base font-bold mb-5">Winners by Approach</h2>
           <div className="space-y-3">
             {winnersByApproach.map(([approach, count]) => (
@@ -858,7 +851,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
       </div>
 
       {/* Top 10 by ROMI */}
-      <div className="bg-card border border-line rounded-2xl p-6">
+      <div className="card p-6">
         <h2 className="text-base font-bold mb-5">Top 10 by ROMI</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
@@ -892,7 +885,7 @@ function AnalyticsView({ rows, media, matchSuffixes }: { rows: CreativeRow[]; me
       </div>
 
       {/* Top 10 by Deposits */}
-      <div className="bg-card border border-line rounded-2xl p-6">
+      <div className="card p-6">
         <h2 className="text-base font-bold mb-5">Top 10 by Deposits</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">

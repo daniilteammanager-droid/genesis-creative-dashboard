@@ -6,9 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 // фильтром по лицу и «только исходники v1», предпросмотр, вставка и кадры, задания из
 // дашборда и Telegram со ссылкой на готовое видео. Монтирует воркер на VPS (Decision 076).
 
-const card = "bg-card border border-line rounded-2xl p-5";
-const field = "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
-const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
+const card = "card p-5";
 
 interface Video { key: string; code: string; url: string; thumb: string | null; face: string | null; version: string }
 interface Job { id: string; ad_id: string | null; source_name: string; tail_type: string; frame_type: string; status: string; stage: string | null; error: string | null; duration: number | null; created_at: string; url: string | null }
@@ -49,7 +47,7 @@ export default function Uniquify() {
   if (!v) return <div className="max-w-6xl mx-auto px-4 py-6 text-hint">Загружаю…</div>;
   const pick = (label: string, value: string, set: (s: string) => void) => (
     <label className="flex flex-col gap-1 text-xs text-hint">{label}
-      <select value={value} onChange={(e) => set(e.target.value)} className={field}>{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+      <select value={value} onChange={(e) => set(e.target.value)} className="field">{Object.entries(v.types).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
     </label>
   );
 
@@ -64,10 +62,10 @@ export default function Uniquify() {
         <div data-tour="uq-library" className={card}>
           <h2 className="text-base font-semibold text-white mb-3">Видео из медиатеки</h2>
           <div className="flex flex-wrap gap-2 mb-2">
-            <select value={face} onChange={(e) => setFace(e.target.value)} className={field} aria-label="Лицо">
+            <select value={face} onChange={(e) => setFace(e.target.value)} className="field" aria-label="Лицо">
               <option value="ROMAN">Роман</option><option value="RICKY">Рики</option><option value="">Все лица</option>
             </select>
-            <input placeholder="Найти по коду" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} flex-1 min-w-[160px]`} />
+            <input placeholder="Найти по коду" value={q} onChange={(e) => setQ(e.target.value)} className={`field flex-1 min-w-[160px]`} />
           </div>
           <label className="flex items-center gap-2 text-sm text-zinc-300 mb-2"><input type="checkbox" checked={onlyV1} onChange={(e) => setOnlyV1(e.target.checked)} className="accent-violet-500" />Только исходники v1</label>
           <div className="max-h-[420px] overflow-y-auto space-y-1">
@@ -93,7 +91,7 @@ export default function Uniquify() {
             {pick("Кадры перед и после крео", frame, setFrame)}
           </div>
           <p className="text-[11px] text-hint mb-3 leading-relaxed">Крайние вставки — по 1/30 секунды перед и после крео. Основное видео сохраняется без пережатия, сжимаются только добавленные материалы. Скорость исходника меняется на 3–5%. Вставка — 5–10 минут; с дисклеймером весь ролик заканчивается около 10-й минуты. Дисклеймер: 10 голосов × 10 оформлений, сочетания меняются сами.</p>
-          <button type="button" disabled={!sel} onClick={() => sel && start({ key: sel.key })} className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white disabled:opacity-50">Обработать видео</button>
+          <button type="button" disabled={!sel} onClick={() => sel && start({ key: sel.key })} className="btn btn-primary">Обработать видео</button>
           {note && <p className="text-sm text-violet-200 mt-2">{note}</p>}
         </div>
       </div>
@@ -111,8 +109,8 @@ export default function Uniquify() {
                   {j.error && <p className="text-[11px] text-red-300 mt-0.5">{j.error}</p>}
                 </div>
                 <span className="text-[11px] px-2 py-1 rounded-full border border-line text-zinc-300 shrink-0">{STATUS[j.status] ?? j.status}</span>
-                {j.status === "failed" && !j.ad_id && <button type="button" onClick={() => start({ retry: j.id })} className={`${small} border-line text-zinc-300 shrink-0`}>Повторить</button>}
-                {j.url && <a href={j.url} target="_blank" rel="noreferrer" className={`${small} border-violet-700/50 text-violet-200 shrink-0`}>Скачать ↓</a>}
+                {j.status === "failed" && !j.ad_id && <button type="button" onClick={() => start({ retry: j.id })} className={`btn border-line text-zinc-300 shrink-0`}>Повторить</button>}
+                {j.url && <a href={j.url} target="_blank" rel="noreferrer" className={`btn border-violet-700/50 text-violet-200 shrink-0`}>Скачать ↓</a>}
               </div>
             ))}
           </div>

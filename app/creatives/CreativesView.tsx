@@ -12,6 +12,7 @@ import { isSupabaseConfigured, supabase, selectAllRows, type CreativeNote } from
 import type { CreativesResult } from "@/lib/warehouse/creatives";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { DateRange } from "@/components/DatePicker";
+import { Icon } from "@/components/ui";
 
 // Оболочка раздела: виды, загрузка крео и Медиатека.
 //
@@ -21,12 +22,6 @@ import { DateRange } from "@/components/DatePicker";
 //
 // Медиа, суффиксы и заметки живут на этом уровне: ими пользуются и плитка, и
 // Медиатека. Иначе оба тянули бы /api/media по своему разу.
-
-// Оформление кнопок один в один с легаси-разделом: там они выглядят лучше и
-// человек не должен переучиваться, переходя между разделами.
-const btn =
-  "px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 " +
-  "text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition flex items-center gap-1.5";
 
 const daysAgo = (d: number) => mskDaysAgo(d);
 
@@ -43,8 +38,6 @@ const chip = (on: boolean) =>
     on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm" : "text-zinc-400 hover:text-violet-300"
   }`;
 
-const field =
-  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 transition text-white";
 
 export default function CreativesView() {
   const [view, setView] = useState<"cards" | "table" | "analytics">("cards");
@@ -180,14 +173,14 @@ export default function CreativesView() {
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        <div data-tour="creatives-views" className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit">
+        <div data-tour="creatives-views" className="flex gap-1 card p-1 w-fit">
           <button onClick={() => setView("cards")} className={tab(view === "cards")}>Плитка</button>
           <button onClick={() => setView("table")} className={tab(view === "table")}>Таблица</button>
           <button onClick={() => setView("analytics")} className={tab(view === "analytics")}>Аналитика</button>
         </div>
         <div className="flex gap-2">
-          <button onClick={openLibrary} className={btn}>📁 Медиатека</button>
-          <button onClick={() => setShowUpload(true)} className={btn}>⬆ Загрузить</button>
+          <button onClick={openLibrary} className="btn"><Icon name="folder" />Медиатека</button>
+          <button onClick={() => setShowUpload(true)} className="btn btn-primary"><Icon name="upload" />Загрузить</button>
         </div>
       </div>
 
@@ -196,7 +189,7 @@ export default function CreativesView() {
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <span className="text-xs text-hint uppercase tracking-wider">Период</span>
             <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
-            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 card p-1 flex-wrap">
               {PERIODS.map((p) => (
                 <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
                         className={chip(since === p.since() && until === p.until())}>{p.label}</button>
@@ -208,7 +201,7 @@ export default function CreativesView() {
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
               {data.buyers.length > 0 ? (
-                <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+                <div className="flex gap-1 card p-1 flex-wrap">
                   <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
                   {data.buyers.map((b) => (
                     <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
@@ -223,7 +216,7 @@ export default function CreativesView() {
           {(data?.countries.length ?? 0) > 0 && (
             <div className="flex items-center gap-3 mb-5 flex-wrap">
               <span className="text-xs text-hint uppercase tracking-wider w-16">Страны</span>
-              <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+              <div className="flex gap-1 card p-1 flex-wrap">
                 <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
                 {data!.countries.map((c) => (
                   <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>

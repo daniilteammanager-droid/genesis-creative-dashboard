@@ -7,11 +7,7 @@ import type { MetaKeyView } from "@/lib/connections/metaKeys";
 // все работают одновременно), Dolphin Cloud (Decision 063) или FB Tool (Decision 071).
 // Это источник Facebook; Telegram Ads — своей карточкой рядом (Decision 069).
 
-const field =
-  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
-const card = "bg-card border border-line rounded-2xl p-6";
-const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
+const card = "card p-6";
 
 interface State { keys: MetaKeyView[]; source: string | null; backfilledFrom: string | null; backfillDone: boolean; dolphinHint: string | null; fbtoolHint: string | null }
 type FbtoolAccount = { id: string; name: string; ok: boolean; problem: string | null };
@@ -164,7 +160,7 @@ export default function MetaKeys() {
                 </span>
                 <button type="button" disabled={busy}
                         onClick={() => confirm === "fbtool" ? disconnectFbtool() : setConfirm("fbtool")}
-                        className={`${pill} border-red-800/40 text-red-300 hover:bg-red-900/20`}>
+                        className={`btn btn-sm border-red-800/40 text-red-300 hover:bg-red-900/20`}>
                   {confirm === "fbtool" ? "точно отключить?" : "отключить"}
                 </button>
               </div>
@@ -185,9 +181,9 @@ export default function MetaKeys() {
           ) : (
             <form onSubmit={connectFbtool} className="space-y-2.5">
               <input type="password" placeholder="Ключ API FB Tool" value={fbtoolKey} autoComplete="off"
-                     onChange={(e) => setFbtoolKey(e.target.value)} className={field} />
+                     onChange={(e) => setFbtoolKey(e.target.value)} className="field w-full" />
               <button type="submit" disabled={busy || !fbtoolKey.trim()}
-                      className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                      className="btn btn-primary">
                 {busy ? "Проверяю…" : "Подключить FB Tool"}
               </button>
             </form>
@@ -209,16 +205,16 @@ export default function MetaKeys() {
               </span>
               <button type="button" disabled={busy}
                       onClick={() => confirm === "dolphin" ? disconnectDolphin() : setConfirm("dolphin")}
-                      className={`${pill} border-red-800/40 text-red-300 hover:bg-red-900/20`}>
+                      className={`btn btn-sm border-red-800/40 text-red-300 hover:bg-red-900/20`}>
                 {confirm === "dolphin" ? "точно отключить?" : "отключить"}
               </button>
             </div>
           ) : (
             <form onSubmit={connectDolphin} className="space-y-2.5">
               <input type="password" placeholder="Ключ API Dolphin Cloud" value={dolphinToken} autoComplete="off"
-                     onChange={(e) => setDolphinToken(e.target.value)} className={field} />
+                     onChange={(e) => setDolphinToken(e.target.value)} className="field w-full" />
               <button type="submit" disabled={busy || !dolphinToken.trim()}
-                      className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                      className="btn btn-primary">
                 Подключить Dolphin
               </button>
             </form>
@@ -252,7 +248,7 @@ export default function MetaKeys() {
                       onClick={() => confirm === k.id
                         ? call({ method: "DELETE" }, `/api/meta-keys?id=${k.id}`, "Ключ удалён").then(() => setConfirm(null))
                         : setConfirm(k.id)}
-                      className={`${pill} border-red-800/40 text-red-300 hover:bg-red-900/20`}>
+                      className={`btn btn-sm border-red-800/40 text-red-300 hover:bg-red-900/20`}>
                 {confirm === k.id ? "точно удалить?" : "удалить"}
               </button>
             </div>
@@ -279,11 +275,11 @@ export default function MetaKeys() {
       {shown === "meta" && <>
       <form onSubmit={add} className="space-y-2.5">
         <input type="text" placeholder="Название, например «APP 27 — БМ Испания»" value={name}
-               onChange={(e) => setName(e.target.value)} className={field} />
+               onChange={(e) => setName(e.target.value)} className="field w-full" />
         <input type="password" placeholder="Токен доступа Meta" value={token} autoComplete="off"
-               onChange={(e) => setToken(e.target.value)} className={field} />
+               onChange={(e) => setToken(e.target.value)} className="field w-full" />
         <button type="submit" disabled={busy || !token.trim()}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                className="btn btn-primary">
           {busy ? "Проверяю…" : keys.length ? "Добавить ещё ключ" : "Подключить Meta"}
         </button>
       </form>

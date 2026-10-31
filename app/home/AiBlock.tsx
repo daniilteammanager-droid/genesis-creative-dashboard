@@ -8,7 +8,7 @@ import { AiText, VERDICT, type Verdict } from "@/app/traffic-report/AiPanel";
 
 interface Item { id: string; buyer_id: string; creo: string; verdict: Verdict | null; text: string; created_at: string; trigger: string }
 const when = (s: string) => new Date(s).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const card = "bg-card border border-line rounded-2xl p-4";
+const card = "card p-4";
 
 export default function AiBlock({ lead }: { lead: boolean }) {
   const [data, setData] = useState<{ ready: boolean; analyses: Item[]; names: Record<string, string>; budget: { limit: number; used: number } | null } | null>(null);

@@ -224,7 +224,7 @@ export default function CreativeUploadModal({
                     onClick={uploadAll}
                     disabled={uploadingAll || !face}
                     title={face ? undefined : "Сначала выбери лицо"}
-                    className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50"
+                    className="btn btn-primary"
                   >
                     {uploadingAll ? "Загрузка…" : `⬆ Загрузить (${queuedCount})`}
                   </button>

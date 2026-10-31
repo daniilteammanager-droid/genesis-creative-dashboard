@@ -77,9 +77,6 @@ function LoginForm() {
     }
   }
 
-  const field =
-    "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-    "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
   return (
     <main className="min-h-screen bg-background text-white flex items-center justify-center p-6">
@@ -92,7 +89,7 @@ function LoginForm() {
           </p>
         </div>
 
-        <div className="bg-card border border-line rounded-2xl p-6">
+        <div className="card p-6">
           <div className="flex gap-1 mb-5 bg-panel border border-line rounded-xl p-1">
             {(["signin", "signup"] as const).map((m) => (
               <button
@@ -118,7 +115,7 @@ function LoginForm() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className={field}
+                className="field w-full"
               />
             )}
 
@@ -129,7 +126,7 @@ function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className={field}
+              className="field w-full"
             />
 
             <input
@@ -140,7 +137,7 @@ function LoginForm() {
               required
               minLength={8}
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
-              className={field}
+              className="field w-full"
             />
 
             {mode === "signup" && (
@@ -152,7 +149,7 @@ function LoginForm() {
                 required
                 minLength={8}
                 autoComplete="new-password"
-                className={`${field} ${password2 && password !== password2 ? "border-red-700/60" : ""}`}
+                className={`field w-full ${password2 && password !== password2 ? "border-red-700/60" : ""}`}
               />
             )}
 
@@ -163,7 +160,7 @@ function LoginForm() {
                   placeholder="Приглашение"
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
-                  className={field}
+                  className="field w-full"
                 />
                 <p className="text-[11px] text-hint leading-relaxed">
                   Приглашение одноразовое, его выдаёт тимлид. Номер баера присвоится сам.
@@ -192,7 +189,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full px-4 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50"
+              className="btn btn-primary w-full"
             >
               {busy ? "Секунду…" : mode === "signin" ? "Войти" : "Зарегистрироваться"}
             </button>

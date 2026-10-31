@@ -84,13 +84,10 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
     return { label: "активно", cls: "bg-green-900/30 text-green-400 border-green-800/30" };
   }
 
-  const field =
-    "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
-    "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="bg-card border border-line rounded-2xl p-5">
+      <form onSubmit={create} className="card p-5">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[200px]">
             <label className="block text-xs text-hint mb-1.5">Для кого</label>
@@ -99,12 +96,12 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               placeholder="Новый баер, выходит с понедельника"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className={`${field} w-full`}
+              className={`field w-full`}
             />
           </div>
           <div>
             <label className="block text-xs text-hint mb-1.5">Роль</label>
-            <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={`${field} cursor-pointer`}>
+            <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={`field cursor-pointer`}>
               <option value="buyer">Баер</option>
               <option value="teamlead">Тимлид</option>
             </select>
@@ -117,7 +114,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
                 placeholder="1"
                 value={buyerCode}
                 onChange={(e) => setBuyerCode(e.target.value)}
-                className={`${field} w-20`}
+                className={`field w-20`}
               />
             </div>
           )}
@@ -129,13 +126,13 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               max={90}
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
-              className={`${field} w-24`}
+              className={`field w-24`}
             />
           </div>
           <button
             type="submit"
             disabled={busy}
-            className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50"
+            className="btn btn-primary"
           >
             {busy ? "Секунду…" : "Создать ссылку"}
           </button>
@@ -150,7 +147,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
         <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm">{error}</div>
       )}
 
-      <div className="bg-card border border-line rounded-2xl divide-y divide-line">
+      <div className="card divide-y divide-line">
         {invites.length === 0 && <p className="text-sm text-hint p-5">Пока ни одного приглашения.</p>}
         {invites.map((i) => {
           const s = status(i);

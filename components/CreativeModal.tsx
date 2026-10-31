@@ -206,7 +206,7 @@ export default function CreativeModal({
                     value={transcriptionDraft}
                     onChange={(e) => setTranscriptionDraft(e.target.value)}
                     rows={6} autoFocus placeholder="Расшифровка пока не добавлена"
-                    className="w-full bg-raised border border-line rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-hint mb-3"
+                    className="field w-full resize-none mb-3"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -253,7 +253,7 @@ export default function CreativeModal({
                     value={noteDraft}
                     onChange={(e) => setNoteDraft(e.target.value)}
                     rows={4} autoFocus placeholder="Добавьте заметку..."
-                    className="w-full bg-raised border border-line rounded-lg px-3 py-2 text-sm text-zinc-300 resize-none outline-none focus:border-violet-600/50 transition placeholder:text-hint mb-3"
+                    className="field w-full resize-none mb-3"
                   />
                   <div className="flex items-center gap-2">
                     <button

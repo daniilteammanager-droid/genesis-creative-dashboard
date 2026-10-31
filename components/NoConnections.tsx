@@ -6,7 +6,7 @@ export default function NoConnections({ title, what }: { title: string; what: st
       <div className="max-w-3xl mx-auto">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">{title}</h1>
 
-        <div className="bg-card border border-line rounded-2xl p-6">
+        <div className="card p-6">
           <h2 className="text-lg font-semibold text-white mb-2">Подключений пока нет</h2>
           <p className="text-sm text-zinc-400 leading-relaxed">{what}</p>
           <p className="text-[13px] text-hint leading-relaxed mt-3">

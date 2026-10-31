@@ -102,13 +102,15 @@ export const GRANULARITIES: { id: Granularity; label: string }[] = [
 
 // ─── Small components ─────────────────────────────────────────────────────────
 
-export function SummaryCard({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
+// Карточка итога — одна на весь дашборд: Главная, Отчёты, Live Manager, GR 3.0/4.0, легаси.
+// Ряд карточек — класс `stats` (globals.css): сам заполняется при любом их числе.
+export function SummaryCard({ label, value, tone, valueClass }: { label: string; value: string; tone?: "good" | "bad"; valueClass?: string }) {
   return (
-    <div className="bg-card border border-line rounded-2xl px-4 py-3.5">
-      <p className="text-[11px] text-hint uppercase tracking-wider mb-1.5">{label}</p>
-      <p className={`text-xl font-semibold tabular-nums ${
-        tone === "good" ? "text-green-400" : tone === "bad" ? "text-red-400" : "text-white"
-      }`}>{value}</p>
+    <div className="card px-4 py-3.5 min-w-0">
+      <p className="label truncate">{label}</p>
+      <p className={`mt-1.5 text-xl font-semibold tabular-nums truncate ${
+        valueClass ?? (tone === "good" ? "text-green-400" : tone === "bad" ? "text-red-400" : "text-white")
+      }`} title={value}>{value}</p>
     </div>
   );
 }

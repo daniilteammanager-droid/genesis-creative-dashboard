@@ -11,6 +11,7 @@ import { DIMENSIONS, DIM_LABELS, QUAL_KEYS, type Gr4Data, type Gr4Dim, type Gr4K
 import Report from "./Report";
 import { DateRange } from "@/components/DatePicker";
 import { mskDay } from "@/lib/day";
+import { Spinner } from "@/components/ui";
 
 // ─── Колонки ──────────────────────────────────────────────────────────────────
 // Порядок и названия — как в General 3.0 и в новой Google-таблице: к ним привыкла
@@ -266,7 +267,7 @@ export default function GeneralReport4Page() {
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 4.0</h1>
 
         {sources.some((x) => x.kind === "main") && (
-          <div data-tour="gr4-tabs" className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit mb-6">
+          <div data-tour="gr4-tabs" className="flex gap-1 card p-1 w-fit mb-6">
             <button onClick={() => setTab("table")} className={chip(tab === "table")}>Таблица</button>
             <button onClick={() => setTab("report")} className={chip(tab === "report")}>Отчёт</button>
           </div>
@@ -274,7 +275,7 @@ export default function GeneralReport4Page() {
         {tab === "report" && sources.some((x) => x.kind === "main") ? <Report /> : <>
 
         {sources.length > 1 && (
-          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit flex-wrap mb-6">
+          <div className="flex gap-1 card p-1 w-fit flex-wrap mb-6">
             {sources.map((s) => (
               <button key={s.id} onClick={() => pickSource(s.id)} className={chip(activeSource === s.id)}>{s.label}</button>
             ))}
@@ -284,7 +285,7 @@ export default function GeneralReport4Page() {
         {loading && (
           <div className="flex items-center justify-center py-24">
             <div className="flex flex-col items-center gap-4 animate-pulse">
-              <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+              <Spinner />
               <p className="text-violet-300/50 text-sm tracking-widest uppercase">Loading report...</p>
             </div>
           </div>
@@ -324,7 +325,7 @@ export default function GeneralReport4Page() {
               <button onClick={() => setCardsOpen((v) => !v)} className={smallChip(cardsOpen)}>⚙ Настроить</button>
             </div>
             {cardsOpen && (
-              <div className="bg-card border border-line rounded-2xl p-4 mb-4 flex flex-wrap gap-2">
+              <div className="card p-4 mb-4 flex flex-wrap gap-2">
                 {cards.map((c) => (
                   <button key={c.id} className={smallChip(visibleCards.includes(c.id))}
                     onClick={() => { const v = toggleIn(visibleCards, c.id); if (v.length) { setVisibleCards(v); save(CARDS_KEY, v); } }}>
@@ -333,14 +334,14 @@ export default function GeneralReport4Page() {
                 ))}
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+            <div className="stats mb-8">
               {cards.filter((c) => visibleCards.includes(c.id)).map((c) => (
                 <SummaryCard key={c.id} label={c.label} value={c.value(total)} tone={c.tone?.(total)} />
               ))}
             </div>
 
             {/* Фильтры: в каждом разрезе можно выбрать несколько значений */}
-            <div data-tour="gr4-filters" className="bg-card border border-line rounded-2xl p-4 mb-4">
+            <div data-tour="gr4-filters" className="card p-4 mb-4">
               <button onClick={() => setFiltersOpen((v) => !v)} className="flex items-center gap-2 text-sm text-zinc-300 w-full text-left">
                 <span className="text-hint">{filtersOpen ? "▾" : "▸"}</span>
                 Фильтры
@@ -402,13 +403,13 @@ export default function GeneralReport4Page() {
             </div>
 
             {groups.length >= 2 && CHART_DEFS.filter((c) => visibleCharts.includes(c.id)).map((c) => (
-              <div key={c.id} className="bg-card border border-line rounded-2xl p-4 mb-4">
+              <div key={c.id} className="card p-4 mb-4">
                 <p className="text-xs text-hint uppercase tracking-wider mb-2">{c.label}</p>
                 {c.render(chartData)}
               </div>
             ))}
 
-            <div className="bg-card border border-line rounded-2xl overflow-hidden">
+            <div className="card overflow-hidden">
               <div className="overflow-x-auto max-h-[75vh]">
                 <table className="w-full text-sm">
                   <thead className="bg-panel sticky top-0 z-10">

@@ -6,6 +6,7 @@ import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { DateRange } from "@/components/DatePicker";
+import { Spinner } from "@/components/ui";
 
 const chip = (on: boolean) =>
   `px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -13,9 +14,6 @@ const chip = (on: boolean) =>
        : "text-zinc-400 hover:text-violet-300"
   }`;
 
-const field =
-  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
-  "focus:border-violet-600/50 transition text-white";
 
 const nf = (v: number | null, d = 2) =>
   v === null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -129,12 +127,12 @@ export default function LiveCheck() {
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="text-xs text-hint uppercase tracking-wider w-20">Разрез</span>
-        <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+        <div className="flex gap-1 card p-1 flex-wrap">
           {GROUPS.map((g) => (
             <button key={g.id} onClick={() => { setGroup(g.id); if (g.id !== "campaign") setFormat("ours"); }} className={chip(group === g.id)}>{g.label}</button>
           ))}
         </div>
-        <div className="flex gap-1 bg-card border border-line rounded-2xl p-1" title="Формат текста чека">
+        <div className="flex gap-1 card p-1" title="Формат текста чека">
           <button onClick={() => setFormat("ours")} className={chip(format === "ours")}>Наш формат</button>
           <button onClick={() => { setFormat("artem"); setGroup("campaign"); }} className={chip(format === "artem")}>Формат Артёма</button>
         </div>
@@ -144,7 +142,7 @@ export default function LiveCheck() {
           </label>
         )}
         {pending && !loading && (
-          <span className="w-4 h-4 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+          <Spinner small />
         )}
       </div>
 
@@ -154,7 +152,7 @@ export default function LiveCheck() {
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-20">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 card p-1 flex-wrap">
               <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Все</button>
               {data.buyers.map((b) => (
                 <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
@@ -188,7 +186,7 @@ export default function LiveCheck() {
 
       {loading && !data && (
         <div className="flex items-center justify-center py-16">
-          <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+          <Spinner />
         </div>
       )}
 
@@ -201,7 +199,7 @@ export default function LiveCheck() {
               ["ROMI", data.totals.romi === null ? "—" : `${data.totals.romi.toFixed(0)}%`],
               ["Дейли бюджет", data.totalBudget === null ? "—" : `$${nf(data.totalBudget, 0)}`],
             ] as const).map(([label, value]) => (
-              <div key={label} className="bg-card border border-line rounded-2xl px-5 py-4">
+              <div key={label} className="card px-5 py-4">
                 <p className="text-[11px] text-hint uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-xl font-semibold text-white">{value}</p>
               </div>
@@ -209,7 +207,7 @@ export default function LiveCheck() {
           </div>
 
           {/* Готовый текст — то, ради чего раздел и существует */}
-          <div data-tour="check-text" className="bg-card border border-line rounded-2xl p-5 mb-5">
+          <div data-tour="check-text" className="card p-5 mb-5">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h2 className="text-lg font-semibold text-white">Готовый чек</h2>
               <div className="flex items-center gap-2 flex-wrap">
@@ -218,7 +216,7 @@ export default function LiveCheck() {
                   Отправить в Telegram
                 </button>
                 <button onClick={copy}
-                        className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm hover:from-violet-500 hover:to-violet-400 transition">
+                        className="btn btn-primary">
                   {copied ? "Скопировано" : "Скопировать"}
                 </button>
               </div>
@@ -230,7 +228,7 @@ export default function LiveCheck() {
           </div>
 
           {data.rows.length > 0 && (
-            <div className="bg-card border border-line rounded-2xl overflow-x-auto">
+            <div className="card overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line">
@@ -274,7 +272,7 @@ export default function LiveCheck() {
         </div>
       )}
 
-      <div data-tour="check-history" className="bg-card border border-line rounded-2xl p-5 mt-5">
+      <div data-tour="check-history" className="card p-5 mt-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">История чеков</h2>
           <button onClick={loadHistory} className="px-3 py-1.5 rounded-lg text-sm border border-line text-zinc-300 hover:bg-violet-900/20">

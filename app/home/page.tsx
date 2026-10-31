@@ -78,14 +78,14 @@ export default function HomePage() {
         </div>
 
         {cardsOpen && (
-          <div className="bg-card border border-line rounded-2xl p-4 mb-4 flex flex-wrap gap-2">
+          <div className="card p-4 mb-4 flex flex-wrap gap-2">
             {CARDS.map((c) => (
               <button key={c.label} className={chip(cards.includes(c.label))} onClick={() => toggleCard(c.label)}>{c.label}</button>
             ))}
           </div>
         )}
 
-        <div data-tour="home-metrics" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-2">
+        <div data-tour="home-metrics" className="stats mb-2">
           {cards.map((l) => CARDS.find((c) => c.label === l)).filter((c) => c !== undefined).map((c) => (
             <SummaryCard key={c.label} label={c.label} value={data ? c.cell(data.totals) : "…"} tone={data ? tone(c.label, data.totals) : undefined} />
           ))}
@@ -143,7 +143,7 @@ function BoardCard({ title, board }: { title: string; board: Board }) {
     </div>
   );
   return (
-    <div className="bg-card border border-line rounded-2xl p-4">
+    <div className="card p-4">
       <p className="font-semibold mb-3">{title}</p>
       {board.ranking.length === 0 ? (
         <p className="text-sm text-hint">Расхода за период нет ни у кого.</p>

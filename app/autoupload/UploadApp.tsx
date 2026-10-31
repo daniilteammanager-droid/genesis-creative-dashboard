@@ -5,9 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 // Приложение Meta для автозалива (Decision 093): своё, отдельно от ключей статистики в
 // «Интеграциях». Ключ с ads_management и, если приложение требует, App Secret.
 
-const card = "bg-card border border-line rounded-2xl p-5";
-const field = "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-600/50 text-white";
-const small = "px-3 py-1.5 rounded-lg text-sm border transition disabled:opacity-50";
+const card = "card p-5";
 
 interface Key { name: string; hint: string | null; appId: string | null; appName: string | null; canWrite: boolean; expiresAt: string | null; lastError: string | null; hasSecret: boolean }
 interface Usage { calls: number; cpu: number; time: number; regainMin: number; tier: string | null; appPct: number | null }
@@ -44,9 +42,9 @@ export default function UploadApp() {
         <h2 className="text-base font-semibold text-white">Приложение Meta для автозалива</h2>
         {key && !edit && (
           <div className="ml-auto flex gap-2">
-            <button type="button" disabled={busy} onClick={check} className={`${small} border-violet-700/50 text-violet-200`}>Проверить и лимит</button>
-            <button type="button" onClick={() => setEdit(true)} className={`${small} border-line text-zinc-300`}>Заменить</button>
-            <button type="button" disabled={busy} onClick={remove} className={`${small} border-red-900/40 text-red-300`}>Отключить</button>
+            <button type="button" disabled={busy} onClick={check} className={`btn border-violet-700/50 text-violet-200`}>Проверить и лимит</button>
+            <button type="button" onClick={() => setEdit(true)} className={`btn border-line text-zinc-300`}>Заменить</button>
+            <button type="button" disabled={busy} onClick={remove} className={`btn border-red-900/40 text-red-300`}>Отключить</button>
           </div>
         )}
       </div>
@@ -78,13 +76,13 @@ export default function UploadApp() {
             {" "}Нужен ключ с ads_management, у которого есть доступ к БМ твоих кабинетов.
           </p>
           <div className="grid sm:grid-cols-3 gap-2">
-            <input placeholder="Название (необязательно)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
-            <input placeholder="Access Token" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} className={`${field} font-mono`} />
-            <input placeholder="App Secret (если требует приложение)" type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} className={`${field} font-mono`} />
+            <input placeholder="Название (необязательно)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="field" />
+            <input placeholder="Access Token" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} className={`field font-mono`} />
+            <input placeholder="App Secret (если требует приложение)" type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} className={`field font-mono`} />
           </div>
           <div className="flex gap-2 mt-2">
-            <button type="button" disabled={busy || !form.token.trim()} onClick={save} className={`${small} border-violet-700/50 text-violet-200`}>{busy ? "Проверяю…" : "Проверить и подключить"}</button>
-            {key && <button type="button" onClick={() => setEdit(false)} className={`${small} border-line text-zinc-400`}>Отмена</button>}
+            <button type="button" disabled={busy || !form.token.trim()} onClick={save} className={`btn border-violet-700/50 text-violet-200`}>{busy ? "Проверяю…" : "Проверить и подключить"}</button>
+            {key && <button type="button" onClick={() => setEdit(false)} className={`btn border-line text-zinc-400`}>Отмена</button>}
           </div>
         </>
       )}

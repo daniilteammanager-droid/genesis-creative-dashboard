@@ -15,7 +15,7 @@ import { DateRange } from "@/components/DatePicker";
 
 interface ReportData { main: Gr4Row[]; buyers: Gr4Row[]; targets: Gr4Targets; generatedAt: string; syncError: string | null; error?: string }
 
-const card = "bg-card border border-line rounded-2xl p-4";
+const card = "card p-4";
 const smallChip = (on: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${on ? "bg-violet-600 text-white" : "bg-card border border-line text-zinc-400 hover:text-violet-300"}`;
 const label = "text-xs text-hint uppercase tracking-wider mr-1";
 const GRAN: { id: Period; label: string }[] = [{ id: "day", label: "По дням" }, { id: "week", label: "По неделям" }, { id: "month", label: "По месяцам" }];

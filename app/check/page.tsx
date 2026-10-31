@@ -384,7 +384,7 @@ function MultiSelect({
         size={Math.min(options.length, 5)}
         value={value}
         onChange={(e) => onChange(Array.from(e.target.selectedOptions).map((o) => o.value))}
-        className="rounded-lg border border-line bg-raised text-zinc-300 text-sm px-2 py-1 focus:outline-none focus:border-violet-500/60"
+        className="field py-1"
       >
         {options.map((o) => (
           <option key={o} value={o} className="py-0.5">{o}</option>
@@ -698,7 +698,7 @@ function ManualCheck() {
   return (
     <>
         {/* Upload card */}
-        <div className="bg-card border border-line rounded-2xl p-6 mb-6">
+        <div className="card p-6 mb-6">
           <h2 className="text-lg font-semibold text-white mb-4">Загрузи выгрузки</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
             <FileBox id="fbFile" label="FB / Статистика аккаунтов" fileName={fbFile?.name ?? null} onChange={setFbFile} />
@@ -713,7 +713,7 @@ function ManualCheck() {
               <select
                 value={entityMode}
                 onChange={(e) => setEntityMode(e.target.value as EntityMode)}
-                className="rounded-lg border border-line bg-raised text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60"
+                className="field"
               >
                 <option value="auto">Auto: объявления, если есть</option>
                 <option value="campaign">Кампании</option>
@@ -734,7 +734,7 @@ function ManualCheck() {
           <button
             onClick={handleBuild}
             disabled={appStatus === "loading" || !fbFile}
-            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 text-white font-semibold text-sm hover:from-violet-700 hover:to-violet-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-primary"
           >
             {appStatus === "loading" ? "Обрабатываю..." : "Собрать чек"}
           </button>
@@ -765,7 +765,7 @@ function ManualCheck() {
             </div>
 
             {/* Tab nav */}
-            <div className="flex flex-wrap gap-1 mb-5 bg-card border border-line rounded-2xl p-1 w-fit">
+            <div className="flex flex-wrap gap-1 mb-5 card p-1 w-fit">
               {NAV_TABS.map((t) => (
                 <button
                   key={t.id}
@@ -783,7 +783,7 @@ function ManualCheck() {
 
             {/* ── Чек ── */}
             {activeTab === "check" && (
-              <div className="bg-card border border-line rounded-2xl p-6">
+              <div className="card p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-white">Готовый чек</h2>
                   <div className="flex gap-2">
@@ -797,14 +797,14 @@ function ManualCheck() {
                 </div>
                 <textarea
                   readOnly value={data.checkText} spellCheck={false}
-                  className="w-full h-[60vh] bg-raised border border-line rounded-xl p-4 text-sm text-zinc-200 font-mono resize-none focus:outline-none focus:border-violet-500/50"
+                  className="field w-full h-[60vh] p-4 font-mono resize-none"
                 />
               </div>
             )}
 
             {/* ── Сумма ── */}
             {activeTab === "sum" && (
-              <div className="bg-card border border-line rounded-2xl p-6">
+              <div className="card p-6">
                 <h2 className="text-base font-semibold text-white mb-4">Сумма по фильтру</h2>
 
                 <div className="mb-4">
@@ -812,7 +812,7 @@ function ManualCheck() {
                   <input
                     type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)}
                     onKeyDown={handleNameKeyDown} placeholder="например EDIT4 или SPAIN"
-                    className="w-full max-w-sm rounded-lg border border-line bg-raised text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60 placeholder:text-hint"
+                    className="field w-full max-w-sm"
                   />
                   {pinnedNames.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -855,13 +855,13 @@ function ManualCheck() {
 
             {/* ── Поиск ── */}
             {activeTab === "search" && (
-              <div className="bg-card border border-line rounded-2xl p-6">
+              <div className="card p-6">
                 <h2 className="text-base font-semibold text-white mb-4">Быстрый поиск</h2>
                 <input
                   type="text" value={quickSearch}
                   onChange={(e) => setQuickSearch(e.target.value)}
                   placeholder="часть названия / гео / кабинет"
-                  className="w-full max-w-lg rounded-xl border border-line bg-raised text-zinc-200 text-sm px-4 py-2.5 mb-5 focus:outline-none focus:border-violet-500/60 placeholder:text-hint"
+                  className="field w-full max-w-lg mb-5"
                 />
                 <p className="text-xs text-hint mb-4">
                   {quickSearch.trim() ? `Найдено: ${searchRows.length}` : `Показаны первые 200 строк`}
@@ -872,7 +872,7 @@ function ManualCheck() {
 
             {/* ── Крео по странам ── */}
             {activeTab === "creos" && (
-              <div className="bg-card border border-line rounded-2xl p-6">
+              <div className="card p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
                   <div>
                     <h2 className="text-base font-semibold text-white mb-1">Крео по странам</h2>
@@ -902,7 +902,7 @@ function ManualCheck() {
                           type="text" value={creoSearch}
                           onChange={(e) => setCreoSearch(e.target.value)}
                           placeholder="например EDIT4 или static"
-                          className="rounded-lg border border-line bg-raised text-zinc-300 text-sm px-3 py-1.5 focus:outline-none focus:border-violet-500/60 placeholder:text-hint"
+                          className="field"
                         />
                       </label>
                       {(creoGeos.length || creoSearch) ? (
@@ -940,7 +940,7 @@ function ManualCheck() {
 
             {/* ── FB/MVP Ads ── */}
             {activeTab === "link" && (
-              <div className="bg-card border border-line rounded-2xl p-6">
+              <div className="card p-6">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
                     <h2 className="text-base font-semibold text-white mb-1">Связка FB объявлений и MVP объявлений</h2>
@@ -963,7 +963,7 @@ function ManualCheck() {
 
             {/* ── Несовпадения ── */}
             {activeTab === "mismatch" && (
-              <div className="bg-card border border-line rounded-2xl p-6">
+              <div className="card p-6">
                 <h2 className="text-base font-semibold text-white mb-4">
                   Несовпадения FB / MVP
                   {mismatches.length === 0 && (
@@ -998,7 +998,7 @@ export default function CheckPage() {
       <div className="w-full px-4 md:px-8 py-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <h1 className="text-white text-3xl font-semibold tracking-wide">Checks</h1>
-          <div data-tour="check-modes" className="flex gap-1 bg-card border border-line rounded-2xl p-1">
+          <div data-tour="check-modes" className="flex gap-1 card p-1">
             <button onClick={() => setMode("live")} className={tab(mode === "live")}>Живой</button>
             <button onClick={() => setMode("manual")} className={tab(mode === "manual")}>Ручной</button>
           </div>

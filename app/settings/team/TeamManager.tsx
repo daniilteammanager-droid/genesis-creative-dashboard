@@ -112,9 +112,6 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
     update(p.id, draft === "" ? { p_clear_code: true } : { p_buyer_code: draft });
   }
 
-  const field =
-    "bg-panel border border-line rounded-lg px-2.5 py-1.5 text-sm outline-none " +
-    "focus:border-violet-600/50 transition placeholder:text-hint text-white";
 
   return (
     <div className="space-y-4">
@@ -122,7 +119,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
         <div className="bg-red-950/40 border border-red-700/30 rounded-xl px-4 py-3 text-red-300 text-sm">{error}</div>
       )}
 
-      <div className="bg-card border border-line rounded-2xl divide-y divide-line">
+      <div className="card divide-y divide-line">
         {people.length === 0 && <p className="text-sm text-hint p-5">Пока никого нет.</p>}
 
         {people.map((p) => {
@@ -141,7 +138,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                 value={p.role}
                 disabled={busy === p.id}
                 onChange={(e) => update(p.id, { p_role: e.target.value as UserRole })}
-                className={`${field} cursor-pointer disabled:opacity-50`}
+                className={`field cursor-pointer disabled:opacity-50`}
               >
                 {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
                   <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -156,7 +153,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                 onChange={(e) => setCodeDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 onBlur={() => commitCode(p)}
                 onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                className={`${field} w-20 disabled:opacity-50`}
+                className={`field w-20 disabled:opacity-50`}
               />
 
               <button
@@ -191,7 +188,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                     onChange={(e) => setSheetDraft((s) => ({ ...s, [`${p.id}|${which}`]: e.target.value }))}
                     onBlur={() => commitSheet(p, which)}
                     onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                    className={`${field} flex-1 min-w-0 disabled:opacity-50`}
+                    className={`field flex-1 min-w-0 disabled:opacity-50`}
                   />
                 </div>
               ))}
@@ -206,7 +203,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                     onChange={(e) => setBudgetDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                     onBlur={() => commitBudget(p.id)}
                     onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                    className={`${field} w-20 disabled:opacity-50`}
+                    className={`field w-20 disabled:opacity-50`}
                   />
                   <span className="text-[11px] text-hint">в месяц · потрачено ${budgets[p.id].used.toFixed(2)}</span>
                 </div>

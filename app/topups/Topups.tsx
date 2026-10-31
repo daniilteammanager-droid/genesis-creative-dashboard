@@ -6,11 +6,7 @@ import type { Topup } from "@/lib/topups/requests";
 // Заявки на пополнение (Decision 072): форма и список. Заявка уходит Top-Up
 // ботом в платёжный чат, статус и хэш возвращаются сюда.
 
-const field =
-  "w-full bg-panel border border-line rounded-xl px-4 py-3 outline-none " +
-  "focus:border-violet-600/50 transition placeholder:text-hint text-white text-sm";
-const card = "bg-card border border-line rounded-2xl p-5 sm:p-6";
-const pill = "text-[11px] px-2.5 py-1 rounded-full border transition";
+const card = "card p-5 sm:p-6";
 
 const TIMES = [
   { minutes: 0, label: "Без срока" }, { minutes: 15, label: "15 минут" }, { minutes: 30, label: "30 минут" },
@@ -110,36 +106,36 @@ export default function Topups({ categories, networks }: { categories: Record<st
           <p className="text-sm text-zinc-300 flex-1 min-w-[200px]">
             {view.chat ? <>Платёжный чат: <b>{view.chat.title ?? "без названия"}</b></> : "Платёжный чат не привязан — заявки некуда отправлять."}
           </p>
-          <button type="button" onClick={bind} className={`${pill} border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>
+          <button type="button" onClick={bind} className={`btn btn-sm border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>
             {view.chat ? "Привязать другой чат" : "Привязать чат"}
           </button>
         </div>
       )}
 
       <form data-tour="topups-form" onSubmit={submit} className={`${card} grid gap-2.5 sm:grid-cols-2`}>
-        <select value={kind} onChange={(e) => { setKind(e.target.value); setTarget(""); }} className={field}>
+        <select value={kind} onChange={(e) => { setKind(e.target.value); setTarget(""); }} className="field w-full">
           <option value="" disabled>Категория</option>
           {Object.keys(categories).map((k) => <option key={k}>{k}</option>)}
         </select>
-        <select value={target} onChange={(e) => setTarget(e.target.value)} disabled={!kind} className={`${field} disabled:opacity-50`}>
+        <select value={target} onChange={(e) => setTarget(e.target.value)} disabled={!kind} className={`field w-full disabled:opacity-50`}>
           <option value="" disabled>Куда именно</option>
           {(categories[kind] ?? []).map((t) => <option key={t}>{t}</option>)}
         </select>
-        <select value={net} onChange={(e) => setNet(Number(e.target.value))} className={field}>
+        <select value={net} onChange={(e) => setNet(Number(e.target.value))} className="field w-full">
           <option value={-1} disabled>Сеть и монета</option>
           {networks.map((n, i) => <option key={n.label} value={i}>{n.label}</option>)}
         </select>
-        <input inputMode="decimal" placeholder={`Сумма${net >= 0 ? `, ${networks[net].asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
-        <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className={field} />
-        <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className={field}>
+        <input inputMode="decimal" placeholder={`Сумма${net >= 0 ? `, ${networks[net].asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className="field w-full" />
+        <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className="field w-full" />
+        <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="field w-full">
           <option value={-1} disabled>Время на оплату</option>
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
         </select>
-        <input placeholder="Адрес получателя" value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`${field} sm:col-span-2 font-mono`} />
+        <input placeholder="Адрес получателя" value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`field w-full sm:col-span-2 font-mono`} />
         <input placeholder="Комментарий (нечего добавить — «-»)" value={comment}
-               onChange={(e) => setComment(e.target.value)} className={`${field} sm:col-span-2`} />
+               onChange={(e) => setComment(e.target.value)} className={`field w-full sm:col-span-2`} />
         <button type="submit" disabled={busy || !target || net < 0 || !amount || fee.trim() === "" || !address || minutes < 0 || !comment.trim()}
-                className="sm:col-span-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50">
+                className="btn btn-primary sm:col-span-2">
           {busy ? "Отправляю…" : "Отправить заявку"}
         </button>
         {msg && (
@@ -153,7 +149,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
         <div className="flex items-center gap-2 flex-wrap mb-3">
           {(["all", "pending", "paid", "rejected", "expired"] as const).map((s) => (
             <button key={s} type="button" onClick={() => setFilter(s)}
-                    className={`${pill} ${filter === s ? "border-violet-500 text-white bg-violet-900/30" : "border-line text-zinc-400"}`}>
+                    className={`btn btn-sm ${filter === s ? "border-violet-500 text-white bg-violet-900/30" : "border-line text-zinc-400"}`}>
               {s === "all" ? "Все" : STATUS[s].label}
             </button>
           ))}
@@ -182,7 +178,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
                     </p>
                   )}
                 </div>
-                <span className={`${pill} shrink-0 ${STATUS[r.status].cls}`}>
+                <span className={`btn btn-sm shrink-0 ${STATUS[r.status].cls}`}>
                   {r.status === "pending" && r.searching_since ? "Ищу перевод" : STATUS[r.status].label}
                 </span>
               </div>

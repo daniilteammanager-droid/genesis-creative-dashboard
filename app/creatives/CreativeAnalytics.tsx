@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { parseCreativeCode } from "@/lib/creatives/code";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
+import { Spinner } from "@/components/ui";
 
 // Аналитика новой картотеки.
 //
@@ -24,7 +25,7 @@ const int = (v: number) => v.toLocaleString("ru-RU");
 const pct = (v: number | null, d = 2) =>
   v === null || !Number.isFinite(v) ? "—" : `${v.toFixed(d)}%`;
 
-const card = "bg-card border border-line rounded-2xl p-6";
+const card = "card p-6";
 
 const sum = (rows: CreativeRow[], f: (r: CreativeRow) => number | null) =>
   rows.reduce((s, r) => s + (f(r) ?? 0), 0);
@@ -134,7 +135,7 @@ export default function CreativeAnalytics({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+        <Spinner />
       </div>
     );
   }

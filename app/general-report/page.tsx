@@ -18,6 +18,7 @@ import {
 } from "@/components/general-report/shared";
 import { DateRange } from "@/components/DatePicker";
 import { mskDay } from "@/lib/day";
+import { Spinner } from "@/components/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -509,7 +510,7 @@ export default function GeneralReportPage() {
             return (
               <div key={group} className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs text-hint uppercase tracking-wider w-20">{label}</span>
-                <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 w-fit flex-wrap">
+                <div className="flex gap-1 card p-1 w-fit flex-wrap">
                   {groupSources.map((s) => (
                     <button key={s.id} onClick={() => setSource(s.id)} className={chip(activeSource === s.id)}>
                       {s.label}
@@ -525,7 +526,7 @@ export default function GeneralReportPage() {
         {loading && (
           <div className="flex items-center justify-center py-24">
             <div className="flex flex-col items-center gap-4 animate-pulse">
-              <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+              <Spinner />
               <p className="text-violet-300/50 text-sm tracking-widest uppercase">Loading report...</p>
             </div>
           </div>
@@ -570,7 +571,7 @@ export default function GeneralReportPage() {
             </div>
 
             {cardsSettingsOpen && (
-              <div className="bg-card border border-line rounded-2xl p-4 mb-4">
+              <div className="card p-4 mb-4">
                 <p className="text-xs text-hint uppercase tracking-wider mb-3">Какие карточки показывать</p>
                 <div className="flex flex-wrap gap-2">
                   {activeCards.map((c) => (
@@ -591,7 +592,7 @@ export default function GeneralReportPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+            <div className="stats mb-8">
               {activeCards.filter((c) => visibleCards.includes(c.id)).map((c) => (
                 <SummaryCard
                   key={c.id}
@@ -646,14 +647,14 @@ export default function GeneralReportPage() {
             </div>
 
             {periodRows.length >= 2 && chartPanels.map((c) => (
-              <div key={c.id} className="bg-card border border-line rounded-2xl p-4 mb-4">
+              <div key={c.id} className="card p-4 mb-4">
                 <p className="text-xs text-hint uppercase tracking-wider mb-2">{c.label}</p>
                 {c.node}
               </div>
             ))}
 
             {/* Table */}
-            <div className="bg-card border border-line rounded-2xl overflow-hidden">
+            <div className="card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-panel border-b border-line">

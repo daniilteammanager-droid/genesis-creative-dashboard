@@ -6,6 +6,7 @@ import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
 import { DateRange } from "@/components/DatePicker";
+import { Spinner } from "@/components/ui";
 
 // Сортировка кликом по заголовку — по числу, а не по тексту ячейки.
 const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
@@ -24,9 +25,6 @@ const chip = (on: boolean) =>
        : "text-zinc-400 hover:text-violet-300"
   }`;
 
-const field =
-  "bg-panel border border-line rounded-xl px-3 py-2 text-sm outline-none " +
-  "focus:border-violet-600/50 transition text-white";
 
 // Строка креатива в виде строки отчёта: те же столбцы, что в дереве кампаний.
 // Доход и депы — вместе с повторными, как в дереве.
@@ -135,7 +133,7 @@ export default function CreativesTable() {
         <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
 
-        <div className="flex gap-1 bg-card border border-line rounded-2xl p-1">
+        <div className="flex gap-1 card p-1">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}
@@ -152,7 +150,7 @@ export default function CreativesTable() {
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+            <div className="flex gap-1 card p-1 flex-wrap">
               <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
               {data.buyers.map((b) => (
                 <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
@@ -170,7 +168,7 @@ export default function CreativesTable() {
       {(data?.countries.length ?? 0) > 0 && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Страны</span>
-          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+          <div className="flex gap-1 card p-1 flex-wrap">
             <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
             {data!.countries.map((c) => (
               <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
@@ -182,17 +180,17 @@ export default function CreativesTable() {
       {data && all.length > 0 && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Лицо</span>
-          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+          <div className="flex gap-1 card p-1 flex-wrap">
             <button onClick={() => setFace("all")} className={chip(face === "all")}>Все</button>
             {faces.map((f) => <button key={f} onClick={() => setFace(f)} className={chip(face === f)}>{f}</button>)}
             <button onClick={() => setFace("none")} className={chip(face === "none")}>Без лица</button>
           </div>
-          <div className="flex gap-1 bg-card border border-line rounded-2xl p-1 flex-wrap">
+          <div className="flex gap-1 card p-1 flex-wrap">
             <button onClick={() => setMerge("none")} className={chip(merge === "none")}>Как есть</button>
             <button onClick={() => setMerge("versions")} className={chip(merge === "versions")}>Склеить версии</button>
             <button onClick={() => setMerge("all")} className={chip(merge === "all")} title="Все версии и GEO одного креатива — одна строка, клик раскрывает GEO · лицо">Версии и GEO вместе</button>
           </div>
-          <input placeholder="Код креатива, например storytell-t30" value={q} onChange={(e) => setQ(e.target.value)} className={`${field} w-64`} />
+          <input placeholder="Код креатива, например storytell-t30" value={q} onChange={(e) => setQ(e.target.value)} className={`field w-64`} />
           <button onClick={downloadCsv} className="px-3 py-1.5 rounded-lg text-sm border border-line text-zinc-300 hover:bg-violet-900/20 ml-auto">↓ CSV</button>
         </div>
       )}
@@ -227,7 +225,7 @@ export default function CreativesTable() {
 
       {loading && !data && (
         <div className="flex items-center justify-center py-20">
-          <div className="w-10 h-10 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+          <Spinner />
         </div>
       )}
 
@@ -238,7 +236,7 @@ export default function CreativesTable() {
       )}
 
       {!loading && !error && rows.length === 0 && (
-        <div className="bg-card border border-line rounded-2xl p-6">
+        <div className="card p-6">
           <h2 className="text-lg font-semibold text-white mb-2">За этот период пусто</h2>
           <p className="text-sm text-zinc-400 leading-relaxed">
             В складе нет расхода за эти дни. Если источник подключён недавно — история ещё
@@ -260,7 +258,7 @@ export default function CreativesTable() {
               ["Сумма депозитов", money(t.depSum), `Профит ${money(t.depSum - t.spend)}`],
               ["ROMI", romi(t.spend, t.depSum), `ROAS ${t.spend ? (t.depSum / t.spend).toFixed(2) : "—"}×`],
             ] as const).map(([label, value, hint]) => (
-              <div key={label} className="bg-card border border-line rounded-2xl px-5 py-4">
+              <div key={label} className="card px-5 py-4">
                 <p className="text-[11px] text-hint uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-xl font-semibold text-white">{value}</p>
                 <p className="text-[11px] text-hint mt-0.5">{hint}</p>
@@ -268,7 +266,7 @@ export default function CreativesTable() {
             ))}
           </div>
 
-          <div className="bg-card border border-line rounded-2xl overflow-x-auto">
+          <div className="card overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line">

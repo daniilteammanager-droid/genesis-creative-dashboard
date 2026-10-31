@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Spinner } from "@/components/ui";
 
 // Кабинеты и чьи они — только просмотр. Кабинет принадлежит тому, чей ключ
 // его видит, закрепляет загрузка сама (Decision 061). Ручной раздачи нет.
@@ -52,7 +53,7 @@ export default function AccountOwners() {
 
       {loading && (
         <div className="flex items-center gap-3 text-hint text-sm py-6">
-          <span className="w-4 h-4 rounded-full border-2 border-violet-600/40 border-t-violet-400 animate-spin" />
+          <Spinner small />
           Считаю расход по кабинетам за 30 дней…
         </div>
       )}
@@ -60,7 +61,7 @@ export default function AccountOwners() {
       {data && !loading && (data.accounts.length === 0 ? (
         <p className="text-hint text-sm">Кабинетов пока нет — появятся, когда кто-то подключит ключ Meta.</p>
       ) : (
-        <div className="bg-card border border-line rounded-2xl overflow-x-auto">
+        <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line">

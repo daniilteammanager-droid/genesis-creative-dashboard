@@ -4,11 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TelegramEvent } from "@/lib/telegram/events";
 import type { TelegramLink } from "@/lib/telegram/links";
 
-const card = "bg-card border border-line rounded-2xl p-6";
-const pill = "text-[11px] px-2.5 py-1 rounded-full border transition disabled:opacity-50";
-const button =
-  "px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-violet-500 text-white " +
-  "shadow-sm hover:from-violet-500 hover:to-violet-400 transition disabled:opacity-50";
+const card = "card p-6";
 
 interface State { bot: string | null; events: TelegramEvent[]; links: TelegramLink[] }
 interface Invite { privateUrl: string; groupUrl: string; command: string }
@@ -25,7 +21,7 @@ function Schedule({ link, busy, save }: {
   const [times, setTimes] = useState(link.checkTimes.join(", "));
   const [group, setGroup] = useState(link.checkGroup);
   const changed = times !== link.checkTimes.join(", ") || group !== link.checkGroup;
-  const input = "bg-panel border border-line rounded-lg px-3 py-1.5 outline-none focus:border-violet-600/50 text-white text-[12px]";
+  const input = "field py-1.5 text-xs";
   return (
     <div className="flex items-center gap-2 flex-wrap mt-2.5">
       <span className="text-[12px] text-hint">Чек в</span>
@@ -36,7 +32,7 @@ function Schedule({ link, busy, save }: {
         {(Object.keys(GROUP_LABELS) as TelegramLink["checkGroup"][]).map((g) => <option key={g} value={g}>{GROUP_LABELS[g]}</option>)}
       </select>
       <button type="button" disabled={busy || !changed} onClick={() => save(times, group)}
-              className={`${pill} border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
+              className={`btn btn-sm border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
         сохранить
       </button>
       <span className="text-[11px] text-hint">по Москве, шаг 15 минут</span>
@@ -134,11 +130,11 @@ export default function TelegramLinks() {
                     <span className="text-sm text-zinc-200 flex-1 min-w-[120px]">{l.title ?? "без названия"}</span>
                     <span className="text-[11px] text-hint">{placeLabel(l)}</span>
                     <button type="button" disabled={busy} onClick={() => test(l.id)}
-                            className={`${pill} border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
+                            className={`btn btn-sm border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
                       проверить
                     </button>
                     <button type="button" disabled={busy} onClick={() => unlink(l.id)}
-                            className={`${pill} border-red-800/40 text-red-300 hover:bg-red-900/20`}>
+                            className={`btn btn-sm border-red-800/40 text-red-300 hover:bg-red-900/20`}>
                       отвязать
                     </button>
                   </div>
@@ -165,22 +161,22 @@ export default function TelegramLinks() {
           )}
 
           {!invite ? (
-            <button type="button" disabled={busy} onClick={newInvite} className={button}>
+            <button type="button" disabled={busy} onClick={newInvite} className="btn btn-primary">
               Привязать Telegram
             </button>
           ) : (
             <div className="space-y-2 text-[13px] text-zinc-400 leading-relaxed">
               <p>Ссылка действует 15 минут и срабатывает один раз. Выбери, куда:</p>
               <div className="flex gap-2 flex-wrap">
-                <a href={invite.privateUrl} target="_blank" rel="noreferrer" className={button}>В личку</a>
-                <a href={invite.groupUrl} target="_blank" rel="noreferrer" className={button}>В группу</a>
+                <a href={invite.privateUrl} target="_blank" rel="noreferrer" className="btn btn-primary">В личку</a>
+                <a href={invite.groupUrl} target="_blank" rel="noreferrer" className="btn btn-primary">В группу</a>
               </div>
               <p className="text-[12px] text-hint">
                 В тему группы: добавь бота в группу и отправь в нужной теме{" "}
                 <code className="text-zinc-400">{invite.command}</code>
               </p>
               <button type="button" disabled={busy} onClick={() => { setInvite(null); load(); }}
-                      className={`${pill} border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
+                      className={`btn btn-sm border-violet-800/40 text-violet-300 hover:bg-violet-900/20`}>
                 готово, обновить список
               </button>
             </div>

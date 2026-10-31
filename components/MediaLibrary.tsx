@@ -116,7 +116,7 @@ export default function MediaLibrary({
             placeholder="Поиск по названию..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-card border border-line rounded-xl px-4 py-3 outline-none focus:border-violet-600/50 transition placeholder:text-hint"
+            className="field w-full"
           />
 
           {missing.length > 0 && (
@@ -163,7 +163,7 @@ export default function MediaLibrary({
           )}
 
           {possibleMatches.length > 0 && (
-            <div className="bg-card border border-line rounded-2xl p-5">
+            <div className="card p-5">
               <h3 className="text-sm font-bold text-zinc-300 mb-1">
                 Похоже, уже загружено под другим гео ({possibleMatches.length})
               </h3>
@@ -187,7 +187,7 @@ export default function MediaLibrary({
 
           <SuffixManager suffixes={matchSuffixes} onChanged={onSuffixesChanged} />
 
-          <div className="bg-card border border-line rounded-2xl p-5">
+          <div className="card p-5">
             <h3 className="text-sm font-bold text-zinc-300 mb-4">Загружено ({files.length})</h3>
             <div className="space-y-2">
               {files.map((file) => (
@@ -364,7 +364,7 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
   }
 
   return (
-    <div className="bg-card border border-line rounded-2xl p-5">
+    <div className="card p-5">
       <h3 className="text-sm font-bold text-zinc-300 mb-1">Суффиксы для мэтчинга по базовому имени</h3>
       <p className="text-xs text-hint mb-3">
         "edit1-ar" совпадёт с "edit1-es", если "ar" и "es" здесь — крео с одинаковой базой, но разным гео/вариантом в конце названия.
@@ -392,7 +392,7 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
           onChange={(e) => setNewSuffix(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addSuffix()}
           placeholder="например: uk"
-          className="flex-1 bg-panel border border-line rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-600/50 transition placeholder:text-hint"
+          className="field flex-1"
         />
         <button
           onClick={addSuffix}
