@@ -8,6 +8,7 @@ import { PERIODS, type PeriodId } from "@/lib/home/periods";
 import type { Board, Standing } from "@/lib/home/leaderboard";
 import { useProfile } from "@/components/Shell";
 import AiBlock from "./AiBlock";
+import { chip, seg } from "@/components/ui";
 
 // Главная: свои цифры за период (склад) и рейтинг баеров (таблицы General 4.0).
 // Карточки — столбцы Live Manager: те же формулы, ничего второй раз не считаем.
@@ -26,10 +27,6 @@ function parseCards(raw: string | null): string[] {
   try { const v = JSON.parse(raw ?? "null"); return Array.isArray(v) && v.length ? v : DEFAULT_CARDS; } catch { return DEFAULT_CARDS; }
 }
 
-const chip = (active: boolean) =>
-  `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-    active ? "bg-violet-600 text-white"
-      : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
 
 const tone = (label: string, x: Metrics): "good" | "bad" | undefined => {
   if ((label !== "Net Profit" && label !== "ROMI") || x.depSum === null || !x.spend) return undefined;
@@ -70,17 +67,19 @@ export default function HomePage() {
         </h1>
 
         <div data-tour="home-periods" className="flex flex-wrap items-center gap-2 mb-3">
-          {PERIODS.map((p) => (
-            <button key={p.id} onClick={() => { if (p.id !== period) { setData(null); setErr(null); setPeriod(p.id); } }} className={chip(period === p.id)}>{p.label}</button>
-          ))}
-          <button onClick={() => setCardsOpen((v) => !v)} className={chip(cardsOpen)}>⚙ Настроить</button>
+          <div className="seg">
+            {PERIODS.map((p) => (
+              <button key={p.id} onClick={() => { if (p.id !== period) { setData(null); setErr(null); setPeriod(p.id); } }} {...seg(period === p.id)}>{p.label}</button>
+            ))}
+          </div>
+          <button onClick={() => setCardsOpen((v) => !v)} {...chip(cardsOpen)}>⚙ Настроить</button>
           <span className="text-xs text-hint">{team ? "Вся команда" : "По твоим подключениям"} · склад обновляется раз в 15 минут</span>
         </div>
 
         {cardsOpen && (
           <div className="card p-4 mb-4 flex flex-wrap gap-2">
             {CARDS.map((c) => (
-              <button key={c.label} className={chip(cards.includes(c.label))} onClick={() => toggleCard(c.label)}>{c.label}</button>
+              <button key={c.label} {...chip(cards.includes(c.label))} onClick={() => toggleCard(c.label)}>{c.label}</button>
             ))}
           </div>
         )}

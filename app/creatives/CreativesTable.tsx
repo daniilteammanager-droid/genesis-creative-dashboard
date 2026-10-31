@@ -6,7 +6,7 @@ import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
 import { DateRange } from "@/components/DatePicker";
-import { Spinner } from "@/components/ui";
+import { seg, Spinner } from "@/components/ui";
 
 // Сортировка кликом по заголовку — по числу, а не по тексту ячейки.
 const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
@@ -19,11 +19,6 @@ const SORT_KEY: Record<string, (m: Metrics) => number | null> = {
 };
 const geoOfCode = (code: string) => (/-([a-z]{2})$/i.exec(code)?.[1] ?? "").toUpperCase();
 
-const chip = (on: boolean) =>
-  `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-    on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-       : "text-zinc-400 hover:text-violet-300"
-  }`;
 
 
 // Строка креатива в виде строки отчёта: те же столбцы, что в дереве кампаний.
@@ -133,13 +128,13 @@ export default function CreativesTable() {
         <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
 
-        <div className="flex gap-1 card p-1">
+        <div className="seg">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}
           {PERIODS.map((p) => (
             <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
-                    className={chip(since === p.since() && until === p.until())}>{p.label}</button>
+                    {...seg(since === p.since() && until === p.until())}>{p.label}</button>
           ))}
         </div>
       </div>
@@ -150,10 +145,10 @@ export default function CreativesTable() {
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 card p-1 flex-wrap">
-              <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
+            <div className="seg">
+              <button onClick={() => setBuyer("all")} {...seg(buyer === "all")}>Сводная</button>
               {data.buyers.map((b) => (
-                <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
+                <button key={b.id} onClick={() => setBuyer(b.id)} {...seg(buyer === b.id)}>{b.label}</button>
               ))}
             </div>
           ) : (
@@ -168,10 +163,10 @@ export default function CreativesTable() {
       {(data?.countries.length ?? 0) > 0 && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Страны</span>
-          <div className="flex gap-1 card p-1 flex-wrap">
-            <button onClick={() => setCountry("all")} className={chip(country === "all")}>Все</button>
+          <div className="seg">
+            <button onClick={() => setCountry("all")} {...seg(country === "all")}>Все</button>
             {data!.countries.map((c) => (
-              <button key={c} onClick={() => setCountry(c)} className={chip(country === c)}>{c}</button>
+              <button key={c} onClick={() => setCountry(c)} {...seg(country === c)}>{c}</button>
             ))}
           </div>
         </div>
@@ -180,15 +175,15 @@ export default function CreativesTable() {
       {data && all.length > 0 && (
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Лицо</span>
-          <div className="flex gap-1 card p-1 flex-wrap">
-            <button onClick={() => setFace("all")} className={chip(face === "all")}>Все</button>
-            {faces.map((f) => <button key={f} onClick={() => setFace(f)} className={chip(face === f)}>{f}</button>)}
-            <button onClick={() => setFace("none")} className={chip(face === "none")}>Без лица</button>
+          <div className="seg">
+            <button onClick={() => setFace("all")} {...seg(face === "all")}>Все</button>
+            {faces.map((f) => <button key={f} onClick={() => setFace(f)} {...seg(face === f)}>{f}</button>)}
+            <button onClick={() => setFace("none")} {...seg(face === "none")}>Без лица</button>
           </div>
-          <div className="flex gap-1 card p-1 flex-wrap">
-            <button onClick={() => setMerge("none")} className={chip(merge === "none")}>Как есть</button>
-            <button onClick={() => setMerge("versions")} className={chip(merge === "versions")}>Склеить версии</button>
-            <button onClick={() => setMerge("all")} className={chip(merge === "all")} title="Все версии и GEO одного креатива — одна строка, клик раскрывает GEO · лицо">Версии и GEO вместе</button>
+          <div className="seg">
+            <button onClick={() => setMerge("none")} {...seg(merge === "none")}>Как есть</button>
+            <button onClick={() => setMerge("versions")} {...seg(merge === "versions")}>Склеить версии</button>
+            <button onClick={() => setMerge("all")} {...seg(merge === "all")} title="Все версии и GEO одного креатива — одна строка, клик раскрывает GEO · лицо">Версии и GEO вместе</button>
           </div>
           <input placeholder="Код креатива, например storytell-t30" value={q} onChange={(e) => setQ(e.target.value)} className={`field w-64`} />
           <button onClick={downloadCsv} className="px-3 py-1.5 rounded-lg text-sm border border-line text-zinc-300 hover:bg-violet-900/20 ml-auto">↓ CSV</button>

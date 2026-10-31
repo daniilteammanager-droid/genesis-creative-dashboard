@@ -10,6 +10,7 @@ import {
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
 import AiPanel, { VERDICT, type Verdict } from "./AiPanel";
+import { chip, seg } from "@/components/ui";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за любой период, из склада.
 // Крео оцениваем по ROMI и этапу теста — правила и цвета в lib/traffic-report/build.ts.
@@ -68,9 +69,6 @@ const SORTS: { id: SortBy; label: string }[] = [
   { id: "spend", label: "по спенду" }, { id: "romi", label: "по ROMI" }, { id: "deps", label: "по депам" }, { id: "rev", label: "по ревенью" },
 ];
 
-const chip = (on: boolean) =>
-  `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-    on ? "bg-violet-600 text-white" : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
 // Избранное — «баер × крео» (id баера, имя крео): отметка во всех странах сразу.
 const favKey = (buyerId: string, creo: string) => `${buyerId}\u0000${creo}`;
 
@@ -184,16 +182,18 @@ export default function TrafficReportPage() {
 
         <div data-tour="traffic-periods" className="flex flex-wrap items-center gap-2 mb-3">
           <DateRange since={range.since} until={range.until} onChange={(since, until) => pick({ since, until })} />
-          {PERIODS.map((p) => {
-            const r = p.range();
-            return <button key={p.label} onClick={() => pick(r)} className={chip(range.since === r.since && range.until === r.until)}>{p.label}</button>;
-          })}
+          <div className="seg">
+            {PERIODS.map((p) => {
+              const r = p.range();
+              return <button key={p.label} onClick={() => pick(r)} {...seg(range.since === r.since && range.until === r.until)}>{p.label}</button>;
+            })}
+          </div>
         </div>
         {data && !data.isBuyer && data.buyers.length > 1 && (
-          <div className="flex flex-wrap gap-2 mb-5">
-            <button onClick={() => { setData(null); setBuyer("all"); }} className={chip(buyer === "all")}>Все баеры</button>
+          <div className="seg mb-5">
+            <button onClick={() => { setData(null); setBuyer("all"); }} {...seg(buyer === "all")}>Все баеры</button>
             {data.buyers.map((b) => (
-              <button key={b.id} onClick={() => { setData(null); setBuyer(b.id); }} className={chip(buyer === b.id)}>{b.label}</button>
+              <button key={b.id} onClick={() => { setData(null); setBuyer(b.id); }} {...seg(buyer === b.id)}>{b.label}</button>
             ))}
           </div>
         )}
@@ -215,9 +215,9 @@ export default function TrafficReportPage() {
               {DIMS.filter((d) => options[d].length > 1 || filters[d]?.length).map((d) => (
                 <div key={d} className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs text-hint uppercase tracking-wider mr-1 w-20">{DIM_LABELS[d]}</span>
-                  <button onClick={() => toggleFilter(d, null)} className={chip(!filters[d]?.length)}>Все</button>
+                  <button onClick={() => toggleFilter(d, null)} {...chip(!filters[d]?.length)}>Все</button>
                   {options[d].map((v) => (
-                    <button key={v} onClick={() => toggleFilter(d, v)} className={chip(!!filters[d]?.includes(v))}>{v}</button>
+                    <button key={v} onClick={() => toggleFilter(d, v)} {...chip(!!filters[d]?.includes(v))}>{v}</button>
                   ))}
                 </div>
               ))}
@@ -253,19 +253,19 @@ export default function TrafficReportPage() {
           </p>
 
           <div data-tour="traffic-filters" className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="flex gap-1 bg-panel border border-line rounded-full p-0.5" role="group" aria-label="Склейка крео">
+            <div className="seg" role="group" aria-label="Склейка крео">
               {MODES.map((m) => (
                 <button key={m.id} title={m.hint} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}
-                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${mode === m.id ? "bg-violet-600 text-white" : "text-zinc-400 hover:text-violet-300"}`}>{m.label}</button>
+                        className="seg-btn">{m.label}</button>
               ))}
             </div>
             <select id="traffic-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="field" aria-label="Сортировка крео">
               {SORTS.map((s) => <option key={s.id} value={s.id}>Крео {s.label}</option>)}
             </select>
-            <button onClick={() => setOnlyFav((v) => !v)} aria-pressed={onlyFav} title="Только отмеченные звездой крео — отчёт и итоги по ним"
-                    className={chip(onlyFav)}>★ Только избранные{favs.size ? ` · ${favs.size}` : ""}</button>
-            <button onClick={expandAll} className={chip(false)}>Развернуть всё</button>
-            <button onClick={collapseAll} className={chip(false)}>Свернуть всё</button>
+            <button onClick={() => setOnlyFav((v) => !v)} title="Только отмеченные звездой крео — отчёт и итоги по ним"
+                    {...chip(onlyFav)}>★ Только избранные{favs.size ? ` · ${favs.size}` : ""}</button>
+            <button onClick={expandAll} className="btn btn-sm">Развернуть всё</button>
+            <button onClick={collapseAll} className="btn btn-sm">Свернуть всё</button>
             <select id="traffic-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage | "")} className="field" aria-label="Этап крео">
               <option value="">Все этапы</option>
               {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}

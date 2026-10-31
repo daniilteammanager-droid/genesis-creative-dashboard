@@ -6,14 +6,9 @@ import type { LiveState } from "@/lib/reports-live/manage";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, SORTS, money, n, romi, sortBy, totalsOf } from "./columns";
 import { DateRange } from "@/components/DatePicker";
-import { Spinner } from "@/components/ui";
+import { seg, Spinner } from "@/components/ui";
 import { SummaryCard } from "@/components/general-report/shared";
 
-const chip = (on: boolean) =>
-  `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-    on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-       : "text-zinc-400 hover:text-violet-300"
-  }`;
 
 
 const daysAgo = (days: number) => mskDaysAgo(days);
@@ -338,13 +333,13 @@ export default function ReportTree() {
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
-        <div data-tour="reports-periods" className="flex gap-1 card p-1">
+        <div data-tour="reports-periods" className="seg">
           {/* Сегодня и вчера — то, что открывают чаще всего; остальное берут
               календарём. Поэтому вчера — отдельная кнопка, а не «2 дня»:
               «вчера» это один день, а не диапазон по сегодня. */}
           {PERIODS.map((p) => (
             <button key={p.label} onClick={() => { setSince(p.since()); setUntil(p.until()); }}
-                    className={chip(since === p.since() && until === p.until())}>{p.label}</button>
+                    {...seg(since === p.since() && until === p.until())}>{p.label}</button>
           ))}
         </div>
       </div>
@@ -355,10 +350,10 @@ export default function ReportTree() {
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-16">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 card p-1 flex-wrap">
-              <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Сводная</button>
+            <div className="seg">
+              <button onClick={() => setBuyer("all")} {...seg(buyer === "all")}>Сводная</button>
               {data.buyers.map((b) => (
-                <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
+                <button key={b.id} onClick={() => setBuyer(b.id)} {...seg(buyer === b.id)}>{b.label}</button>
               ))}
             </div>
           ) : (
@@ -372,8 +367,8 @@ export default function ReportTree() {
       {/* Live Manager: фильтры, обновление, столбцы. */}
       {data && data.nodes.length > 0 && (
         <div data-tour="reports-live" className="flex items-center gap-2 mb-4 flex-wrap">
-          <div className="flex gap-1 card p-1">
-            {LEVELS.map((l) => <button key={l.id} onClick={() => setLevel(l.id)} className={chip(level === l.id)}>{l.label}</button>)}
+          <div className="seg">
+            {LEVELS.map((l) => <button key={l.id} onClick={() => setLevel(l.id)} {...seg(level === l.id)}>{l.label}</button>)}
           </div>
           <input placeholder="Кампания, ID, кабинет…" value={q} onChange={(e) => setQ(e.target.value)} className={`field w-56`} />
           <select value={statusF} onChange={(e) => setStatusF(e.target.value as typeof statusF)} className="field">

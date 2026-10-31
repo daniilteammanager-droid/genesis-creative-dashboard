@@ -3,6 +3,7 @@
 import { useState } from "react";
 import ReportTree from "./ReportTree";
 import CreativesTable from "@/app/creatives/CreativesTable";
+import { seg } from "@/components/ui";
 
 // Reports — аналог FB Tool: смотреть свою статистику в двух разрезах.
 //
@@ -27,16 +28,12 @@ export default function ReportsPage() {
       <div className="w-full">
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">Live Manager</h1>
 
-        <div data-tour="reports-views" className="flex gap-1 mb-6 card p-1 w-fit">
+        <div data-tour="reports-views" className="seg mb-6">
           {VIEWS.map((v) => (
             <button
               key={v.id}
               onClick={() => setView(v.id)}
-              className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
-                view === v.id
-                  ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-                  : "text-zinc-400 hover:text-violet-300"
-              }`}
+              {...seg(view === v.id)}
             >
               {v.label}
             </button>

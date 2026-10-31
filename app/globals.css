@@ -131,7 +131,8 @@
      aria-pressed, его же слышит экранный чтец. На телефоне ряд листается вбок, а не
      переносится в три строки. */
   .seg {
-    display: inline-flex;
+    display: flex;
+    width: fit-content;
     gap: 2px;
     padding: 3px;
     max-width: 100%;
@@ -156,7 +157,7 @@
     transition: color 0.15s;
   }
   .seg-btn:hover { color: var(--color-white); }
-  .seg-btn[aria-pressed="true"] {
+  .seg-btn[aria-pressed="true"], .seg-btn[aria-current="page"] {
     background-image: linear-gradient(to right, var(--color-violet-600), var(--color-violet-500));
     color: var(--color-white);
   }

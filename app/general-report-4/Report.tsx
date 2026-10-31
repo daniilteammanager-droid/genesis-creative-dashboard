@@ -7,6 +7,7 @@ import { allocate, NO_BUYER } from "@/lib/general-report-4/allocate";
 import { costTone, romiTone, toneClass, type Tone } from "@/lib/general-report-4/tone";
 import { DIMENSIONS, DIM_LABELS, type Gr4Dim, type Gr4Row, type Gr4Targets, type Gr4Totals } from "@/lib/general-report-4/types";
 import { DateRange } from "@/components/DatePicker";
+import { chip, seg } from "@/components/ui";
 
 // Вкладка «Отчёт» (Decision 084) — как лист «Отчёт» общей таблицы, но по всей
 // команде: общая таблица, выплаты разложены по баерам по их Torro
@@ -16,7 +17,6 @@ import { DateRange } from "@/components/DatePicker";
 interface ReportData { main: Gr4Row[]; buyers: Gr4Row[]; targets: Gr4Targets; generatedAt: string; syncError: string | null; error?: string }
 
 const card = "card p-4";
-const smallChip = (on: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${on ? "bg-violet-600 text-white" : "bg-card border border-line text-zinc-400 hover:text-violet-300"}`;
 const label = "text-xs text-hint uppercase tracking-wider mr-1";
 const GRAN: { id: Period; label: string }[] = [{ id: "day", label: "По дням" }, { id: "week", label: "По неделям" }, { id: "month", label: "По месяцам" }];
 
@@ -139,7 +139,9 @@ export default function Report() {
       <div data-tour="gr4-report-filters" className={card}>
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <span className={label}>Период:</span>
-          {PRESETS.filter((x) => x.id !== "custom").map((x) => <button key={x.id} onClick={() => setPreset(x.id)} className={smallChip(preset === x.id)}>{x.label}</button>)}
+          <div className="seg">
+            {PRESETS.filter((x) => x.id !== "custom").map((x) => <button key={x.id} onClick={() => setPreset(x.id)} {...seg(preset === x.id)}>{x.label}</button>)}
+          </div>
           <DateRange since={shown.from} until={shown.to} max="" active={preset === "custom"} onChange={(a, b) => { setFrom(a); setTo(b); setPreset("custom"); }} />
         </div>
         <button onClick={() => setFiltersOpen((v) => !v)} className="text-sm text-zinc-300 flex items-center gap-2 mt-1">
@@ -152,8 +154,8 @@ export default function Report() {
         {filtersOpen && DIMENSIONS.filter((x) => options[x].length > 1).map((x) => (
           <div key={x} className="flex items-center gap-1.5 flex-wrap mt-1.5">
             <span className={`${label} w-20`}>{DIM_LABELS[x]}</span>
-            <button onClick={() => toggle(x, null)} className={smallChip(!filters[x]?.length)}>Все</button>
-            {options[x].map((v) => <button key={v} onClick={() => toggle(x, v)} className={smallChip(!!filters[x]?.includes(v))}>{v}</button>)}
+            <button onClick={() => toggle(x, null)} {...chip(!filters[x]?.length)}>Все</button>
+            {options[x].map((v) => <button key={v} onClick={() => toggle(x, v)} {...chip(!!filters[x]?.includes(v))}>{v}</button>)}
           </div>
         ))}
       </div>
@@ -175,7 +177,9 @@ export default function Report() {
         <div data-tour="gr4-report-chart" className={card}>
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <p className="text-xs text-hint uppercase tracking-wider mr-2">Динамика: спенд и доход</p>
-            {GRAN.map((x) => <button key={x.id} onClick={() => setGran(x.id)} className={smallChip(gran === x.id)}>{x.label}</button>)}
+            <div className="seg">
+              {GRAN.map((x) => <button key={x.id} onClick={() => setGran(x.id)} {...seg(gran === x.id)}>{x.label}</button>)}
+            </div>
           </div>
           {CHART_DEFS.find((c) => c.id === "spendRevenue")!.render(view.chart)}
         </div>
@@ -203,7 +207,9 @@ export default function Report() {
       <div data-tour="gr4-report-split" className={`${card} overflow-x-auto`}>
         <div className="flex items-center gap-2 flex-wrap mb-3">
           <p className="text-sm font-semibold text-white mr-2">Разбивка</p>
-          {DIMENSIONS.filter((x) => x !== "buyer").map((x) => <button key={x} onClick={() => setBy(x)} className={smallChip(by === x)}>{DIM_LABELS[x]}</button>)}
+          <div className="seg">
+            {DIMENSIONS.filter((x) => x !== "buyer").map((x) => <button key={x} onClick={() => setBy(x)} {...seg(by === x)}>{DIM_LABELS[x]}</button>)}
+          </div>
         </div>
         <table className="w-full text-sm">
           <thead><tr className="text-[11px] text-hint uppercase tracking-wider">

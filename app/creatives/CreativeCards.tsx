@@ -8,7 +8,7 @@ import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/me
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { toLegacy } from "./toLegacy";
-import { Spinner } from "@/components/ui";
+import { seg, Spinner } from "@/components/ui";
 
 // Плитка новой картотеки: то же, что на легаси-странице, но за выбранный период.
 //
@@ -16,10 +16,6 @@ import { Spinner } from "@/components/ui";
 // Файл к строке ищется по ВСЕМУ бакету R2, без фильтра по владельцу: старым
 // форматом льют до сих пор, и эти файлы лежат в общих папках (Decision 036).
 
-const chip = (on: boolean) =>
-  `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-    on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm" : "text-zinc-400 hover:text-violet-300"
-  }`;
 
 
 const money = (v: number | null) =>
@@ -193,9 +189,9 @@ export default function CreativeCards({
           />
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 card p-1 flex-wrap">
+            <div className="seg">
               {TABS.map((t) => (
-                <button key={t.id} onClick={() => { setTab(t.id); setLimit(PAGE); }} className={chip(tab === t.id)}>
+                <button key={t.id} onClick={() => { setTab(t.id); setLimit(PAGE); }} {...seg(tab === t.id)}>
                   {t.label} <span className="text-[11px] opacity-60">{counts[t.id]}</span>
                 </button>
               ))}

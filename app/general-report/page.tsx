@@ -18,7 +18,7 @@ import {
 } from "@/components/general-report/shared";
 import { DateRange } from "@/components/DatePicker";
 import { mskDay } from "@/lib/day";
-import { Spinner } from "@/components/ui";
+import { chip, seg, Spinner } from "@/components/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -479,19 +479,7 @@ export default function GeneralReportPage() {
         : (c as ChartDef<ChartPoint[]>).render(chartData),
     }));
 
-  const chip = (active: boolean) =>
-    `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-      active
-        ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-        : "text-zinc-400 hover:text-violet-300"
-    }`;
 
-  const smallChip = (active: boolean) =>
-    `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-      active
-        ? "bg-violet-600 text-white"
-        : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
-    }`;
 
   return (
     <main className="min-h-screen bg-background text-white p-8">
@@ -510,9 +498,9 @@ export default function GeneralReportPage() {
             return (
               <div key={group} className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs text-hint uppercase tracking-wider w-20">{label}</span>
-                <div className="flex gap-1 card p-1 w-fit flex-wrap">
+                <div className="seg">
                   {groupSources.map((s) => (
-                    <button key={s.id} onClick={() => setSource(s.id)} className={chip(activeSource === s.id)}>
+                    <button key={s.id} onClick={() => setSource(s.id)} {...seg(activeSource === s.id)}>
                       {s.label}
                     </button>
                   ))}
@@ -558,11 +546,7 @@ export default function GeneralReportPage() {
               </p>
               <button
                 onClick={() => setCardsSettingsOpen((v) => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
-                  cardsSettingsOpen
-                    ? "bg-violet-600 text-white border-violet-600"
-                    : "bg-card border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"
-                }`}
+                {...chip(cardsSettingsOpen)}
                 title="Настроить карточки"
               >
                 <span className="text-sm leading-none">⚙</span>
@@ -578,11 +562,7 @@ export default function GeneralReportPage() {
                     <button
                       key={c.id}
                       onClick={() => toggleCard(c.id)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                        visibleCards.includes(c.id)
-                          ? "bg-violet-600 text-white"
-                          : "bg-panel border border-line text-hint hover:text-violet-300 hover:border-violet-700/50"
-                      }`}
+                      {...chip(visibleCards.includes(c.id))}
                     >
                       {c.label}
                     </button>
@@ -606,41 +586,47 @@ export default function GeneralReportPage() {
             {/* Filters */}
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="text-xs text-hint uppercase tracking-wider mr-1">Период:</span>
-              {PRESETS.filter((p) => p.id !== "custom").map((p) => (
-                <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>
-                  {p.label}
-                </button>
-              ))}
+              <div className="seg">
+                {PRESETS.filter((p) => p.id !== "custom").map((p) => (
+                  <button key={p.id} onClick={() => setPreset(p.id)} {...seg(preset === p.id)}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               <DateRange since={shownRange.from} until={shownRange.to} max="" active={preset === "custom"} className="ml-1"
                          onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); setPreset("custom"); }} />
             </div>
 
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="text-xs text-hint uppercase tracking-wider mr-1">Группировка:</span>
-              {GRANULARITIES.map((g) => (
-                <button key={g.id} onClick={() => setGranularity(g.id)} className={smallChip(granularity === g.id)}>
-                  {g.label}
-                </button>
-              ))}
+              <div className="seg">
+                {GRANULARITIES.map((g) => (
+                  <button key={g.id} onClick={() => setGranularity(g.id)} {...seg(granularity === g.id)}>
+                    {g.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 mb-6 flex-wrap">
               <span className="text-xs text-hint uppercase tracking-wider mr-1">{isWa ? "Воронка:" : "Страна:"}</span>
-              <button onClick={() => setCountry("all")} className={smallChip(country === "all")}>
-                Все ({activeCountries.length})
-              </button>
-              {activeCountries.map((c) => (
-                <button key={c} onClick={() => setCountry(c)} className={smallChip(country === c)}>
-                  {c}
+              <div className="seg">
+                <button onClick={() => setCountry("all")} {...seg(country === "all")}>
+                  Все ({activeCountries.length})
                 </button>
-              ))}
+                {activeCountries.map((c) => (
+                  <button key={c} onClick={() => setCountry(c)} {...seg(country === c)}>
+                    {c}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Charts */}
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="text-xs text-hint uppercase tracking-wider mr-1">Графики:</span>
               {chartDefs.map((c) => (
-                <button key={c.id} onClick={() => toggleChart(c.id)} className={smallChip(visibleCharts.includes(c.id))}>
+                <button key={c.id} onClick={() => toggleChart(c.id)} {...chip(visibleCharts.includes(c.id))}>
                   {visibleCharts.includes(c.id) ? "✓ " : ""}{c.label}
                 </button>
               ))}

@@ -13,6 +13,7 @@ import type {
   CheckRow, EntityMode, BuildResult, CreativeSummaryRow,
 } from "@/lib/forex-check/types";
 import LiveCheck from "./LiveCheck";
+import { seg } from "@/components/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -765,16 +766,12 @@ function ManualCheck() {
             </div>
 
             {/* Tab nav */}
-            <div className="flex flex-wrap gap-1 mb-5 card p-1 w-fit">
+            <div className="seg mb-5">
               {NAV_TABS.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                    activeTab === t.id
-                      ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-violet-300"
-                  }`}
+                  {...seg(activeTab === t.id)}
                 >
                   {t.label}
                 </button>
@@ -987,20 +984,15 @@ function ManualCheck() {
 // монтируется только когда его смотрят — иначе он ходил бы в Meta вхолостую.
 export default function CheckPage() {
   const [mode, setMode] = useState<"live" | "manual">("live");
-  const tab = (on: boolean) =>
-    `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-      on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-         : "text-zinc-400 hover:text-violet-300"
-    }`;
 
   return (
     <div className="min-h-screen bg-background text-white">
       <div className="w-full px-4 md:px-8 py-8">
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <h1 className="text-white text-3xl font-semibold tracking-wide">Checks</h1>
-          <div data-tour="check-modes" className="flex gap-1 card p-1">
-            <button onClick={() => setMode("live")} className={tab(mode === "live")}>Живой</button>
-            <button onClick={() => setMode("manual")} className={tab(mode === "manual")}>Ручной</button>
+          <div data-tour="check-modes" className="seg">
+            <button onClick={() => setMode("live")} {...seg(mode === "live")}>Живой</button>
+            <button onClick={() => setMode("manual")} {...seg(mode === "manual")}>Ручной</button>
           </div>
         </div>
 

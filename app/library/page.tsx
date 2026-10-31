@@ -13,7 +13,7 @@ import { MediaWide, MediaSquare } from "@/components/CreativeMedia";
 import MediaLibrary from "@/components/MediaLibrary";
 import { useProfile } from "@/components/Shell";
 import CreativeUploadModal from "./CreativeUploadModal";
-import { Icon } from "@/components/ui";
+import { Icon, seg } from "@/components/ui";
 import { SummaryCard } from "@/components/general-report/shared";
 
 type CreativeCardProps = {
@@ -378,16 +378,12 @@ export default function Home() {
       <div className="w-full">
 
         {/* Вкладки этой страницы */}
-        <div data-tour="legacy-tabs" className="flex gap-1 mb-6 card p-1 w-fit">
+        <div data-tour="legacy-tabs" className="seg mb-6">
           {(["creatives", "analytics"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTopTab(t)}
-              className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
-                topTab === t
-                  ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-                  : "text-zinc-400 hover:text-violet-300"
-              }`}
+              {...seg(topTab === t)}
             >
               {t === "creatives" ? "Creatives" : "Analytics"}
             </button>
@@ -408,7 +404,7 @@ export default function Home() {
               />
 
               <div className="flex items-center gap-2 flex-wrap">
-                <div data-tour="legacy-filters" className="flex items-center gap-2 flex-wrap">
+                <div data-tour="legacy-filters" className="seg">
                 {(["all", "win", "lose", "test", "favorites"] as const).map((tab) => {
                   const labels: Record<typeof tab, string> = {
                     all: "All", win: "Win", lose: "Lose", test: "Test", favorites: "★ Fav",
@@ -417,16 +413,10 @@ export default function Home() {
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${
-                        activeTab === tab
-                          ? "bg-violet-600 text-white shadow-sm"
-                          : "bg-card text-zinc-400 hover:text-violet-300 border border-line hover:border-violet-600/40"
-                      }`}
+                      {...seg(activeTab === tab)}
                     >
                       {labels[tab]}
-                      <span className={`text-xs font-normal tabular-nums ${
-                        activeTab === tab ? "text-white/60" : "text-hint"
-                      }`}>
+                      <span className="ml-1.5 text-[11px] font-normal tabular-nums opacity-70">
                         {tabCounts[tab]}
                       </span>
                     </button>

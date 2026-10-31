@@ -6,13 +6,8 @@ import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { DateRange } from "@/components/DatePicker";
-import { Spinner } from "@/components/ui";
+import { seg, Spinner } from "@/components/ui";
 
-const chip = (on: boolean) =>
-  `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-    on ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-       : "text-zinc-400 hover:text-violet-300"
-  }`;
 
 
 const nf = (v: number | null, d = 2) =>
@@ -119,22 +114,24 @@ export default function LiveCheck() {
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="text-xs text-hint uppercase tracking-wider">Период</span>
         <DateRange since={since} until={until} onChange={(a, b) => { setSince(a); setUntil(b); }} />
-        <button onClick={() => { setSince(today()); setUntil(today()); }}
-                className={chip(since === today() && until === today())}>Сегодня</button>
-        <button onClick={() => { setSince(mskDaysAgo(1)); setUntil(mskDaysAgo(1)); }}
-                className={chip(since === mskDaysAgo(1) && until === mskDaysAgo(1))}>Вчера</button>
+        <div className="seg">
+          <button onClick={() => { setSince(today()); setUntil(today()); }}
+                  {...seg(since === today() && until === today())}>Сегодня</button>
+          <button onClick={() => { setSince(mskDaysAgo(1)); setUntil(mskDaysAgo(1)); }}
+                  {...seg(since === mskDaysAgo(1) && until === mskDaysAgo(1))}>Вчера</button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="text-xs text-hint uppercase tracking-wider w-20">Разрез</span>
-        <div className="flex gap-1 card p-1 flex-wrap">
+        <div className="seg">
           {GROUPS.map((g) => (
-            <button key={g.id} onClick={() => { setGroup(g.id); if (g.id !== "campaign") setFormat("ours"); }} className={chip(group === g.id)}>{g.label}</button>
+            <button key={g.id} onClick={() => { setGroup(g.id); if (g.id !== "campaign") setFormat("ours"); }} {...seg(group === g.id)}>{g.label}</button>
           ))}
         </div>
-        <div className="flex gap-1 card p-1" title="Формат текста чека">
-          <button onClick={() => setFormat("ours")} className={chip(format === "ours")}>Наш формат</button>
-          <button onClick={() => { setFormat("artem"); setGroup("campaign"); }} className={chip(format === "artem")}>Формат Артёма</button>
+        <div className="seg" title="Формат текста чека">
+          <button onClick={() => setFormat("ours")} {...seg(format === "ours")}>Наш формат</button>
+          <button onClick={() => { setFormat("artem"); setGroup("campaign"); }} {...seg(format === "artem")}>Формат Артёма</button>
         </div>
         {format === "artem" && (
           <label className="flex items-center gap-2 text-sm text-zinc-300">
@@ -152,10 +149,10 @@ export default function LiveCheck() {
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-xs text-hint uppercase tracking-wider w-20">Баеры</span>
           {data.buyers.length > 0 ? (
-            <div className="flex gap-1 card p-1 flex-wrap">
-              <button onClick={() => setBuyer("all")} className={chip(buyer === "all")}>Все</button>
+            <div className="seg">
+              <button onClick={() => setBuyer("all")} {...seg(buyer === "all")}>Все</button>
               {data.buyers.map((b) => (
-                <button key={b.id} onClick={() => setBuyer(b.id)} className={chip(buyer === b.id)}>{b.label}</button>
+                <button key={b.id} onClick={() => setBuyer(b.id)} {...seg(buyer === b.id)}>{b.label}</button>
               ))}
             </div>
           ) : (

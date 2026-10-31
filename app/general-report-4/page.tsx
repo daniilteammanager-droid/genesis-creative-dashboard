@@ -11,7 +11,7 @@ import { DIMENSIONS, DIM_LABELS, QUAL_KEYS, type Gr4Data, type Gr4Dim, type Gr4K
 import Report from "./Report";
 import { DateRange } from "@/components/DatePicker";
 import { mskDay } from "@/lib/day";
-import { Spinner } from "@/components/ui";
+import { chip, seg, Spinner } from "@/components/ui";
 
 // ─── Колонки ──────────────────────────────────────────────────────────────────
 // Порядок и названия — как в General 3.0 и в новой Google-таблице: к ним привыкла
@@ -243,13 +243,6 @@ export default function GeneralReport4Page() {
   const toggleOpen = (key: string) => setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const allOpen = groups.length > 0 && groups.every((g) => isOpen(g.key));
 
-  const chip = (active: boolean) =>
-    `px-4 py-2 rounded-xl text-sm font-semibold transition ${
-      active ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm" : "text-zinc-400 hover:text-violet-300"}`;
-  const smallChip = (active: boolean) =>
-    `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-      active ? "bg-violet-600 text-white"
-        : "bg-card border border-line text-zinc-400 hover:text-violet-300 hover:border-violet-700/50"}`;
   const label = "text-xs text-hint uppercase tracking-wider mr-1";
 
   const td = (c: Col) => `px-3 py-2 tabular-nums whitespace-nowrap ${c.key ? "bg-violet-950/25 border-x border-violet-800/30" : ""}`;
@@ -267,17 +260,17 @@ export default function GeneralReport4Page() {
         <h1 className="text-white text-3xl font-semibold tracking-wide mb-6">General Report 4.0</h1>
 
         {sources.some((x) => x.kind === "main") && (
-          <div data-tour="gr4-tabs" className="flex gap-1 card p-1 w-fit mb-6">
-            <button onClick={() => setTab("table")} className={chip(tab === "table")}>Таблица</button>
-            <button onClick={() => setTab("report")} className={chip(tab === "report")}>Отчёт</button>
+          <div data-tour="gr4-tabs" className="seg mb-6">
+            <button onClick={() => setTab("table")} {...seg(tab === "table")}>Таблица</button>
+            <button onClick={() => setTab("report")} {...seg(tab === "report")}>Отчёт</button>
           </div>
         )}
         {tab === "report" && sources.some((x) => x.kind === "main") ? <Report /> : <>
 
         {sources.length > 1 && (
-          <div className="flex gap-1 card p-1 w-fit flex-wrap mb-6">
+          <div className="seg mb-6">
             {sources.map((s) => (
-              <button key={s.id} onClick={() => pickSource(s.id)} className={chip(activeSource === s.id)}>{s.label}</button>
+              <button key={s.id} onClick={() => pickSource(s.id)} {...seg(activeSource === s.id)}>{s.label}</button>
             ))}
           </div>
         )}
@@ -322,12 +315,12 @@ export default function GeneralReport4Page() {
                 {range && ` ${range.from.slice(8, 10)}.${range.from.slice(5, 7)}–${range.to.slice(8, 10)}.${range.to.slice(5, 7)}`}
                 {activeFilters.length ? " · с фильтрами" : ""}
               </p>
-              <button onClick={() => setCardsOpen((v) => !v)} className={smallChip(cardsOpen)}>⚙ Настроить</button>
+              <button onClick={() => setCardsOpen((v) => !v)} {...chip(cardsOpen)}>⚙ Настроить</button>
             </div>
             {cardsOpen && (
               <div className="card p-4 mb-4 flex flex-wrap gap-2">
                 {cards.map((c) => (
-                  <button key={c.id} className={smallChip(visibleCards.includes(c.id))}
+                  <button key={c.id} {...chip(visibleCards.includes(c.id))}
                     onClick={() => { const v = toggleIn(visibleCards, c.id); if (v.length) { setVisibleCards(v); save(CARDS_KEY, v); } }}>
                     {c.label}
                   </button>
@@ -360,9 +353,9 @@ export default function GeneralReport4Page() {
                   {dims.filter((d) => options[d]?.length > 1).map((d) => (
                     <div key={d} className="flex items-center gap-1.5 flex-wrap">
                       <span className={`${label} w-20`}>{DIM_LABELS[d]}</span>
-                      <button onClick={() => toggleFilter(d, null)} className={smallChip(!filters[d]?.length)}>Все</button>
+                      <button onClick={() => toggleFilter(d, null)} {...chip(!filters[d]?.length)}>Все</button>
                       {options[d].map((v) => (
-                        <button key={v} onClick={() => toggleFilter(d, v)} className={smallChip(!!filters[d]?.includes(v))}>{v}</button>
+                        <button key={v} onClick={() => toggleFilter(d, v)} {...chip(!!filters[d]?.includes(v))}>{v}</button>
                       ))}
                     </div>
                   ))}
@@ -372,30 +365,36 @@ export default function GeneralReport4Page() {
 
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className={label}>Даты:</span>
-              {PRESETS.filter((p) => p.id !== "custom").map((p) => <button key={p.id} onClick={() => setPreset(p.id)} className={smallChip(preset === p.id)}>{p.label}</button>)}
+              <div className="seg">
+                {PRESETS.filter((p) => p.id !== "custom").map((p) => <button key={p.id} onClick={() => setPreset(p.id)} {...seg(preset === p.id)}>{p.label}</button>)}
+              </div>
               <DateRange since={shown.from} until={shown.to} max="" active={preset === "custom"} className="ml-1"
                          onChange={(a, b) => { setCustomFrom(a); setCustomTo(b); setPreset("custom"); }} />
             </div>
 
             <div data-tour="gr4-rows" className="flex items-center gap-2 mb-3 flex-wrap">
               <span className={label}>Строки:</span>
-              {PERIODS.map((p) => <button key={p.id} onClick={() => setPeriod(p.id)} className={smallChip(period === p.id)}>{p.label}</button>)}
+              <div className="seg">
+                {PERIODS.map((p) => <button key={p.id} onClick={() => setPeriod(p.id)} {...seg(period === p.id)}>{p.label}</button>)}
+              </div>
               <span className={`${label} ml-4`}>Разбивка:</span>
-              <button onClick={() => setBy(null)} className={smallChip(by === null)}>Нет</button>
-              {dims.map((d) => <button key={d} onClick={() => setBy(d)} className={smallChip(by === d)}>{DIM_LABELS[d]}</button>)}
+              <div className="seg">
+                <button onClick={() => setBy(null)} {...seg(by === null)}>Нет</button>
+                {dims.map((d) => <button key={d} onClick={() => setBy(d)} {...seg(by === d)}>{DIM_LABELS[d]}</button>)}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 mb-6 flex-wrap">
               <span className={label}>Вид:</span>
-              {period !== "all" && <button onClick={() => setCompare((v) => !v)} className={smallChip(compare)}>▲▼ к прошлому периоду</button>}
+              {period !== "all" && <button onClick={() => setCompare((v) => !v)} {...chip(compare)}>▲▼ к прошлому периоду</button>}
               {by && period !== "all" && (
-                <button onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map((g) => g.key)))} className={smallChip(allOpen)}>
+                <button onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map((g) => g.key)))} {...chip(allOpen)}>
                   {allOpen ? "Свернуть все" : "Развернуть все"}
                 </button>
               )}
               <span className={`${label} ml-4`}>Графики:</span>
               {CHART_DEFS.map((c) => (
-                <button key={c.id} className={smallChip(visibleCharts.includes(c.id))}
+                <button key={c.id} {...chip(visibleCharts.includes(c.id))}
                   onClick={() => { const v = toggleIn(visibleCharts, c.id); setVisibleCharts(v); save(CHARTS_KEY, v); }}>
                   {visibleCharts.includes(c.id) ? "✓ " : ""}{c.label}
                 </button>

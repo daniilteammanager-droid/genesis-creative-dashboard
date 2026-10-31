@@ -14,7 +14,7 @@ export default function SettingsNav({ isMain }: { isMain: boolean }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex gap-1 mb-6 card p-1 w-fit flex-wrap">
+    <div className="seg mb-6">
       {TABS.filter((t) => isMain || !t.mainOnly).map((t) => {
         const active = pathname === t.href;
         return (
@@ -24,11 +24,8 @@ export default function SettingsNav({ isMain }: { isMain: boolean }) {
             // Страницы динамические, и без явного prefetch Next тянет только
             // границу loading. С ним разметка приезжает заранее, по наведению.
             prefetch
-            className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
-              active
-                ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-                : "text-zinc-400 hover:text-violet-300"
-            }`}
+            className="seg-btn"
+            aria-current={active ? "page" : undefined}
           >
             {t.label}
           </Link>
