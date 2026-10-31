@@ -14,12 +14,17 @@ import { zonedToUtc, type Plan, type PlanCampaign } from "./plan";
 // Функция Vercel живёт 5 минут, а Meta обрабатывает видео минутами. Поэтому
 // задание идёт проходами: каждый создаёт, что успеет, и записывает созданное —
 // следующий (сразу или кроном раз в минуту) продолжает с того же места. Видео
-// загружаются по ссылке R2 все сразу в первом проходе, дальше только ждём готовности.
+// загружаются кусками (resumable upload, как у Артёма): оригинал берётся из R2 по
+// Range, каждый кусок — короткий запрос, место загрузки записано в задании. Раньше
+// Meta сама тянула файл по ссылке одним запросом, и большой оригинал упирался в
+// таймаут («The operation was aborted due to timeout», 28.10.2026).
 
 const GRAPH = "https://graph.facebook.com/v26.0";
 const INT_TERMS = ["forex", "trading", "investment"];
 
-type Media = { type: "video" | "image"; id: string; imageUrl?: string; ready: boolean };
+// upload — видео ещё грузится кусками: сессия Meta, откуда берём (ключ R2), докуда дошли.
+type Upload = { session: string; src: string; offset: number; end: number; size: number };
+type Media = { type: "video" | "image"; id: string; imageUrl?: string; ready: boolean; upload?: Upload };
 // tried — запрос на создание уже уходил: ответа могло не дойти, а объект создаться.
 // Перед повтором ищем его по имени у родителя (как createChildWithRetry у Артёма).
 interface AdState { id?: string; creativeId?: string; tried?: boolean }
@@ -38,13 +43,31 @@ export interface Job {
 }
 
 // Временный сбой Meta (is_transient, коды 1, 2) — задание не падает, продолжит следующий проход.
+// Таймаут и обрыв сети — тоже временные: объект мог создаться, перед повтором его ищут по имени.
 export class MetaError extends Error { constructor(msg: string, public transient = false) { super(msg); } }
+async function call(url: string, init: RequestInit, ms: number): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  } catch (e) {
+    const name = (e as Error)?.name;
+    throw new MetaError(name === "TimeoutError" ? `Meta не ответила за ${ms / 1000} с` : `Сеть: ${(e as Error)?.message ?? e}`, true);
+  }
+}
 async function graph<T>(token: string, path: string, params: Record<string, unknown> = {}, method: "GET" | "POST" = "GET"): Promise<T> {
   const flat = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
   const body = new URLSearchParams({ ...flat, access_token: token, ...proofFor(token) });
   const res = method === "GET"
-    ? await fetch(`${GRAPH}/${path}?${body}`, { signal: AbortSignal.timeout(60_000) })
-    : await fetch(`${GRAPH}/${path}`, { method: "POST", body, signal: AbortSignal.timeout(120_000) });
+    ? await call(`${GRAPH}/${path}?${body}`, {}, 60_000)
+    : await call(`${GRAPH}/${path}`, { method: "POST", body }, 120_000);
+  return answer<T>(res);
+}
+// Кусок видео — multipart: файл полем video_file_chunk.
+async function graphForm<T>(token: string, path: string, form: FormData): Promise<T> {
+  form.set("access_token", token);
+  for (const [k, v] of Object.entries(proofFor(token))) form.set(k, v);
+  return answer<T>(await call(`${GRAPH}/${path}`, { method: "POST", body: form }, 120_000));
+}
+async function answer<T>(res: Response): Promise<T> {
   const j = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; error_user_msg?: string; code?: number; is_transient?: boolean } };
   if (!res.ok || j.error) {
     const transient = Boolean(j.error?.is_transient) || [1, 2].includes(Number(j.error?.code)) || res.status >= 500;
@@ -85,17 +108,39 @@ async function targeting(token: string, a: PlanCampaign["adsets"][number]) {
   return t;
 }
 
-// Загрузить файл в кабинет по ссылке R2 (оригинал, если он сохранён) или проверить готовность.
-async function ensureMedia(token: string, accountId: string, key: string, kind: "video" | "image", name: string, state: JobState): Promise<Media | null> {
+// Видео с этим именем уже в кабинете (прошлый залив, оборванная загрузка) — берём его, как
+// findAccountMediaByName у Артёма, а не грузим второй раз.
+async function videoByTitle(token: string, accountId: string, title: string): Promise<string | null> {
+  const r = await graph<{ data?: { id: string; title?: string; status?: { video_status?: string } }[] }>(
+    token, `act_${accountId}/advideos`, { fields: "id,title,status", limit: "200" });
+  const hit = (r.data ?? []).find((v) => v.title === title && !/error|fail|deleted/i.test(String(v.status?.video_status ?? "")));
+  return hit?.id ?? null;
+}
+
+const CHUNK = 8 * 1024 * 1024;   // если Meta не назвала границу куска сама
+
+// Загрузить файл в кабинет (оригинал из R2, если он сохранён) или проверить готовность.
+// null — ещё не готово: видео грузится или Meta его обрабатывает.
+export async function ensureMedia(token: string, accountId: string, key: string, kind: "video" | "image", name: string, state: JobState,
+  deadline: number, say: (s: string) => PromiseLike<unknown>): Promise<Media | null> {
   const k = `${accountId}|${key}`;
   let m = state.media[k];
+  if (!m && kind === "video") {
+    const found = await videoByTitle(token, accountId, name);
+    if (found) m = state.media[k] = { type: "video", id: found, ready: false };
+  }
   if (!m) {
-    const url = publicUrl(await originalKey(key));
+    const src = await originalKey(key);
     if (kind === "video") {
-      const r = await graph<{ id: string }>(token, `act_${accountId}/advideos`, { file_url: url, title: name }, "POST");
-      m = { type: "video", id: r.id, ready: false };
+      const head = await fetch(publicUrl(src), { method: "HEAD", signal: AbortSignal.timeout(30_000) }).catch(() => null);
+      const size = Number(head?.headers.get("content-length"));
+      if (!head?.ok || !(size > 0)) throw new MetaError(`R2 не отдал размер видео ${name}`, true);
+      const r = await graph<{ upload_session_id?: string; video_id?: string; start_offset?: string; end_offset?: string }>(
+        token, `act_${accountId}/advideos`, { upload_phase: "start", file_size: String(size) }, "POST");
+      if (!r.upload_session_id || !r.video_id) throw new Error(`Meta не начала загрузку видео ${name}`);
+      m = { type: "video", id: r.video_id, ready: false, upload: { session: r.upload_session_id, src, offset: Number(r.start_offset ?? 0), end: Number(r.end_offset ?? 0), size } };
     } else {
-      const bytes = Buffer.from(await (await fetch(url, { signal: AbortSignal.timeout(60_000) })).arrayBuffer()).toString("base64");
+      const bytes = Buffer.from(await (await fetch(publicUrl(src), { signal: AbortSignal.timeout(60_000) })).arrayBuffer()).toString("base64");
       const r = await graph<{ images?: Record<string, { hash: string }> }>(token, `act_${accountId}/adimages`, { bytes, name }, "POST");
       const hash = Object.values(r.images ?? {})[0]?.hash;
       if (!hash) throw new Error(`Meta не вернула hash картинки ${name}`);
@@ -103,13 +148,38 @@ async function ensureMedia(token: string, accountId: string, key: string, kind: 
     }
     state.media[k] = m;
   }
+  const u = m.upload;
+  if (u) {
+    while (u.offset < u.size) {
+      if (Date.now() > deadline) return null;   // докачает следующий проход с этого же места
+      const end = u.end > u.offset ? Math.min(u.end, u.size) : Math.min(u.offset + CHUNK, u.size);
+      const part = await call(publicUrl(u.src), { headers: { Range: `bytes=${u.offset}-${end - 1}` } }, 60_000);
+      if (part.status !== 206 && !(part.ok && u.offset === 0 && end === u.size)) throw new MetaError(`R2 не отдал кусок видео ${name}: HTTP ${part.status}`, true);
+      const form = new FormData();
+      form.set("upload_phase", "transfer");
+      form.set("upload_session_id", u.session);
+      form.set("start_offset", String(u.offset));
+      form.set("video_file_chunk", await part.blob(), `${name}.mp4`);
+      const r = await graphForm<{ start_offset?: string; end_offset?: string }>(token, `act_${accountId}/advideos`, form);
+      const next = Number(r.start_offset);
+      if (!Number.isFinite(next) || next <= u.offset || next > u.size) throw new Error(`Meta вернула неверное место загрузки видео ${name}`);
+      u.offset = next;
+      u.end = Number(r.end_offset ?? 0);
+      await say(`Загружаю ${name}: ${Math.round((u.offset / u.size) * 100)}%`);
+    }
+    await graph(token, `act_${accountId}/advideos`, { upload_phase: "finish", upload_session_id: u.session, title: name }, "POST");
+    delete m.upload;
+  }
   if (m.type === "video" && !m.ready) {
     const v = await graph<{ status?: { video_status?: string } }>(token, m.id, { fields: "status" });
     const st = String(v.status?.video_status ?? "").toLowerCase();
     if (/error|fail/.test(st)) throw new Error(`Meta не обработала видео ${name}`);
     if (!/ready|complete|published/.test(st)) return null;
-    const t = await graph<{ data?: { uri?: string; is_preferred?: boolean }[] }>(token, `${m.id}/thumbnails`, { fields: "uri,is_preferred" });
-    const uri = (t.data ?? []).find((x) => x.is_preferred)?.uri ?? t.data?.[0]?.uri;
+    // Миниатюра — как videoThumbnailUrl у Артёма: /thumbnails, а нет или ошибка — поле picture
+    // видео. Иначе готовое видео без миниатюры ждало бы вечно.
+    const t = await graph<{ data?: { uri?: string; is_preferred?: boolean }[] }>(token, `${m.id}/thumbnails`, { fields: "uri,is_preferred" }).catch(() => ({ data: [] }));
+    const pic = async () => (await graph<{ picture?: string }>(token, m.id, { fields: "picture" }).catch(() => ({ picture: undefined }))).picture;
+    const uri = (t.data ?? []).find((x) => x.is_preferred)?.uri ?? t.data?.[0]?.uri ?? (await pic());
     if (!uri) return null;
     m.imageUrl = uri;
     m.ready = true;
@@ -154,7 +224,8 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
   const state: JobState = (job.state ??= { created: [], media: {}, accounts: {} });
   state.instagram ??= {};
   const status = plan.paused ? "PAUSED" : "ACTIVE";
-  const stage = (s: string) => save(job.id, { stage: s, state });
+  // Шаг сделан — счётчик временных сбоев с нуля: «3 подряд» — это 3 без продвижения.
+  const stage = (s: string) => { state.retries = 0; return save(job.id, { stage: s, state }); };
 
   // Кабинеты: живы, валюта и часовой пояс (для бюджета и времени запуска).
   for (const accountId of [...new Set(plan.campaigns.map((c) => c.accountId))]) {
@@ -178,7 +249,7 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
   let waiting = 0;
   for (const c of plan.campaigns) for (const a of c.adsets) for (const ad of a.ads) {
     if (Date.now() > deadline) { await stage("Загружаю креативы в кабинет…"); return false; }
-    if (!(await ensureMedia(token, c.accountId, ad.key, ad.kind, ad.name, state))) waiting++;
+    if (!(await ensureMedia(token, c.accountId, ad.key, ad.kind, ad.name, state, deadline, stage))) waiting++;
   }
   await stage(waiting ? `Meta обрабатывает видео: ${waiting}` : "Создаю кампании");
 
@@ -228,7 +299,7 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
         const ds = (as.ads[di] ??= {});
         if (ds.id) continue;
         if (Date.now() > deadline) return false;
-        const m = await ensureMedia(token, c.accountId, ad.key, ad.kind, ad.name, state);
+        const m = await ensureMedia(token, c.accountId, ad.key, ad.kind, ad.name, state, deadline, stage);
         if (!m) { await stage(`Жду, пока Meta обработает видео ${ad.name}`); return false; }
         if (!ds.creativeId) {
           const cr = await graph<{ id: string }>(token, `act_${c.accountId}/adcreatives`, {

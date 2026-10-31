@@ -102,7 +102,8 @@ export async function myCreatives(me: Profile): Promise<LibraryItem[]> {
   else {
     const { data } = await warehouse().from("creative_uploads").select("object_key").eq("user_id", me.id);
     const keys = new Set((data ?? []).map((r) => r.object_key as string));
-    mine = (key) => keys.has(key);
+    const stems = new Set([...keys].map(stemOf));
+    mine = (key) => keys.has(key) || stems.has(stemOf(key));
   }
   const out: LibraryItem[] = [];
   const thumbs = new Map<string, string>();
@@ -138,3 +139,5 @@ export async function myCreatives(me: Profile): Promise<LibraryItem[]> {
 }
 
 const baseName = (key: string) => (key.split("/").pop() ?? "").replace(/\.[^.]+$/, "").toLowerCase();
+// Ключ без расширения: воркер пережимает X.mov в X.mp4 и удаляет .mov — файл тот же.
+export const stemOf = (key: string) => key.replace(/\.[^./]+$/, "").toLowerCase();

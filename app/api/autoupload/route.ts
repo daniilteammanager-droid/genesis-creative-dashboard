@@ -2,7 +2,7 @@ import { after, NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { getConnection } from "@/lib/connections/store";
 import { buildPlan, type PlanInput } from "@/lib/autoupload/plan";
-import { accountDetails, myAccounts, myCreatives, myLandings } from "@/lib/autoupload/options";
+import { accountDetails, myAccounts, myCreatives, myLandings, stemOf } from "@/lib/autoupload/options";
 import { cancelJob, createJob, listJobs, runJob } from "@/lib/autoupload/jobs";
 import { warehouse } from "@/lib/warehouse/read";
 import { checkAutouploadKey, deleteAutouploadKey, setAutouploadKey, viewAutouploadKey } from "@/lib/autoupload/key";
@@ -67,9 +67,21 @@ export async function POST(req: Request) {
     if (b.op === "cancel") return NextResponse.json({ errors: await cancelJob(me.id, b.id ?? "") });
     if (!b.input) return fail("Нет сборки");
     const accounts = new Map((await myAccounts(me)).map((a) => [a.id, a]));
-    // Креативы — только свои из Медиатеки: ключ из формы сверяется заново.
-    const own = new Set((await myCreatives(me)).map((c) => c.key));
-    if (b.input.adsets?.some((a) => a.creatives?.some((c) => !own.has(c.key)))) return fail("Креатив не из твоей Медиатеки");
+    // Креативы — только свои из Медиатеки: ключ из формы сверяется заново. Ключ в форме
+    // устаревает: воркер пережимает X.mov в X.mp4 и удаляет .mov, сборка лежит с прошлой недели —
+    // тот же файл ищем по имени без расширения, а чего нет совсем — называем поимённо.
+    const lib = await myCreatives(me);
+    const own = new Set(lib.map((c) => c.key));
+    const byStem = new Map(lib.map((c) => [`${c.kind}|${stemOf(c.key)}`, c.key]));
+    const missing: string[] = [];
+    for (const a of b.input.adsets ?? []) for (const c of a.creatives ?? []) {
+      if (own.has(c.key)) continue;
+      const now = byStem.get(`${c.kind}|${stemOf(c.key)}`);
+      if (now) c.key = now; else missing.push(c.code || c.key.split("/").pop() || c.key);
+    }
+    if (missing.length) {
+      return fail(`Нет в твоей Медиатеке: ${[...new Set(missing)].join(", ")}. Файл удалили или переименовали — убери его из адсета и добавь заново из Медиатеки.`);
+    }
     const conn = await getConnection(me.id).catch(() => null);
     const plan = buildPlan(b.input, accounts, conn?.torroBuyerId ?? null);
     if (b.op === "preview") return NextResponse.json({ plan });
