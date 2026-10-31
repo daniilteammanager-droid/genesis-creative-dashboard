@@ -13,6 +13,7 @@ import { noteKey, notesMap } from "@/lib/creatives/notes";
 import type { CreativesResult } from "@/lib/warehouse/creatives";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { DateRange } from "@/components/DatePicker";
+import { PERIODS } from "./periods";
 import { Busy, Icon, seg } from "@/components/ui";
 
 // Оболочка раздела: виды, загрузка крео и Медиатека.
@@ -26,13 +27,6 @@ import { Busy, Icon, seg } from "@/components/ui";
 
 const daysAgo = (d: number) => mskDaysAgo(d);
 
-const PERIODS = [
-  { label: "Сегодня", since: () => daysAgo(0), until: () => daysAgo(0) },
-  { label: "Вчера", since: () => daysAgo(1), until: () => daysAgo(1) },
-  { label: "7 дней", since: () => daysAgo(6), until: () => daysAgo(0) },
-  { label: "14 дней", since: () => daysAgo(13), until: () => daysAgo(0) },
-  { label: "30 дней", since: () => daysAgo(29), until: () => daysAgo(0) },
-];
 
 
 

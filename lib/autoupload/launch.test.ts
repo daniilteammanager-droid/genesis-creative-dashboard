@@ -23,7 +23,11 @@ globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     return Response.json({ start_offset: String(next), end_offset: String(Math.min(next + 8, SIZE)) });
   }
   const params = new URLSearchParams(typeof init?.body === "string" || init?.body instanceof URLSearchParams ? String(init.body) : url.split("?")[1] ?? "");
-  if (params.get("upload_phase") === "finish") return Response.json({ success: true });
+  if (params.get("upload_phase") === "finish") return params.get("upload_session_id") === "s3"
+    ? Response.json({ error: { message: "session already finished", code: 100 } }, { status: 400 })
+    : Response.json({ success: true });
+  if (url.includes("/vid3?") && url.includes("fields=id&")) return Response.json({ id: "vid3" });
+  if (url.includes("/vid3?")) return Response.json({ status: { video_status: "ready" } });
   if (url.includes("/thumbnails")) return Response.json({ data: [{ uri: "https://thumb", is_preferred: true }] });
   if (url.includes("/vid1?")) return Response.json({ status: { video_status: "ready" } });
   return Response.json({ error: { message: `не ждали ${url}` } }, { status: 400 });
@@ -51,6 +55,10 @@ assert.deepEqual(said, ["Загружаю v: 40%", "Загружаю v: 80%", "�
 // Дедлайн прохода вышел — ничего не грузим, null: докачает следующий проход.
 state.media["1|x"] = { type: "video", id: "vid2", ready: false, upload: { session: "s2", src: "x", offset: 0, end: 0, size: SIZE } };
 assert.equal(await ensureMedia("t", "1", "x", "video", "x", state, Date.now() - 1, say), null);
+
+// Повторный finish (ответ на первый оборвался): Meta отказывает, но видео есть — идём дальше.
+state.media["1|y"] = { type: "video", id: "vid3", ready: false, upload: { session: "s3", src: "y", offset: SIZE, end: 0, size: SIZE } };
+assert.equal((await ensureMedia("t", "1", "y", "video", "y", state, Date.now() + 60_000, say))?.ready, true);
 
 console.log("launch: ok");
 })();

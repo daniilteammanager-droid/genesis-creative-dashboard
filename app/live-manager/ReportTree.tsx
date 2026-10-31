@@ -29,8 +29,9 @@ const HIDDEN_KEY = "reports.hiddenCols";
 // Своё оформление Live Manager — в этом браузере, как у Артёма в рабочем пространстве:
 // закреплённые и скрытые кабинеты, свои названия, закреплённые строки, наборы столбцов.
 const PREFS_KEY = "reports.prefs";
-interface Prefs { pinnedCabs: string[]; hiddenCabs: string[]; alias: Record<string, string>; pinnedRows: string[]; presets: Record<string, string[]> }
-const NO_PREFS: Prefs = { pinnedCabs: [], hiddenCabs: [], alias: {}, pinnedRows: [], presets: {} };
+// colOrder — свой порядок столбцов (↑ ↓ в «Столбцах»), как перетаскивание у Артёма.
+interface Prefs { pinnedCabs: string[]; hiddenCabs: string[]; alias: Record<string, string>; pinnedRows: string[]; presets: Record<string, string[]>; colOrder: string[] }
+const NO_PREFS: Prefs = { pinnedCabs: [], hiddenCabs: [], alias: {}, pinnedRows: [], presets: {}, colOrder: [] };
 const LEVELS = [{ id: "tree", label: "Дерево" }, { id: "campaign", label: "Кампании" }, { id: "adset", label: "Адсеты" }, { id: "ad", label: "Объявления" }] as const;
 type LevelId = (typeof LEVELS)[number]["id"];
 const NO_REACH = new Map<string, number>();
@@ -51,12 +52,12 @@ const pill = (s?: LiveState) => {
 interface RowProps {
   node: TreeNode; depth: number; open: Set<string>; toggle: (id: string) => void;
   live: Map<string, LiveState>; selected: Set<string>; select: (id: string) => void;
-  flip: (node: TreeNode) => void; cols: typeof COLS;
+  flip: (node: TreeNode) => void; setBudget: (node: TreeNode) => void; cols: typeof COLS;
   // Охват за период живьём (Decision 089), закреплённые строки.
   reach: Map<string, number>; pinned: Set<string>; pin: (id: string) => void;
 }
 
-function Row({ node: raw, depth, open, toggle, live, selected, select, flip, cols, reach, pinned, pin }: RowProps) {
+function Row({ node: raw, depth, open, toggle, live, selected, select, flip, setBudget, cols, reach, pinned, pin }: RowProps) {
   const node = reach.has(raw.id) ? { ...raw, reach: reach.get(raw.id)! } : raw;
   const expandable = Boolean(node.children?.length);
   const isOpen = open.has(node.id);
@@ -105,14 +106,19 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
             ) : <span className="text-hint">—</span>}
           </div>
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap text-zinc-400">{s?.dailyBudget ? money(s.dailyBudget) : "—"}</td>
+        {/* Бюджет одной строки — кликом по нему, как «Изменить бюджет» в меню строки у Артёма. */}
+        <td className="px-3 py-2.5 whitespace-nowrap text-zinc-400">
+          {s?.dailyBudget && s.canEdit
+            ? <button type="button" onClick={() => setBudget(node)} title="Изменить дневной бюджет" className="underline decoration-dotted underline-offset-4 hover:text-white">{money(s.dailyBudget)}</button>
+            : s?.dailyBudget ? money(s.dailyBudget) : "—"}
+        </td>
         {cols.map((c) => (
           <td key={c.label} className={`px-3 py-2.5 whitespace-nowrap ${c.strong ? "text-zinc-200" : "text-zinc-400"} ${
             c.label === "ROMI" && (node.depSum ?? 0) > node.spend ? "text-green-400" : ""}`}>{c.cell(node)}</td>
         ))}
       </tr>
       {isOpen && node.children?.map((c) => (
-        <Row key={c.id} node={c} depth={depth + 1} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} cols={cols}
+        <Row key={c.id} node={c} depth={depth + 1} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} setBudget={setBudget} cols={cols}
              reach={reach} pinned={pinned} pin={pin} />
       ))}
     </>
@@ -262,6 +268,10 @@ export default function ReportTree() {
   const bulk = (active: boolean) => {
     if (window.confirm(`${active ? "Запустить" : "Поставить на паузу"} ${selected.size} выбранных в реальных кабинетах?`)) act([...selected], { kind: "status", active });
   };
+  const setBudget = (x: TreeNode) => {
+    const v = Number((window.prompt(`Дневной бюджет «${x.name}», USD (кабинет не в долларах — пересчитается по курсу):`, String(live.get(x.id)?.dailyBudget ?? "")) ?? "").replace(",", "."));
+    if (v > 0 && window.confirm(`Поставить $${v} в день для «${x.name}» в реальном кабинете?`)) act([x.id], { kind: "budget", usd: v });
+  };
   const budget = () => {
     const v = Number((window.prompt("Дневной бюджет, USD (для кабинетов не в долларах пересчитается по курсу):") ?? "").replace(",", "."));
     if (!(v > 0)) return;
@@ -311,7 +321,17 @@ export default function ReportTree() {
       .map((c) => ({ ...c, spend: spend.get(c.accountId) ?? 0, pinned: prefs.pinnedCabs.includes(c.accountId), hidden: prefs.hiddenCabs.includes(c.accountId) }))
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.spend - a.spend);
   }, [data, prefs, showHiddenCabs]);
-  const cols = COLS.filter((c) => !hidden.has(c.label));
+  const ordered = useMemo(() => {
+    const at = (l: string) => { const i = prefs.colOrder.indexOf(l); return i < 0 ? 999 + COLS.findIndex((c) => c.label === l) : i; };
+    return [...COLS].sort((a, b) => at(a.label) - at(b.label));
+  }, [prefs.colOrder]);
+  const cols = ordered.filter((c) => !hidden.has(c.label));
+  const moveCol = (label: string, d: -1 | 1) => setPrefs((p) => {
+    const list = ordered.map((c) => c.label), i = list.indexOf(label), j = i + d;
+    if (j < 0 || j >= list.length) return p;
+    [list[i], list[j]] = [list[j], list[i]];
+    return { ...p, colOrder: list };
+  });
   const applyPreset = (name: string) => {
     const list = prefs.presets[name];
     if (!list) return;
@@ -404,10 +424,14 @@ export default function ReportTree() {
                   </select>
                   <button type="button" onClick={savePreset} className="text-xs text-violet-300 px-1" title="Сохранить текущий набор">＋</button>
                 </div>
-                {COLS.map((c) => (
-                  <label key={c.label} className="flex items-center gap-2 px-2 py-1 text-sm text-zinc-300 hover:bg-violet-900/15 rounded cursor-pointer">
-                    <input type="checkbox" checked={!hidden.has(c.label)} onChange={() => setCol(c.label)} className="accent-violet-500" />{c.label}
-                  </label>
+                {ordered.map((c, i) => (
+                  <div key={c.label} className="flex items-center gap-1 px-2 py-1 text-sm text-zinc-300 hover:bg-violet-900/15 rounded">
+                    <label className="flex flex-1 items-center gap-2 cursor-pointer min-w-0">
+                      <input type="checkbox" checked={!hidden.has(c.label)} onChange={() => setCol(c.label)} className="accent-violet-500" /><span className="truncate">{c.label}</span>
+                    </label>
+                    <button type="button" disabled={i === 0} onClick={() => moveCol(c.label, -1)} className="text-hint hover:text-white disabled:opacity-20 px-0.5" aria-label="Выше">↑</button>
+                    <button type="button" disabled={i === ordered.length - 1} onClick={() => moveCol(c.label, 1)} className="text-hint hover:text-white disabled:opacity-20 px-0.5" aria-label="Ниже">↓</button>
+                  </div>
                 ))}
               </div>
             )}
@@ -520,7 +544,7 @@ export default function ReportTree() {
               </thead>
               <tbody>
                 {shown.map((node) => (
-                  <Row key={node.id} node={node} depth={0} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} cols={cols}
+                  <Row key={node.id} node={node} depth={0} open={open} toggle={toggle} live={live} selected={selected} select={select} flip={flip} setBudget={setBudget} cols={cols}
                        reach={data!.reachExact ? NO_REACH : reach} pinned={new Set(prefs.pinnedRows)} pin={(id) => toggleIn("pinnedRows", id)} />
                 ))}
               </tbody>

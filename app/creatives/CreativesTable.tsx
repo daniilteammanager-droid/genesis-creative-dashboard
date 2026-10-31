@@ -6,6 +6,7 @@ import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
 import { DateRange } from "@/components/DatePicker";
+import { PERIODS } from "./periods";
 import { Busy, seg, Spinner } from "@/components/ui";
 
 // Сортировка кликом по заголовку — по числу, а не по тексту ячейки.
@@ -31,17 +32,6 @@ const metrics = (r: CreativeRow): Metrics => ({
 });
 
 const daysAgo = (days: number) => mskDaysAgo(days);
-
-// Пресеты периодов. Раздел открывается на сегодня: раньше по умолчанию было
-// 14 дней, и каждый раз приходилось переключаться руками.
-const PERIODS = [
-  { label: "Сегодня", since: () => daysAgo(0), until: () => daysAgo(0) },
-  { label: "Вчера", since: () => daysAgo(1), until: () => daysAgo(1) },
-  { label: "7 дней", since: () => daysAgo(6), until: () => daysAgo(0) },
-  { label: "14 дней", since: () => daysAgo(13), until: () => daysAgo(0) },
-  { label: "30 дней", since: () => daysAgo(29), until: () => daysAgo(0) },
-];
-
 
 export default function CreativesTable() {
   const [since, setSince] = useState(daysAgo(0));

@@ -167,7 +167,12 @@ export async function ensureMedia(token: string, accountId: string, key: string,
       u.end = Number(r.end_offset ?? 0);
       await say(`Загружаю ${name}: ${Math.round((u.offset / u.size) * 100)}%`);
     }
-    await graph(token, `act_${accountId}/advideos`, { upload_phase: "finish", upload_session_id: u.session, title: name }, "POST");
+    // Повторный finish после оборванного ответа Meta может отклонить (сессия уже закрыта) —
+    // видео при этом есть, идём дальше; нет видео — ошибка как есть.
+    await graph(token, `act_${accountId}/advideos`, { upload_phase: "finish", upload_session_id: u.session, title: name }, "POST").catch(async (e) => {
+      const v = await graph<{ id?: string }>(token, m.id, { fields: "id" }).catch(() => null);
+      if (!v?.id || (e instanceof MetaError && e.transient)) throw e;
+    });
     delete m.upload;
   }
   if (m.type === "video" && !m.ready) {
