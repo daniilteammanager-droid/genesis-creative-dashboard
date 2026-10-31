@@ -24,7 +24,7 @@ const PERIODS = [
 ];
 // Автообновление Live Manager: склад и статусы заново. Свежий расход из Meta —
 // кнопкой «Обновить сейчас» (склад сам обновляется раз в 15 минут).
-const EVERY = [{ ms: 0, label: "Live: выкл" }, { ms: 60_000, label: "Live: 1 мин" }, { ms: 120_000, label: "Live: 2 мин" }, { ms: 300_000, label: "Live: 5 мин" }];
+const EVERY = [{ ms: 0, label: "Live: выкл" }, { ms: 30_000, label: "Live: 30 сек" }, { ms: 60_000, label: "Live: 1 мин" }, { ms: 120_000, label: "Live: 2 мин" }, { ms: 300_000, label: "Live: 5 мин" }];
 const HIDDEN_KEY = "reports.hiddenCols";
 // Своё оформление Live Manager — в этом браузере, как у Артёма в рабочем пространстве:
 // закреплённые и скрытые кабинеты, свои названия, закреплённые строки, наборы столбцов.
@@ -65,7 +65,7 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
 
   return (
     <>
-      <tr className={`hover:bg-violet-900/10 transition border-b border-line/50 ${node.outside ? "opacity-70" : ""} ${selected.has(node.id) ? "bg-violet-900/15" : ""}`}>
+      <tr className={`hover:bg-violet-900/10 transition border-b border-line/50 ${selected.has(node.id) ? "bg-violet-900/15" : ""}`}>
         {/* На телефоне закреплённое имя — не шире половины экрана, иначе цифрам
             не остаётся места и таблица не листается вбок. */}
         {/* Имя — полностью: на ПК переносится строкой, на телефоне свёрнуто в одну строку и
@@ -82,11 +82,8 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, col
                       className={`text-left min-w-0 sm:whitespace-normal sm:break-words ${full ? "whitespace-normal break-all" : "truncate"} ${depth === 0 ? "text-zinc-100" : "text-zinc-300"} ${expandable ? "cursor-pointer" : "cursor-default sm:cursor-text"}`}>
                 {node.name}
               </button>
-              {node.outside && depth === 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300/90 whitespace-nowrap shrink-0">нет в кабинетах</span>
-              )}
             </div>
-            {depth === 0 && !node.outside && (
+            {depth === 0 && (
               <button type="button" onClick={() => pin(node.id)} title={pinned.has(node.id) ? "Открепить" : "Закрепить наверху"}
                       className={`shrink-0 text-xs ${pinned.has(node.id) ? "text-amber-300" : "text-zinc-700 hover:text-zinc-400"}`}>★</button>
             )}
@@ -189,7 +186,7 @@ export default function ReportTree() {
   // Статусы и бюджеты — следом за деревом, из Meta / Dolphin вживую.
   const items = useMemo(() => {
     const out: { level: TreeNode["level"]; id: string; accountId: string }[] = [];
-    if (data) walk(data.nodes, (x) => { if (!x.outside && x.accountId && /^\d+$/.test(x.id)) out.push({ level: x.level, id: x.id, accountId: x.accountId }); });
+    if (data) walk(data.nodes, (x) => { if (x.accountId && /^\d+$/.test(x.id)) out.push({ level: x.level, id: x.id, accountId: x.accountId }); });
     return out;
   }, [data]);
   const loadLive = useCallback(() => {
@@ -302,9 +299,9 @@ export default function ReportTree() {
     });
     const sorted = sortBy(list, sort);
     const pins = new Set(prefs.pinnedRows);
-    return [...sorted.filter((x) => pins.has(x.id)), ...sorted.filter((x) => !pins.has(x.id) && !x.outside), ...sorted.filter((x) => !pins.has(x.id) && x.outside)];
+    return [...sorted.filter((x) => pins.has(x.id)), ...sorted.filter((x) => !pins.has(x.id))];
   }, [data, face, geo, cab, showHiddenCabs, prefs, q, statusF, sort, level, statusOf, cabName]);
-  const totals = useMemo(() => totalsOf(shown.filter((x) => !x.outside)), [shown]);
+  const totals = useMemo(() => totalsOf(shown), [shown]);
   // Лента кабинетов: закреплённые сверху, дальше по расходу; пропавший — с пометкой.
   const cabinets = useMemo(() => {
     const spend = new Map<string, number>();
@@ -503,9 +500,7 @@ export default function ReportTree() {
               ["Цена ПДП", money(totals.cpaPdp)],
               ["Цена ДИА", money(totals.cpaDia)],
               ["ROMI", romi(totals.spend, totals.depSum)],
-              data!.outside
-                ? ["Вне подключённых кабинетов", `${money(data!.outside.depSum)} · ${n(data!.outside.campaigns)} РК`]
-                : ["Строк", n(shown.length)],
+              ["Строк", n(shown.length)],
             ] as const).map(([label, value]) => <SummaryCard key={label} label={label} value={value} />)}
           </div>
 

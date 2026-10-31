@@ -14,9 +14,9 @@ import { parseName } from "@/lib/creatives/code";
 //                кампании между собой не делятся;
 //   объявление — связка «кампания × объявление» (wh_crm_pairs). Одно имя дважды в
 //                одной кампании (в двух адсетах) делить нечем — тогда только на кампании.
-//                День, который связки ещё не разложили, — по выгрузке по id объявления;
-//   кампании только из Torro (их кабинет не подключён) — в конце дерева, без расхода,
-//                и в итог с ROMI не идут.
+//                День, который связки ещё не разложили, — по выгрузке по id объявления.
+// Кампании только из Torro (кабинет не подключён) в дерево не идут (31.10.2026, отменяет
+// часть Decision 070): Live Manager — про кабинеты, а Torro без расхода есть в Отчётах и чеке.
 
 export type Quals = [number, number, number, number, number];   // A–E
 
@@ -39,7 +39,6 @@ export interface TreeNode {
   depCount: number | null;
   depSum: number | null;
   quals: Quals | null;
-  outside?: boolean;            // только в Torro: кабинет не подключён
   // Для Live Manager: кабинет (куда писать паузу и бюджет), страны таргета и лицо
   // из имени кампании — для фильтров GEO и «лицо».
   accountId?: string;
@@ -57,8 +56,6 @@ export interface ReportTreeResult {
   // переключатель баеров не показывался тому, кому он ничего не даёт.
   isBuyer: boolean;
   totals: { spend: number; clicks: number; impressions: number; depSum: number };
-  // Кампании только из Torro: сколько и что принесли.
-  outside: { campaigns: number; subscribers: number; depSum: number } | null;
   // Кабинеты строк — для ленты Live Manager: имя и состояние, пропавший — с последним статусом.
   cabinets: { accountId: string; name: string; status: string | null; lastStatus: string | null }[];
   reachExact: boolean;           // период — один день: охват из склада точный
@@ -136,7 +133,7 @@ export async function loadReportTree(
 
   const empty: ReportTreeResult = {
     since, until, nodes: [], buyers, isBuyer: me.role === "buyer",
-    totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 }, outside: null, cabinets: [], reachExact: since === until,
+    totals: { spend: 0, clicks: 0, impressions: 0, depSum: 0 }, cabinets: [], reachExact: since === until,
     generatedAt: new Date().toISOString(),
   };
   if (accountIds !== null && accountIds.length === 0) return { ...empty, notice: NO_CABINETS };
@@ -208,19 +205,10 @@ export async function loadReportTree(
     const k = `${a.campaignName.trim()}|${a.name.trim()}`;
     byPair.set(k, [...(byPair.get(k) ?? []), a]);
   }
-  const campaignNames = new Set([...ads.values()].map((a) => a.campaignName.trim()));
   const paired = new Set(pairs.map((p) => `${p.user_id}|${p.period_start}`));
-  const outsideAds = new Map<string, Map<string, Crm>>();   // кампания → объявление → цифры
   for (const p of pairs) {
     const nodes = byPair.get(`${p.campaign_name.trim()}|${p.ad_name.trim()}`);
     if (nodes?.length === 1) addCrm(nodes[0], toCrm(p));
-    else if (!campaignNames.has(p.campaign_name.trim())) {
-      const m = outsideAds.get(p.campaign_name) ?? new Map<string, Crm>();
-      const c = m.get(p.ad_name) ?? NO_CRM();
-      addCrm(c, toCrm(p));
-      m.set(p.ad_name, c);
-      outsideAds.set(p.campaign_name, m);
-    }
   }
   // Дни, которые связки ещё не разложили, — по выгрузке по id объявления.
   for (const c of adIdCrm) {
@@ -327,33 +315,14 @@ export async function loadReportTree(
     return { accountId: id, name: (st?.name as string) || ownerName.get(id) || `act_${id}`, status: (st?.status as string) ?? null, lastStatus: (st?.last_status as string) ?? null };
   });
 
-  // ─── Кампании только из Torro ────────────────────────────────────────────
-  const outsideNodes: TreeNode[] = [];
-  for (const [name, crm] of crmByCampaign) {
-    if (campaignNames.has(name)) continue;
-    const children = [...(outsideAds.get(name) ?? new Map<string, Crm>())].map(([ad, c]): TreeNode => ({
-      id: `torro|${name}|${ad}`, name: ad, level: "ad", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...c, outside: true,
-    })).sort((a, b) => (b.depSum ?? 0) - (a.depSum ?? 0) || (b.subscribers ?? 0) - (a.subscribers ?? 0));
-    outsideNodes.push({
-      id: `torro|${name}`, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...crm,
-      outside: true, children: children.length ? children : undefined,
-    });
-  }
-  outsideNodes.sort((a, b) => (b.depSum ?? 0) - (a.depSum ?? 0) || (b.subscribers ?? 0) - (a.subscribers ?? 0));
-
   return {
-    since, until, nodes: [...nodes, ...outsideNodes], buyers, isBuyer: me.role === "buyer", cabinets, reachExact: since === until,
+    since, until, nodes, buyers, isBuyer: me.role === "buyer", cabinets, reachExact: since === until,
     totals: {
       spend: nodes.reduce((s, n) => s + n.spend, 0),
       clicks: nodes.reduce((s, n) => s + n.clicks, 0),
       impressions: nodes.reduce((s, n) => s + n.impressions, 0),
       depSum: nodes.reduce((s, n) => s + (n.depSum ?? 0), 0),
     },
-    outside: outsideNodes.length ? {
-      campaigns: outsideNodes.length,
-      subscribers: outsideNodes.reduce((s, n) => s + (n.subscribers ?? 0), 0),
-      depSum: outsideNodes.reduce((s, n) => s + (n.depSum ?? 0), 0),
-    } : null,
     generatedAt: new Date().toISOString(),
   };
 }
