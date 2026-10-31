@@ -18,7 +18,8 @@ export function formatRomiPct(n: number): string {
 // Деньги и ROMI на карточках и в модале крео — как везде в дашборде: «$1 360,26», «153,79%».
 export function formatUsd(n: number | null, digits = 2): string {
   if (n === null || !Number.isFinite(n)) return "—";
-  return `$${n.toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  const abs = Math.abs(n).toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return n < 0 ? `−$${abs}` : `$${abs}`;
 }
 
 export function formatRomi(n: number | null): string {

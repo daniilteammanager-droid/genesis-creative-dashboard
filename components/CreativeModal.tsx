@@ -5,13 +5,12 @@ import { supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import type { MediaFile } from "@/lib/creatives/media";
 import { isVideo, getApproach } from "@/lib/creatives/media";
-import { formatRomi, formatUsd } from "@/lib/creatives/format";
 import { legacyTile } from "@/lib/creatives/tile";
-import RomiBadge from "./RomiBadge";
+import CreativeStats from "./CreativeStats";
 
-// The Creative Library's detail modal — all-time Spend/Revenue/ROMI from the main CSV,
-// real media, notes, favorite, transcription. Shared verbatim between the Creatives page
-// and Reports (Ads mode): "see this creative's all-time results" opens exactly this.
+// Модалка крео — общая для легаси-библиотеки и новой картотеки: видео, расшифровка,
+// заметка, избранное и все цифры крео со склада за выбранный период и по неделям
+// (CreativeStats). Цифры с карточки — запасные, если на складе крео нет.
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -107,82 +106,65 @@ export default function CreativeModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1200px] bg-panel border border-line rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:max-h-[88vh] flex flex-col md:flex-row"
+        className="w-full max-w-[1200px] bg-panel border border-line rounded-2xl md:rounded-3xl overflow-hidden my-4 md:my-0 md:h-[88vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* LEFT: media */}
-        <div className="bg-background flex items-center justify-center flex-shrink-0 min-h-[220px] md:min-h-0 md:w-[55%] md:self-stretch">
-          {mediaFile ? (
-            isVideo(mediaFile.url) ? (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
-              <video src={mediaFile.url} controls autoPlay loop poster={mediaFile.posterUrl} className="w-full h-full object-contain" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={mediaFile.url} alt={item.creative} className="w-full h-full object-contain" />
-            )
-          ) : (
-            <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-900/30 to-[#080710]">
-              <span className="text-5xl opacity-40">🎬</span>
-              <p className="text-white/75 text-sm font-semibold text-center px-6">
-                Крео отошел на дейлик 😄
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: analytics panel */}
-        <div className="flex flex-col flex-1 min-w-0 overflow-y-auto md:max-h-[88vh]">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-3 p-5 border-b border-line flex-shrink-0">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-2xl font-bold text-white leading-tight truncate">{item.creative}</h2>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <RomiBadge value={m.romi} />
-                {approach !== "unknown" && (
-                  <span className="text-xs font-medium text-violet-100 bg-violet-800/35 px-2.5 py-0.5 rounded-full border border-violet-600/40">
-                    {approach}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={() => supabaseAvailable && onToggleFavorite(item.creative)}
-                disabled={!supabaseAvailable}
-                className={`w-9 h-9 flex items-center justify-center rounded-xl transition text-xl ${
-                  !supabaseAvailable
-                    ? "text-zinc-700 opacity-30 cursor-not-allowed bg-raised"
-                    : note?.favorite
-                    ? "text-yellow-400 bg-yellow-900/30 hover:bg-yellow-900/50"
-                    : "text-hint bg-raised hover:text-yellow-400 hover:bg-violet-900/40"
-                }`}
-                title={!supabaseAvailable ? "Избранное временно недоступно" : note?.favorite ? "Убрать из избранного" : "В избранное"}
-              >
-                {note?.favorite ? "★" : "☆"}
-              </button>
-              <button
-                onClick={onClose}
-                className="flex-shrink-0 text-zinc-400 hover:text-white bg-raised hover:bg-violet-900/40 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
-                aria-label="Закрыть"
-              >
-                ✕
-              </button>
+        <div className="flex items-start justify-between gap-3 p-5 border-b border-line flex-shrink-0">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-2xl font-bold text-white leading-tight truncate">{item.creative}</h2>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {approach !== "unknown" && (
+                <span className="text-xs font-medium text-violet-100 bg-violet-800/35 px-2.5 py-0.5 rounded-full border border-violet-600/40">
+                  {approach}
+                </span>
+              )}
             </div>
           </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => supabaseAvailable && onToggleFavorite(item.creative)}
+              disabled={!supabaseAvailable}
+              className={`w-9 h-9 flex items-center justify-center rounded-xl transition text-xl ${
+                !supabaseAvailable
+                  ? "text-zinc-700 opacity-30 cursor-not-allowed bg-raised"
+                  : note?.favorite
+                  ? "text-yellow-400 bg-yellow-900/30 hover:bg-yellow-900/50"
+                  : "text-hint bg-raised hover:text-yellow-400 hover:bg-violet-900/40"
+              }`}
+              title={!supabaseAvailable ? "Избранное временно недоступно" : note?.favorite ? "Убрать из избранного" : "В избранное"}
+            >
+              {note?.favorite ? "★" : "☆"}
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-shrink-0 text-zinc-400 hover:text-white bg-raised hover:bg-violet-900/40 rounded-xl w-9 h-9 flex items-center justify-center transition text-lg"
+              aria-label="Закрыть"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
 
-          {/* Content */}
-          <div className="p-5 space-y-5">
-            {/* Metrics */}
-            <div>
-              <div className="text-violet-400/50 text-xs uppercase tracking-widest mb-3">Метрики (всё время)</div>
-              <div className="grid grid-cols-2 gap-3">
-                <ModalMetric label="Спенд"     value={formatUsd(m.spend)} />
-                <ModalMetric label="Ревенью"   value={formatUsd(m.revenue)} />
-                <ModalMetric label="Депозиты"  value={item.deposits} />
-                <ModalMetric label="ROMI"      value={formatRomi(m.romi)} romiValue={m.romi ?? NaN} />
-                <ModalMetric label="Цена ПДП"  value={formatUsd(m.cpdp)} />
-                <ModalMetric label="Цена ДИА"  value={formatUsd(m.cdia)} />
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+          {/* Слева: видео, расшифровка и заметка */}
+          <div className="md:w-[340px] flex-shrink-0 p-4 space-y-3 border-b md:border-b-0 md:border-r border-line md:overflow-y-auto">
+            <div className="bg-background rounded-xl overflow-hidden aspect-[9/16] max-h-[60vh] md:max-h-none flex items-center justify-center">
+            {mediaFile ? (
+              isVideo(mediaFile.url) ? (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video src={mediaFile.url} controls autoPlay loop poster={mediaFile.posterUrl} className="w-full h-full object-contain" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={mediaFile.url} alt={item.creative} className="w-full h-full object-contain" />
+              )
+            ) : (
+              <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-900/30 to-[#080710]">
+                <span className="text-5xl opacity-40">🎬</span>
+                <p className="text-white/75 text-sm font-semibold text-center px-6">
+                  Крео отошел на дейлик 😄
+                </p>
               </div>
+            )}
             </div>
 
             {/* Расшифровка */}
@@ -279,25 +261,13 @@ export default function CreativeModal({
               )}
             </div>
           </div>
+
+          {/* Справа: все цифры крео за период и по неделям */}
+          <div className="flex-1 min-w-0 p-5 md:overflow-y-auto">
+            <CreativeStats code={item.creative} fallback={m} fallbackLabel="Цифры с карточки" />
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ModalMetric({ label, value, romiValue }: { label: string; value: string; romiValue?: number }) {
-  const isRomi = romiValue !== undefined;
-  const valueColor = isRomi
-    ? isNaN(romiValue) ? "text-zinc-300" : romiValue >= 150 ? "text-green-300" : romiValue >= 0 ? "text-yellow-300" : "text-red-300"
-    : "text-white";
-  const borderColor = isRomi
-    ? isNaN(romiValue) ? "border-line" : romiValue >= 150 ? "border-green-800/50" : romiValue >= 0 ? "border-yellow-800/50" : "border-red-800/50"
-    : "border-line";
-
-  return (
-    <div className={`bg-card/60 border rounded-xl p-4 ${borderColor}`}>
-      <div className="text-hint text-xs mb-1.5">{label}</div>
-      <div className={`text-lg font-bold truncate ${valueColor}`}>{value || "—"}</div>
     </div>
   );
 }
