@@ -9,6 +9,7 @@ import MediaLibrary from "@/components/MediaLibrary";
 import { toLegacy } from "./toLegacy";
 import type { MediaFile } from "@/lib/creatives/media";
 import { isSupabaseConfigured, supabase, selectAllRows, type CreativeNote } from "@/lib/supabase";
+import { noteKey, notesMap } from "@/lib/creatives/notes";
 import type { CreativesResult } from "@/lib/warehouse/creatives";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { DateRange } from "@/components/DatePicker";
@@ -117,21 +118,7 @@ export default function CreativesView() {
           selectAllRows<{ creative_code: string; favorite: boolean; note: string | null; updated_at: string }>(
             "creative_user_notes", "creative_code, favorite, note, updated_at"),
         ]);
-        const map: Record<string, CreativeNote> = {};
-        for (const r of shared) {
-          map[r.creative_code] = {
-            creative_code: r.creative_code, favorite: false, note: null,
-            transcription_ru: r.transcription_ru, ignored: r.ignored ?? false, updated_at: r.updated_at,
-          };
-        }
-        for (const r of mine) {
-          const base = map[r.creative_code];
-          map[r.creative_code] = base
-            ? { ...base, favorite: r.favorite, note: r.note }
-            : { creative_code: r.creative_code, favorite: r.favorite, note: r.note,
-                transcription_ru: null, ignored: false, updated_at: r.updated_at };
-        }
-        setNotes(map);
+        setNotes(notesMap(shared, mine));
       } catch { /* заметки некритичны (Decision 005) */ }
     })();
   }, []);
@@ -152,15 +139,16 @@ export default function CreativesView() {
 
   const toggleIgnored = useCallback(async (code: string) => {
     if (!isSupabaseConfigured) return;
-    const existing = notes[code];
+    const key = noteKey(code);
+    const existing = notes[key];
     const next = !(existing?.ignored ?? false);
     const updated: CreativeNote = existing
       ? { ...existing, ignored: next, updated_at: new Date().toISOString() }
-      : { creative_code: code, favorite: false, note: null, transcription_ru: null, ignored: next, updated_at: new Date().toISOString() };
-    setNotes((p) => ({ ...p, [code]: updated }));
+      : { creative_code: key, favorite: false, note: null, transcription_ru: null, ignored: next, updated_at: new Date().toISOString() };
+    setNotes((p) => ({ ...p, [key]: updated }));
     // Только своё поле: расшифровку пишет воркер, и отправлять её обратно нельзя.
     await supabase.from("creative_notes").upsert(
-      { creative_code: code, ignored: next, updated_at: updated.updated_at },
+      { creative_code: key, ignored: next, updated_at: updated.updated_at },
       { onConflict: "creative_code" }
     );
   }, [notes]);

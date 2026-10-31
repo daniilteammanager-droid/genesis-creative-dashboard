@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
+import { noteOf } from "@/lib/creatives/notes";
 import { type MediaFile, buildMediaIndex, lookupMedia, getFileBaseName, isVideo, getApproach } from "@/lib/creatives/media";
 
 // "Медиатека" — modal opened from the Creatives toolbar (next to "Загрузить").
@@ -68,11 +69,11 @@ export default function MediaLibrary({
         .filter((x): x is { row: CreativeRow; match: { file: MediaFile; exact: false } } => !!x.match && !x.match.exact),
     [rows, index]
   );
-  const ignoredCount = missingAll.filter((r) => notes[r.creative]?.ignored).length;
+  const ignoredCount = missingAll.filter((r) => noteOf(notes, r.creative)?.ignored).length;
   const missing = useMemo(
     () =>
       missingAll
-        .filter((r) => (showIgnored ? true : !notes[r.creative]?.ignored))
+        .filter((r) => (showIgnored ? true : !noteOf(notes, r.creative)?.ignored))
         .filter((r) => r.creative.toLowerCase().includes(search.toLowerCase())),
     [missingAll, notes, showIgnored, search]
   );
@@ -136,7 +137,7 @@ export default function MediaLibrary({
               </div>
               <div className="flex flex-wrap gap-2">
                 {missing.map((r) => {
-                  const ignored = !!notes[r.creative]?.ignored;
+                  const ignored = !!noteOf(notes, r.creative)?.ignored;
                   return (
                     <span
                       key={r.creative}

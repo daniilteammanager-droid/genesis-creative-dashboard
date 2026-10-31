@@ -6,6 +6,7 @@ import type { CreativeRow } from "@/lib/creatives/types";
 import type { MediaFile } from "@/lib/creatives/media";
 import { isVideo, getApproach } from "@/lib/creatives/media";
 import { legacyTile } from "@/lib/creatives/tile";
+import { noteKey } from "@/lib/creatives/notes";
 import CreativeStats from "./CreativeStats";
 
 // Модалка крео — общая для легаси-библиотеки и новой картотеки: видео, расшифровка,
@@ -75,13 +76,13 @@ export default function CreativeModal({
       // числе расшифровку, дописанную воркером минуту назад.
       if (field === "note") {
         const { error } = await supabase.from("creative_user_notes").upsert(
-          { user_id: await currentUserId(), creative_code: item.creative, note: payload.note, updated_at: now },
+          { user_id: await currentUserId(), creative_code: noteKey(item.creative), note: payload.note, updated_at: now },
           { onConflict: "user_id,creative_code" }
         );
         if (error) throw error;
       } else {
         const { error } = await supabase.from("creative_notes").upsert(
-          { creative_code: item.creative, transcription_ru: payload.transcription_ru, updated_at: now },
+          { creative_code: noteKey(item.creative), transcription_ru: payload.transcription_ru, updated_at: now },
           { onConflict: "creative_code" }
         );
         if (error) throw error;

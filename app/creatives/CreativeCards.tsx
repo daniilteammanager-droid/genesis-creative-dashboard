@@ -6,6 +6,7 @@ import CreativeTile from "@/components/CreativeTile";
 import { costPer, romiOf, warehouseTile } from "@/lib/creatives/tile";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/media";
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
+import { noteKey, noteOf } from "@/lib/creatives/notes";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { toLegacy } from "./toLegacy";
 import { Busy, seg, Spinner } from "@/components/ui";
@@ -87,15 +88,16 @@ export default function CreativeCards({
 
   const toggleFavorite = useCallback(async (code: string) => {
     if (!isSupabaseConfigured) return;
-    const existing = notes[code];
+    const key = noteKey(code);
+    const existing = notes[key];
     const next = !(existing?.favorite ?? false);
     const updated: CreativeNote = existing
       ? { ...existing, favorite: next, updated_at: new Date().toISOString() }
-      : { creative_code: code, favorite: next, note: null, transcription_ru: null, ignored: false, updated_at: new Date().toISOString() };
-    onNotesChange((p) => ({ ...p, [code]: updated }));
+      : { creative_code: key, favorite: next, note: null, transcription_ru: null, ignored: false, updated_at: new Date().toISOString() };
+    onNotesChange((p) => ({ ...p, [key]: updated }));
     // Пишем только своё поле: расшифровку сюда класть нельзя, её пишет воркер.
     await supabase.from("creative_user_notes").upsert(
-      { user_id: await currentUserId(), creative_code: code, favorite: next, updated_at: updated.updated_at },
+      { user_id: await currentUserId(), creative_code: key, favorite: next, updated_at: updated.updated_at },
       { onConflict: "user_id,creative_code" }
     );
   }, [notes, onNotesChange]);
@@ -129,7 +131,7 @@ export default function CreativeCards({
     win: beforeTab.filter((r) => (romiOf(r) ?? -1) >= 150 && r.spend >= MATURE).length,
     lose: beforeTab.filter((r) => (romiOf(r) ?? 0) < 0 && r.spend >= MATURE).length,
     test: beforeTab.filter((r) => r.spend < MATURE).length,
-    fav: beforeTab.filter((r) => notes[r.code]?.favorite).length,
+    fav: beforeTab.filter((r) => noteOf(notes, r.code)?.favorite).length,
   }), [beforeTab, notes]);
 
   const rows = useMemo(() => {
@@ -138,7 +140,7 @@ export default function CreativeCards({
       if (tab === "win") return (romiOf(r) ?? -1) >= 150 && r.spend >= MATURE;
       if (tab === "lose") return (romiOf(r) ?? 0) < 0 && r.spend >= MATURE;
       if (tab === "test") return r.spend < MATURE;
-      return notes[r.code]?.favorite === true;
+      return noteOf(notes, r.code)?.favorite === true;
     });
 
     const key = (r: CreativeRow): number | null => {
@@ -265,7 +267,7 @@ export default function CreativeCards({
                       exact={match?.exact}
                       geoMismatch={r.geoMismatch}
                       m={warehouseTile(r)}
-                      favorite={notes[r.code]?.favorite ?? false}
+                      favorite={noteOf(notes, r.code)?.favorite ?? false}
                       canFavorite={isSupabaseConfigured}
                       onOpen={() => setSelected(r)}
                       onFavorite={() => toggleFavorite(r.code)}
@@ -292,11 +294,11 @@ export default function CreativeCards({
         <CreativeModal
           item={toLegacy(selected)}
           mediaFile={findMedia(selected.code)?.file}
-          note={notes[selected.code]}
+          note={noteOf(notes, selected.code)}
           supabaseAvailable={isSupabaseConfigured}
           onClose={() => setSelected(null)}
           onToggleFavorite={toggleFavorite}
-          onNotesUpdated={(u) => onNotesChange((p) => ({ ...p, [u.creative_code]: u }))}
+          onNotesUpdated={(u) => onNotesChange((p) => ({ ...p, [noteKey(u.creative_code)]: u }))}
         />
       )}
     </div>

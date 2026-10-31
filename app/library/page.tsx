@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, selectAllRows, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
+import { noteKey, noteOf, notesMap } from "@/lib/creatives/notes";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
 import { type MediaFile, buildMediaIndex, lookupMedia, getApproach } from "@/lib/creatives/media";
 import { parseNumber, formatSummaryNumber, formatRomiPct, formatUsd } from "@/lib/creatives/format";
@@ -102,11 +103,13 @@ export default function Home() {
 
   // Два флажка, но живут они в разных таблицах: избранное личное, «скрыт» общий
   // для всей библиотеки (supabase/007_user_notes.sql).
-  const toggleFlag = useCallback(async (field: "favorite" | "ignored", creativeCode: string) => {
+  const toggleFlag = useCallback(async (field: "favorite" | "ignored", code: string) => {
     if (!isSupabaseConfigured) {
       console.warn(`Supabase не настроен — toggle ${field} недоступен`);
       return;
     }
+    // Ключ — как у воркера (lib/creatives/notes.ts): флаг ложится в его строку, а не рядом.
+    const creativeCode = noteKey(code);
     const existing = notesRef.current[creativeCode];
     const newValue  = !(existing?.[field] ?? false);
 
@@ -222,31 +225,7 @@ export default function Home() {
           ),
         ]);
 
-        const map: Record<string, CreativeNote> = {};
-        for (const row of shared) {
-          map[row.creative_code] = {
-            creative_code: row.creative_code,
-            favorite: false,
-            note: null,
-            transcription_ru: row.transcription_ru,
-            ignored: row.ignored ?? false,
-            updated_at: row.updated_at,
-          };
-        }
-        for (const row of mine) {
-          const base = map[row.creative_code];
-          map[row.creative_code] = base
-            ? { ...base, favorite: row.favorite, note: row.note }
-            : {
-                creative_code: row.creative_code,
-                favorite: row.favorite,
-                note: row.note,
-                transcription_ru: null,
-                ignored: false,
-                updated_at: row.updated_at,
-              };
-        }
-        setNotes(map);
+        setNotes(notesMap(shared, mine));
       } catch (e) {
         setNotesError(e instanceof Error ? e.message : "Не удалось загрузить заметки");
       } finally {
@@ -293,7 +272,7 @@ export default function Home() {
       win:       base.filter((item) => parseNumber(item.romi) >= 150).length,
       lose:      base.filter((item) => parseNumber(item.romi) < 0 && parseNumber(item.spend) > 1000).length,
       test:      base.filter((item) => parseNumber(item.spend) < 1000).length,
-      favorites: base.filter((item) => notes[item.creative]?.favorite === true).length,
+      favorites: base.filter((item) => noteOf(notes, item.creative)?.favorite === true).length,
     };
   }, [rows, search, activeApproach, notes, findMedia]);
 
@@ -321,7 +300,7 @@ export default function Home() {
         if (activeTab === "win")       return romi >= 150;
         if (activeTab === "lose")      return romi < 0 && spend > 1000;
         if (activeTab === "test")      return spend < 1000;
-        if (activeTab === "favorites") return notes[item.creative]?.favorite === true;
+        if (activeTab === "favorites") return noteOf(notes, item.creative)?.favorite === true;
         return true;
       })
       .filter((item) => {
@@ -527,7 +506,7 @@ export default function Home() {
                             itemMedia={match?.file}
                             itemMediaExact={match?.exact ?? true}
                             itemApproach={getApproach(item.creative, match?.file.key)}
-                            itemNote={notes[item.creative]}
+                            itemNote={noteOf(notes, item.creative)}
                             supabaseAvailable={!supabaseDown}
                             onSelect={handleSetSelected}
                             onToggleFavorite={toggleFavorite}
@@ -551,12 +530,12 @@ export default function Home() {
         <CreativeModal
           item={selected}
           mediaFile={findMedia(selected.creative)?.file}
-          note={notes[selected.creative]}
+          note={noteOf(notes, selected.creative)}
           supabaseAvailable={!supabaseDown}
           onClose={() => setSelected(null)}
           onToggleFavorite={toggleFavorite}
           onNotesUpdated={(updated) =>
-            setNotes((prev) => ({ ...prev, [updated.creative_code]: updated }))
+            setNotes((prev) => ({ ...prev, [noteKey(updated.creative_code)]: updated }))
           }
         />
       )}
