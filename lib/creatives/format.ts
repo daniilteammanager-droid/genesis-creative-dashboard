@@ -7,10 +7,21 @@ export function parseNumber(value: string): number {
 
 export function formatSummaryNumber(n: number): string {
   if (isNaN(n) || !isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
+  return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
 }
 
 export function formatRomiPct(n: number): string {
   if (isNaN(n) || !isFinite(n)) return "—";
   return `${Math.round(n)}%`;
+}
+
+// Деньги и ROMI на карточках и в модале крео — как везде в дашборде: «$1 360,26», «153,79%».
+export function formatUsd(n: number | null, digits = 2): string {
+  if (n === null || !Number.isFinite(n)) return "—";
+  return `$${n.toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+export function formatRomi(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return "—";
+  return `${n.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}%`;
 }

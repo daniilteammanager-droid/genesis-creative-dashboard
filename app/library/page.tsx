@@ -6,10 +6,10 @@ import { supabase, isSupabaseConfigured, selectAllRows, currentUserId, type Crea
 import type { CreativeRow } from "@/lib/creatives/types";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
 import { type MediaFile, buildMediaIndex, lookupMedia, getApproach } from "@/lib/creatives/media";
-import { parseNumber, formatSummaryNumber, formatRomiPct } from "@/lib/creatives/format";
+import { parseNumber, formatSummaryNumber, formatRomiPct, formatUsd } from "@/lib/creatives/format";
 import CreativeModal from "@/components/CreativeModal";
-import RomiBadge from "@/components/RomiBadge";
-import { MediaWide, MediaSquare } from "@/components/CreativeMedia";
+import CreativeTile from "@/components/CreativeTile";
+import { legacyTile } from "@/lib/creatives/tile";
 import MediaLibrary from "@/components/MediaLibrary";
 import { useProfile } from "@/components/Shell";
 import CreativeUploadModal from "./CreativeUploadModal";
@@ -595,92 +595,19 @@ const CreativeCard = memo(function CreativeCard({
   onToggleFavorite,
 }: CreativeCardProps) {
   return (
-    <div
-      onClick={() => onSelect(item)}
-      className="card overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition"
-    >
-      {/* Desktop: full-width media at top */}
-      <div className="hidden md:block">
-        <MediaWide file={itemMedia} />
-      </div>
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-line">
-        <div className="min-w-0 flex-1">
-          <div className="text-base font-bold text-white truncate">{item.creative}</div>
-          <div className="flex items-center gap-1.5 flex-wrap mt-1">
-            {itemApproach !== "unknown" && (
-              <span className="inline-block text-[10px] font-medium bg-violet-800/35 text-violet-100 border border-violet-700/40 px-1.5 py-0.5 rounded-full truncate max-w-full">
-                {itemApproach}
-              </span>
-            )}
-            {itemMedia && !itemMediaExact && (
-              <span
-                className="inline-block text-[10px] font-medium bg-amber-800/25 text-amber-300/90 border border-amber-700/40 px-1.5 py-0.5 rounded-full"
-                title="Точного файла нет — превью подставлено по похожему названию"
-              >
-                ≈ похоже
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); if (supabaseAvailable) onToggleFavorite(item.creative); }}
-            disabled={!supabaseAvailable}
-            className={`text-base leading-none transition-colors ${
-              !supabaseAvailable
-                ? "text-zinc-700 opacity-30 cursor-not-allowed"
-                : itemNote?.favorite
-                ? "text-yellow-400"
-                : "text-zinc-700 hover:text-yellow-400"
-            }`}
-            title={!supabaseAvailable ? "Избранное временно недоступно" : itemNote?.favorite ? "Убрать из избранного" : "В избранное"}
-          >
-            ★
-          </button>
-          <RomiBadge value={item.romi} />
-        </div>
-      </div>
-
-      {/* Mobile: square preview + metrics */}
-      <div className="flex gap-4 p-4 md:hidden">
-        <MediaSquare file={itemMedia} />
-        <MetricsGrid item={item} />
-      </div>
-
-      {/* Desktop: metrics below header */}
-      <div className="hidden md:block px-4 pt-3 pb-4">
-        <MetricsGrid item={item} />
-      </div>
-    </div>
+    <CreativeTile
+      code={item.creative}
+      approach={itemApproach}
+      file={itemMedia}
+      exact={itemMediaExact}
+      m={legacyTile(item)}
+      favorite={itemNote?.favorite ?? false}
+      canFavorite={supabaseAvailable}
+      onOpen={() => onSelect(item)}
+      onFavorite={() => onToggleFavorite(item.creative)}
+    />
   );
 });
-
-// ─── Metrics ──────────────────────────────────────────────────────────────────
-
-function MetricsGrid({ item }: { item: CreativeRow }) {
-  return (
-    <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-4 gap-y-2 content-start">
-      <MetricCell label="Spend"    value={item.spend}    emphasis />
-      <MetricCell label="Revenue"  value={item.revenue} />
-      <MetricCell label="Deposits" value={item.deposits} />
-      <MetricCell label="Цена PDP" value={item.pdp} />
-      <MetricCell label="Цена DIA" value={item.dia} />
-    </div>
-  );
-}
-
-function MetricCell({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
-  return (
-    <div>
-      <div className="text-hint text-xs leading-none mb-0.5">{label}</div>
-      <div className={`text-sm font-semibold truncate ${emphasis ? "text-white" : "text-zinc-200"}`}>
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
 
 // ─── Summary panel ────────────────────────────────────────────────────────────
 
@@ -694,8 +621,8 @@ function SummaryPanel({ summary }: {
       <SummaryCard label="Total ROMI"     value={formatRomiPct(summary.totalRomi)}         valueClass={romiColor} />
       <SummaryCard label="Winners"        value={String(summary.winners)}                  valueClass="text-green-300" />
       <SummaryCard label="Losers"         value={String(summary.losers)}                   valueClass="text-red-300" />
-      <SummaryCard label="Total Spend"    value={formatSummaryNumber(summary.totalSpend)} />
-      <SummaryCard label="Total Revenue"  value={formatSummaryNumber(summary.totalRevenue)} />
+      <SummaryCard label="Total Spend"    value={formatUsd(summary.totalSpend, 0)} />
+      <SummaryCard label="Total Revenue"  value={formatUsd(summary.totalRevenue, 0)} />
       <SummaryCard label="Total Deposits" value={formatSummaryNumber(summary.totalDeposits)} />
       <SummaryCard label="Tests"          value={String(summary.tests)}                    valueClass="text-purple-300" />
     </div>

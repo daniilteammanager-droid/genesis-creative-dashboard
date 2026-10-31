@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import CreativeModal from "@/components/CreativeModal";
-import RomiBadge from "@/components/RomiBadge";
-import { MediaWide } from "@/components/CreativeMedia";
+import CreativeTile from "@/components/CreativeTile";
+import { costPer, romiOf, warehouseTile } from "@/lib/creatives/tile";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/media";
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
@@ -17,10 +17,6 @@ import { seg, Spinner } from "@/components/ui";
 // форматом льют до сих пор, и эти файлы лежат в общих папках (Decision 036).
 
 
-
-const money = (v: number | null) =>
-  v === null ? "—" : `$${v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const num = (v: number | null) => (v === null ? "—" : v.toLocaleString("ru-RU"));
 
 // Показываем не всё сразу: за месяц строк бывает много, а карточка тянет превью.
 const PAGE = 120;
@@ -49,13 +45,6 @@ const SORTS = [
 ] as const;
 type Sort = (typeof SORTS)[number]["id"];
 
-const romiOf = (r: CreativeRow) => {
-  const revenue = (r.depSum ?? 0) + (r.redepSum ?? 0);
-  return r.spend > 0 ? ((revenue - r.spend) / r.spend) * 100 : null;
-};
-// Цена берётся из сумм за период, а не усреднением по дням (Decision 024).
-const costPer = (spend: number, count: number | null) =>
-  count && count > 0 ? spend / count : null;
 
 export default function CreativeCards({
   data,
@@ -192,7 +181,7 @@ export default function CreativeCards({
             <div className="seg">
               {TABS.map((t) => (
                 <button key={t.id} onClick={() => { setTab(t.id); setLimit(PAGE); }} {...seg(tab === t.id)}>
-                  {t.label} <span className="text-[11px] opacity-60">{counts[t.id]}</span>
+                  {t.label}<span className="ml-1 text-[11px] opacity-60">{counts[t.id]}</span>
                 </button>
               ))}
             </div>
@@ -201,11 +190,8 @@ export default function CreativeCards({
 
             <button onClick={() => { setOnlyWithSpend((v) => !v); setLimit(PAGE); }}
                     title={`Крео без расхода за период: ${zeroSpend}`}
-                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition border ${
-                      onlyWithSpend
-                        ? "bg-violet-900/40 text-violet-200 border-violet-700/40"
-                        : "bg-panel text-hint border-line hover:text-violet-300"
-                    }`}>
+                    aria-pressed={onlyWithSpend}
+                    className={`btn ${onlyWithSpend ? "border-violet-600 bg-violet-900/30 text-white" : ""}`}>
               Только с расходом
             </button>
 
@@ -261,72 +247,25 @@ export default function CreativeCards({
             <p className="text-hint text-sm py-8">За этот период не крутилось ни одного крео.</p>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Колонок столько же, сколько в легаси-библиотеке: на широком экране — больше колонок, а не шире карточка. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1700px]:grid-cols-6 min-[2000px]:grid-cols-7 min-[2400px]:grid-cols-8 gap-4">
                 {shown.map((r) => {
                   const match = findMedia(r.code);
-                  const note = notes[r.code];
-                  const revenue = (r.depSum ?? 0) + (r.redepSum ?? 0);
-                  const romi = r.spend > 0 ? ((revenue - r.spend) / r.spend) * 100 : null;
                   return (
-                    <div key={r.code} onClick={() => setSelected(r)}
-                         className="card overflow-hidden cursor-pointer hover:border-violet-500/50 hover:shadow-[0_4px_24px_rgb(109_40_217/0.12)] transition">
-                      <MediaWide file={match?.file} />
-
-                      <div className="flex items-center justify-between px-4 pt-4 pb-3 gap-3 border-b border-line">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-base font-bold text-white truncate" title={r.code}>{r.code}</div>
-                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                            {r.approach !== "unknown" && (
-                              <span className="text-[10px] font-medium bg-violet-800/35 text-violet-100 border border-violet-700/40 px-1.5 py-0.5 rounded-full">
-                                {r.approach}
-                              </span>
-                            )}
-                            {r.countries.map((c) => (
-                              <span key={c} className="text-[10px] font-medium bg-zinc-800/60 text-zinc-300 border border-zinc-700/40 px-1.5 py-0.5 rounded-full">{c}</span>
-                            ))}
-                            {match && !match.exact && (
-                              <span title="Точного файла нет — превью подставлено по похожему названию"
-                                    className="text-[10px] font-medium bg-amber-800/25 text-amber-300/90 border border-amber-700/40 px-1.5 py-0.5 rounded-full">≈ похоже</span>
-                            )}
-                            {!match && (
-                              <span className="text-[10px] font-medium bg-zinc-800/60 text-hint border border-zinc-700/40 px-1.5 py-0.5 rounded-full">файл не загружен</span>
-                            )}
-                            {r.geoMismatch && (
-                              <span title="Гео в имени не совпало со странами таргета"
-                                    className="text-[10px] font-medium bg-amber-800/25 text-amber-300/90 border border-amber-700/40 px-1.5 py-0.5 rounded-full">≠ гео</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <button onClick={(e) => { e.stopPropagation(); toggleFavorite(r.code); }}
-                                  disabled={!isSupabaseConfigured}
-                                  title={note?.favorite ? "Убрать из избранного" : "В избранное"}
-                                  className={`text-base leading-none transition-colors ${
-                                    !isSupabaseConfigured ? "text-zinc-700 opacity-30 cursor-not-allowed"
-                                      : note?.favorite ? "text-yellow-400" : "text-zinc-700 hover:text-yellow-400"}`}>★</button>
-                          <RomiBadge value={romi === null ? "" : String(romi)} />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-x-3 gap-y-2 px-4 pt-3 pb-4 text-[13px]">
-                        {([
-                          ["Расход", money(r.spend)],
-                          ["Доход", revenue > 0 ? money(revenue) : "—"],
-                          ["Депозиты", num(r.depCount)],
-                          ["ПДП", num(r.subscribers)],
-                          ["Цена ПДП", money(costPer(r.spend, r.subscribers))],
-                          ["Диалоги", num(r.dialogs)],
-                          ["Цена диа", money(costPer(r.spend, r.dialogs))],
-                          ["Клики", num(r.clicks)],
-                          ["Показы", num(r.impressions)],
-                        ] as const).map(([label, value]) => (
-                          <div key={label}>
-                            <p className="text-[10px] text-hint uppercase tracking-wider">{label}</p>
-                            <p className="text-zinc-200">{value}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <CreativeTile
+                      key={r.code}
+                      code={r.code}
+                      approach={r.approach}
+                      countries={r.countries}
+                      file={match?.file}
+                      exact={match?.exact}
+                      geoMismatch={r.geoMismatch}
+                      m={warehouseTile(r)}
+                      favorite={notes[r.code]?.favorite ?? false}
+                      canFavorite={isSupabaseConfigured}
+                      onOpen={() => setSelected(r)}
+                      onFavorite={() => toggleFavorite(r.code)}
+                    />
                   );
                 })}
               </div>
@@ -334,7 +273,7 @@ export default function CreativeCards({
               {rows.length > shown.length && (
                 <div className="flex justify-center mt-6">
                   <button onClick={() => setLimit((l) => l + PAGE)}
-                          className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-violet-900/40 text-violet-200 hover:bg-violet-900/60 transition">
+                          className="btn">
                     Показать ещё {Math.min(PAGE, rows.length - shown.length)} из {rows.length - shown.length}
                   </button>
                 </div>

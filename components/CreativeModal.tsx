@@ -5,7 +5,8 @@ import { supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import type { MediaFile } from "@/lib/creatives/media";
 import { isVideo, getApproach } from "@/lib/creatives/media";
-import { parseNumber } from "@/lib/creatives/format";
+import { formatRomi, formatUsd } from "@/lib/creatives/format";
+import { legacyTile } from "@/lib/creatives/tile";
 import RomiBadge from "./RomiBadge";
 
 // The Creative Library's detail modal — all-time Spend/Revenue/ROMI from the main CSV,
@@ -98,7 +99,7 @@ export default function CreativeModal({
   }
 
   const approach = getApproach(item.creative, mediaFile?.key);
-  const romiNum  = parseNumber(item.romi);
+  const m        = legacyTile(item);
 
   return (
     <div
@@ -136,7 +137,7 @@ export default function CreativeModal({
             <div className="min-w-0 flex-1">
               <h2 className="text-2xl font-bold text-white leading-tight truncate">{item.creative}</h2>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <RomiBadge value={item.romi} />
+                <RomiBadge value={m.romi} />
                 {approach !== "unknown" && (
                   <span className="text-xs font-medium text-violet-100 bg-violet-800/35 px-2.5 py-0.5 rounded-full border border-violet-600/40">
                     {approach}
@@ -175,12 +176,12 @@ export default function CreativeModal({
             <div>
               <div className="text-violet-400/50 text-xs uppercase tracking-widest mb-3">Метрики (всё время)</div>
               <div className="grid grid-cols-2 gap-3">
-                <ModalMetric label="Spend"    value={item.spend} />
-                <ModalMetric label="Revenue"  value={item.revenue} />
-                <ModalMetric label="Deposits" value={item.deposits} />
-                <ModalMetric label="ROMI"     value={item.romi} romiValue={romiNum} />
-                <ModalMetric label="Цена PDP" value={item.pdp} />
-                <ModalMetric label="Цена DIA" value={item.dia} />
+                <ModalMetric label="Спенд"     value={formatUsd(m.spend)} />
+                <ModalMetric label="Ревенью"   value={formatUsd(m.revenue)} />
+                <ModalMetric label="Депозиты"  value={item.deposits} />
+                <ModalMetric label="ROMI"      value={formatRomi(m.romi)} romiValue={m.romi ?? NaN} />
+                <ModalMetric label="Цена ПДП"  value={formatUsd(m.cpdp)} />
+                <ModalMetric label="Цена ДИА"  value={formatUsd(m.cdia)} />
               </div>
             </div>
 
