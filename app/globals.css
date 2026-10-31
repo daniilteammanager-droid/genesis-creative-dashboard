@@ -2,14 +2,21 @@
 
 /* ─── Brand tokens ─────────────────────────────────────────────────────────── */
 /* To switch themes later, update these variables only.                         */
+/* Фонов четыре, рамок две, серый для подсказок один (31.10.2026). Новый цвет — */
+/* токеном здесь, а не hex в классе: так их и было тринадцать.                  */
 :root {
-  --background:        #0a080f;
+  --background:        #0a080f;   /* страница */
   --foreground:        #f4f4f5;
   --brand:             #8b5cf6;
   --brand-light:       #a78bfa;
   --brand-deep:        #7c3aed;
-  --surface-card:      #111118;
-  --surface-elevated:  #18181f;
+  --panel:             #0d0b14;   /* поле ввода, боковая панель, шапка таблицы */
+  --card:              #111118;   /* карточка */
+  --raised:            #18181f;   /* поверх карточки: подсказка графика, строка-группа */
+  --line:              rgb(76 29 149 / 0.32);  /* рамка карточки, разделители */
+  --line-strong:       rgb(91 33 182 / 0.5);   /* рамка поля и кнопки */
+  --hint:              #8a8a94;   /* подсказки: 5,5:1 на карточке (zinc-600 давал 2,4:1) */
+  color-scheme: dark;             /* полосы прокрутки, select и чекбоксы — тёмные */
 }
 
 @theme inline {
@@ -18,16 +25,158 @@
   --color-brand:            var(--brand);
   --color-brand-light:      var(--brand-light);
   --color-brand-deep:       var(--brand-deep);
-  --color-surface-card:     var(--surface-card);
-  --color-surface-elevated: var(--surface-elevated);
+  --color-panel:            var(--panel);
+  --color-card:             var(--card);
+  --color-raised:           var(--raised);
+  --color-line:             var(--line);
+  --color-line-strong:      var(--line-strong);
+  --color-hint:             var(--hint);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+  }
+
+  /* Фокус с клавиатуры виден везде; мышью — нет. Поля показывают фокус рамкой (.field). */
+  :focus-visible {
+    outline: 2px solid var(--color-violet-400);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2e2547 transparent;
+  }
+}
+
+/* ─── Общие элементы ─────────────────────────────────────────────────────────── */
+/* Слой components: утилиты рядом в className их перебивают (`btn w-full`, `card p-6`). */
+@layer components {
+  .card {
+    background-color: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-2xl);
+  }
+
+  /* Подпись над цифрой или фильтром. */
+  .label {
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--color-zinc-400);
+  }
+
+  .field {
+    background-color: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-xl);
+    padding: 0.5rem 0.75rem;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    color: var(--color-white);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .field::placeholder { color: var(--hint); }
+  .field:focus { border-color: var(--color-violet-500); box-shadow: 0 0 0 3px rgb(139 92 246 / 0.18); }
+  .field:disabled { opacity: 0.5; }
+
+  /* Кнопка: обычная, главная (`btn btn-primary`) и маленькая (`btn btn-sm`). */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 2.25rem;
+    padding-inline: 0.875rem;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--line-strong);
+    background-color: var(--card);
+    color: var(--color-zinc-200);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--color-violet-600); color: var(--color-white); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary {
+    border-color: transparent;
+    background-image: linear-gradient(to right, var(--color-violet-600), var(--color-violet-500));
+    color: var(--color-white);
+    font-weight: 600;
+  }
+  .btn-primary:hover:not(:disabled) {
+    border-color: transparent;
+    background-image: linear-gradient(to right, var(--color-violet-500), var(--color-violet-400));
+  }
+  .btn-sm { height: 1.875rem; padding-inline: 0.625rem; border-radius: 9px; font-size: 12px; }
+
+  /* Переключатель: `seg` вокруг, кнопки — {...seg(on)} из components/ui. Выбранная — по
+     aria-pressed, его же слышит экранный чтец. На телефоне ряд листается вбок, а не
+     переносится в три строки. */
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+  }
+  .seg::-webkit-scrollbar { display: none; }
+  @media (width >= 48rem) { .seg { flex-wrap: wrap; } }
+  .seg-btn {
+    flex: none;
+    height: 1.875rem;
+    padding-inline: 0.75rem;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--color-zinc-400);
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .seg-btn:hover { color: var(--color-white); }
+  .seg-btn[aria-pressed="true"] {
+    background-image: linear-gradient(to right, var(--color-violet-600), var(--color-violet-500));
+    color: var(--color-white);
+  }
+
+  /* Чип — фильтр с несколькими выбранными (гео, графики, карточки). {...chip(on)}. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.75rem;
+    padding-inline: 0.625rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--line);
+    background-color: var(--card);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--color-zinc-400);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .chip:hover { color: var(--color-white); border-color: var(--color-violet-600); }
+  .chip[aria-pressed="true"] {
+    border-color: transparent;
+    background-color: var(--color-violet-600);
+    color: var(--color-white);
+  }
 }
 
 @keyframes dashboard-fade-in {
