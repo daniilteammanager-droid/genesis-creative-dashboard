@@ -12,7 +12,7 @@ import { myLandings } from "@/lib/autoupload/options";
 // уникализация по объявлению или из библиотеки, задания с готовыми видео.
 // Баер видит своё, владелец и тимлид — всё. Замена ссылки, ФП и Multi-advertiser — и в
 // боте, и здесь (Decision 091), история событий, лендинги Torro, «Проверить сейчас».
-//   GET · POST { op: "start", adId? | key, tail, frame }
+//   GET · POST { op: "start", adId? | key | keys[] (до 30, по заданию на каждое), tail, frame }
 //        · { op: "options", adId, kind } · { op: "preview", adId, kind, value } · { op: "confirm", nonce } · { op: "scan" }
 
 export const maxDuration = 300;
@@ -60,7 +60,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const me = await getProfile();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string; kind?: string; value?: string; nonce?: string; retry?: string; id?: string };
+  const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string; kind?: string; value?: string; nonce?: string; retry?: string; id?: string; keys?: string[] };
   const KINDS = ["link", "page", "multi"];
   try {
     if (b.op === "options" && b.adId && KINDS.includes(b.kind ?? "")) return NextResponse.json(await options(me, b.adId, b.kind as Kind));
@@ -85,13 +85,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
   if (b.op !== "start" || !TYPES[b.tail ?? ""] || !TYPES[b.frame ?? ""]) return NextResponse.json({ error: "Выбери вставку и кадры" }, { status: 400 });
-  let row: Record<string, unknown>;
+  let rows: Record<string, unknown>[];
   if (b.retry) {
     // Повтор упавшего или отменённого задания из библиотеки — новое задание с тем же исходником.
     const { data: j } = await db().from("video_variant_jobs").select("owner_id, source_key, source_name, ad_id, status").eq("id", b.retry).maybeSingle();
     if (!j || !["failed", "cancelled"].includes(j.status as string) || j.ad_id) return NextResponse.json({ error: "Повторить можно упавшее или отменённое задание из библиотеки" }, { status: 400 });
     if (j.owner_id !== me.id && me.role !== "main") return NextResponse.json({ error: "Это не твоё задание" }, { status: 403 });
-    row = { owner_id: j.owner_id, source_key: j.source_key, source_name: j.source_name };
+    rows = [{ owner_id: j.owner_id, source_key: j.source_key, source_name: j.source_name }];
   } else if (b.adId) {
     const { data: ad } = await db().from("wh_rejected_ads").select("ad_id, account_id, ad_name, owner_user_id").eq("ad_id", b.adId).maybeSingle();
     if (!ad) return NextResponse.json({ error: "Этого объявления нет среди отклонённых" }, { status: 400 });
@@ -103,14 +103,18 @@ export async function POST(req: Request) {
     if (!key) return NextResponse.json({ error: "Исходник v1 этого креатива не найден в библиотеке" }, { status: 400 });
     const { data: open } = await db().from("video_variant_jobs").select("id").eq("ad_id", ad.ad_id).in("status", ["choosing", "queued", "processing", "ready", "replacing"]).limit(1);
     if (open?.length) return NextResponse.json({ error: "Для этого объявления уже идёт уникализация" }, { status: 400 });
-    row = { ad_id: ad.ad_id, account_id: ad.account_id, owner_id: owner, source_key: key, source_name: key.split("/").pop() };
+    rows = [{ ad_id: ad.ad_id, account_id: ad.account_id, owner_id: owner, source_key: key, source_name: key.split("/").pop() }];
   } else {
-    const videos = await myCreatives(me);
-    const v = videos.find((x) => x.key === b.key && x.kind === "video");
-    if (!v) return NextResponse.json({ error: "Выбери видео из своей библиотеки" }, { status: 400 });
-    row = { owner_id: me.id, source_key: await originalKey(v.key), source_name: v.key.split("/").pop() };
+    // Одно видео (key) или несколько сразу (keys) — по заданию на каждое, с одними настройками.
+    const keys = [...new Set(b.keys?.length ? b.keys : b.key ? [b.key] : [])];
+    if (!keys.length) return NextResponse.json({ error: "Выбери видео из своей библиотеки" }, { status: 400 });
+    if (keys.length > 30) return NextResponse.json({ error: "Не больше 30 видео за раз — очередь одна на всю команду" }, { status: 400 });
+    const videos = new Map((await myCreatives(me)).filter((x) => x.kind === "video").map((x) => [x.key, x]));
+    const foreign = keys.filter((k) => !videos.has(k));
+    if (foreign.length) return NextResponse.json({ error: `Нет в твоей Медиатеке: ${foreign.map((k) => k.split("/").pop()).join(", ")}` }, { status: 400 });
+    rows = await Promise.all(keys.map(async (k) => ({ owner_id: me.id, source_key: await originalKey(k), source_name: k.split("/").pop() })));
   }
-  const { data, error } = await db().from("video_variant_jobs").insert({ ...row, tail_type: b.tail, frame_type: b.frame, status: "queued" }).select("id").single();
+  const { data, error } = await db().from("video_variant_jobs").insert(rows.map((r) => ({ ...r, tail_type: b.tail, frame_type: b.frame, status: "queued" }))).select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ id: data.id });
+  return NextResponse.json({ id: data[0]?.id, ids: data.map((d) => d.id) });
 }

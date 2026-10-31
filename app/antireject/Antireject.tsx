@@ -83,7 +83,8 @@ export default function Antireject() {
   return (
     <div className="w-full p-4 md:p-8 space-y-4">
       <div className="flex flex-wrap items-start gap-3">
-        <div className="flex-1 min-w-0">
+        {/* min-w: на телефоне кнопки уходят строкой ниже, а не сжимают текст в столбик. */}
+        <div className="flex-1 min-w-[16rem]">
           <h1 className="page-title">Антиотклон</h1>
           <p className="text-sm text-hint mt-1">Отклонённые объявления твоих кабинетов. Выбери действие, проверь изменение и подтверди — то же, что кнопки под алертом в боте.</p>
         </div>

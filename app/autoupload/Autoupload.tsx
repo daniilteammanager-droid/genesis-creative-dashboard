@@ -215,7 +215,8 @@ export default function Autoupload() {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-4">
       <div className="flex flex-wrap items-start gap-3">
-        <div className="flex-1 min-w-0">
+        {/* min-w: на телефоне кнопки уходят строкой ниже, а не сжимают текст в столбик. */}
+        <div className="flex-1 min-w-[16rem]">
           <h1 className="page-title">Автозалив</h1>
           <p className="text-sm text-hint mt-1">Кампании, адсеты и объявления в Meta по неймингу команды. Креативы — только те, что ты сам загрузил в Медиатеку, в Meta уходит исходник без сжатия. Форма сохраняется черновиком в этом браузере.</p>
         </div>

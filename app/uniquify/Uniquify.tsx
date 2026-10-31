@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 // «Уникализация» (Decision 091) — вкладка как у Артёма: видео из своей Медиатеки с
 // фильтром по лицу и «только исходники v1», предпросмотр, вставка и кадры, задания из
 // дашборда и Telegram со ссылкой на готовое видео. Монтирует воркер на VPS (Decision 076).
+// Видео можно выбрать несколько — по заданию на каждое с одними настройками (31.10.2026).
 
 const card = "card p-5";
 
@@ -22,7 +23,8 @@ export default function Uniquify() {
   const [face, setFace] = useState("ROMAN");
   const [q, setQ] = useState("");
   const [onlyV1, setOnlyV1] = useState(true);
-  const [sel, setSel] = useState<Video | null>(null);
+  const [sel, setSel] = useState<Video | null>(null);   // в предпросмотре — последнее нажатое
+  const [picked, setPicked] = useState<string[]>([]);   // ключи выбранных видео, по порядку выбора
   const [tail, setTail] = useState("nature");
   const [frame, setFrame] = useState("nature");
   const [note, setNote] = useState<string | null>(null);
@@ -42,9 +44,15 @@ export default function Uniquify() {
     setNote(null);
     const r = await fetch("/api/antireject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "start", tail, frame, ...body }) });
     const d = await r.json().catch(() => ({}));
-    setNote(d.error ?? "В очереди — одно видео монтируется 10–15 минут, по одному. Место в очереди, ход и ссылка — ниже");
+    const n = Array.isArray(d.ids) ? d.ids.length : 1;
+    setNote(d.error ?? `${n > 1 ? `В очереди ${n} видео` : "В очереди"} — одно монтируется 10–15 минут, по одному. Место в очереди, ход и ссылка — ниже`);
+    if (!d.error && body.keys) setPicked([]);
     load();
   }
+  const toggle = (x: Video) => {
+    setSel(x);
+    setPicked((p) => (p.includes(x.key) ? p.filter((k) => k !== x.key) : [...p, x.key]));
+  };
   async function cancel(id: string) {
     const r = await fetch("/api/antireject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "cancel", id }) });
     const d = await r.json().catch(() => ({}));
@@ -75,10 +83,15 @@ export default function Uniquify() {
             </select>
             <input placeholder="Найти по коду" value={q} onChange={(e) => setQ(e.target.value)} className={`field flex-1 min-w-[160px]`} />
           </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-300 mb-2"><input type="checkbox" checked={onlyV1} onChange={(e) => setOnlyV1(e.target.checked)} className="accent-violet-500" />Только исходники v1</label>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+            <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={onlyV1} onChange={(e) => setOnlyV1(e.target.checked)} className="accent-violet-500" />Только исходники v1</label>
+            {picked.length > 0 && <button type="button" onClick={() => setPicked([])} className="text-xs text-violet-300 hover:text-violet-200 ml-auto">Снять выбор · {picked.length}</button>}
+          </div>
           <div className="max-h-[420px] overflow-y-auto space-y-1">
             {list.length === 0 ? <p className="text-sm text-hint">Нет видео под эти фильтры. Лицо ставится при загрузке в Медиатеку.</p> : list.map((x) => (
-              <button key={x.key} type="button" onClick={() => setSel(x)} className={`w-full flex items-center gap-3 px-2 py-1.5 rounded-lg border text-left ${sel?.key === x.key ? "border-violet-500 bg-violet-900/15" : "border-transparent hover:border-line"}`}>
+              <button key={x.key} type="button" onClick={() => toggle(x)} aria-pressed={picked.includes(x.key)}
+                      className={`w-full flex items-center gap-3 px-2 py-1.5 rounded-lg border text-left ${picked.includes(x.key) ? "border-violet-500 bg-violet-900/15" : "border-transparent hover:border-line"}`}>
+                <input type="checkbox" readOnly tabIndex={-1} checked={picked.includes(x.key)} className="accent-violet-500 shrink-0 pointer-events-none" />
                 {x.thumb ? <img src={x.thumb} alt="" loading="lazy" className="w-8 h-12 object-cover rounded bg-black" /> : <span className="w-8 h-12 rounded bg-black/40" />}
                 <span className="text-sm text-zinc-200 truncate">{x.code}</span>
               </button>
@@ -88,18 +101,21 @@ export default function Uniquify() {
 
         <div data-tour="uq-settings" className={card}>
           <h2 className="text-base font-semibold text-white mb-3">Настройки обработки</h2>
+          {picked.length > 1 && <p className="text-sm text-violet-200 mb-2">Выбрано {picked.length} видео — каждое уйдёт отдельным заданием с этими настройками.</p>}
           {sel ? (
             <>
               <p className="text-sm text-zinc-200 mb-2 truncate">{sel.code}</p>
               <video key={sel.key} src={sel.url} poster={sel.thumb ?? undefined} controls preload="none" className="w-full max-h-72 rounded-lg bg-black mb-3" />
             </>
-          ) : <p className="text-sm text-hint mb-3">Выбери исходное видео слева.</p>}
+          ) : <p className="text-sm text-hint mb-3">Выбери исходное видео слева — можно несколько.</p>}
           <div className="grid grid-cols-2 gap-2 mb-3">
             {pick("После 30 секунд чёрного экрана", tail, setTail)}
             {pick("Кадры перед и после крео", frame, setFrame)}
           </div>
           <p className="text-[11px] text-hint mb-3 leading-relaxed">Крайние вставки — по 1/30 секунды перед и после крео. Основное видео сохраняется без пережатия, сжимаются только добавленные материалы. Скорость исходника меняется на 3–5%. Вставка — 5–10 минут; с дисклеймером весь ролик заканчивается около 10-й минуты. Дисклеймер: 10 голосов × 10 оформлений, сочетания меняются сами.</p>
-          <button type="button" disabled={!sel} onClick={() => sel && start({ key: sel.key })} className="btn btn-primary">Обработать видео</button>
+          <button type="button" disabled={!picked.length} onClick={() => start({ keys: picked })} className="btn btn-primary">
+            {picked.length > 1 ? `Обработать ${picked.length} видео` : "Обработать видео"}
+          </button>
           {note && <p className="text-sm text-violet-200 mt-2">{note}</p>}
         </div>
       </div>
@@ -111,7 +127,8 @@ export default function Uniquify() {
           <div className="divide-y divide-line">
             {v.jobs.map((j) => (
               <div key={j.id} className="py-2.5 flex flex-wrap gap-3 items-start">
-                <div className="flex-1 min-w-0">
+                {/* min-w: на телефоне кнопки уходят строкой ниже, а не сжимают название. */}
+                <div className="flex-1 min-w-[14rem]">
                   <p className="text-sm text-zinc-200 truncate">{j.source_name} <span className="text-hint">· {v.types[j.tail_type]} · кадры: {v.types[j.frame_type]}{j.ad_id ? " · с заменой в объявлении" : ""}</span></p>
                   <p className="text-[11px] text-hint">
                     {when(j.created_at)}{j.duration ? ` · ${Math.round(Number(j.duration))} с` : ""}
