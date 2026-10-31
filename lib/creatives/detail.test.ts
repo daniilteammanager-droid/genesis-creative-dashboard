@@ -39,6 +39,9 @@ assert.equal(m.cpdp, 15);
 assert.equal(m.cdep, 150);
 assert.equal(m.subToDia, 40);
 assert.equal(metricsOf(d.weeks[1].sums).romi, null);
+// Депы без спенда (поздние депы со старого трафика): цены нет, а не $0.
+assert.equal(metricsOf({ spend: 0, impressions: 0, clicks: 0, subs: 0, dia: 4, deps: 2, rev: 1700 }).cdep, null);
+assert.equal(metricsOf({ spend: 0, impressions: 0, clicks: 0, subs: 0, dia: 4, deps: 2, rev: 1700 }).cdia, null);
 
 // Ничего нет — недель нет.
 assert.deepEqual(buildDetail("vid-x", "2026-10-01", "2026-10-31", [], []).weeks, []);

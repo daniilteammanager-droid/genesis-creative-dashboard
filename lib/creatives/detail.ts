@@ -86,20 +86,23 @@ export function buildDetail(code: string, since: string, until: string, spend: S
 }
 
 // Производные — всегда из сумм, а не средним по дням (Decision 024). null — делить не на что.
+// Цена без спенда — тоже null: депы недели без открутки пришли со старого трафика, и
+// «цена депа $0» читалась бы как бесплатный деп.
 const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
+const price = (spend: number, n: number) => (spend > 0 ? ratio(spend, n) : null);
 export function metricsOf(s: Sums) {
   return {
     profit: s.rev - s.spend,
     romi: s.spend > 0 ? ((s.rev - s.spend) / s.spend) * 100 : null,
     roas: ratio(s.rev, s.spend),
     cpm: s.impressions > 0 ? (s.spend / s.impressions) * 1000 : null,
-    cpc: ratio(s.spend, s.clicks),
+    cpc: price(s.spend, s.clicks),
     ctr: s.impressions > 0 ? (s.clicks / s.impressions) * 100 : null,
-    cpdp: ratio(s.spend, s.subs),
+    cpdp: price(s.spend, s.subs),
     clickToSub: s.clicks > 0 ? (s.subs / s.clicks) * 100 : null,
-    cdia: ratio(s.spend, s.dia),
+    cdia: price(s.spend, s.dia),
     subToDia: s.subs > 0 ? (s.dia / s.subs) * 100 : null,
-    cdep: ratio(s.spend, s.deps),
+    cdep: price(s.spend, s.deps),
     diaToDep: s.dia > 0 ? (s.deps / s.dia) * 100 : null,
   };
 }

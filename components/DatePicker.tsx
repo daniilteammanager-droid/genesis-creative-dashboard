@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { MONTHS, WEEKDAYS, monthGrid, rangeLabel, dayLabel, shiftMonth, ymOf } from "@/lib/calendar";
 import { mskDay } from "@/lib/day";
 
@@ -16,16 +16,31 @@ function useOutside(open: boolean, close: () => void) {
     if (!open) return;
     const down = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) close(); };
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    // Панель стоит по координатам кнопки: прокрутили или сменили размер окна — закрываем,
+    // иначе она повисла бы отдельно от кнопки.
+    const away = (e: Event) => { if (!(e.target instanceof Node && ref.current?.contains(e.target))) close(); };
     document.addEventListener("mousedown", down);
     document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
+    window.addEventListener("scroll", away, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key);
+      window.removeEventListener("scroll", away, true); window.removeEventListener("resize", close);
+    };
   }, [open, close]);
   return ref;
 }
 
-// У правого края окна календарь открывается влево от кнопки, а не за экран.
-const side = (el: HTMLElement | null, width: number) =>
-  el && el.getBoundingClientRect().left + width > window.innerWidth - 12 ? "sm:right-0" : "sm:left-0";
+// На ПК панель — fixed по координатам кнопки: её не обрежет ни одна прокрутка (в колонке
+// модалки крео календарь уезжал за край, 31.10.2026). Справа не влезает — прижимаем к краю
+// окна, снизу не влезает — открываем вверх. На телефоне — шторка снизу (классы panel).
+const place = (el: HTMLElement | null, width: number, height: number): CSSProperties | undefined => {
+  if (!el || window.innerWidth < 640) return undefined;
+  const r = el.getBoundingClientRect();
+  const left = Math.max(12, Math.min(r.left, window.innerWidth - width - 12));
+  const top = r.bottom + 8 + height > window.innerHeight - 12 ? Math.max(12, r.top - 8 - height) : r.bottom + 8;
+  return { left, top };
+};
 
 const Icon = () => (
   <svg viewBox="0 0 20 20" className="w-4 h-4 shrink-0 text-violet-300" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
@@ -35,7 +50,7 @@ const Icon = () => (
 
 const trigger = "inline-flex items-center gap-2 bg-panel border border-line hover:border-violet-600/60 rounded-xl px-3 py-2 text-sm text-white transition whitespace-nowrap";
 const panel = "z-[80] bg-card border border-violet-800/50 rounded-2xl shadow-2xl shadow-violet-950/60 p-3 " +
-  "fixed inset-x-3 bottom-3 sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:mt-2";
+  "fixed inset-x-3 bottom-3 sm:inset-x-auto sm:bottom-auto";
 
 function Month({ y, m, cell, onPick, onHover, nav }: {
   y: number; m: number; cell: (iso: string) => string; onPick: (iso: string) => void; onHover?: (iso: string | null) => void;
@@ -68,11 +83,11 @@ export function DateRange({ since, until, onChange, min, max = mskDay(), classNa
   const [start, setStart] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [view, setView] = useState(() => ymOf(until));
-  const [align, setAlign] = useState("sm:left-0");
+  const [pos, setPos] = useState<CSSProperties>();
   const close = () => { setOpen(false); setStart(null); setHover(null); };
   const ref = useOutside(open, close);
 
-  const toggle = () => { if (open) close(); else { setView(ymOf(until)); setAlign(side(ref.current, 560)); setOpen(true); } };
+  const toggle = () => { if (open) close(); else { setView(ymOf(until)); setPos(place(ref.current, 546, 360)); setOpen(true); } };
   const off = (d: string) => Boolean((min && d < min) || (max && d > max));
   const [a, b] = start ? [start, hover && hover >= start ? hover : start].sort() : [since, until];
   const today = mskDay();
@@ -99,7 +114,7 @@ export function DateRange({ since, until, onChange, min, max = mskDay(), classNa
       {open && (
         <>
           <div className="fixed inset-0 bg-black/50 z-[79] sm:hidden" onClick={close} />
-          <div role="dialog" aria-label="Выбор периода" className={`${panel} ${align}`}>
+          <div role="dialog" aria-label="Выбор периода" className={panel} style={pos}>
             <div className="flex gap-4">
               <div className="hidden sm:block">
                 <Month y={left.y} m={left.m} cell={cell} onPick={pick} onHover={setHover} nav={{ prev: () => setView(shiftMonth(view.y, view.m, -1)) }} />
@@ -119,7 +134,7 @@ export function DateRange({ since, until, onChange, min, max = mskDay(), classNa
 export function DatePicker({ value, onChange, min, max, className = "" }: Common & { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => ymOf(value || mskDay()));
-  const [align, setAlign] = useState("sm:left-0");
+  const [pos, setPos] = useState<CSSProperties>();
   const ref = useOutside(open, () => setOpen(false));
   const today = mskDay();
   const off = (d: string) => Boolean((min && d < min) || (max && d > max));
@@ -128,13 +143,13 @@ export function DatePicker({ value, onChange, min, max, className = "" }: Common
     : `rounded-lg text-zinc-200 hover:bg-violet-900/40 ${d === today ? "ring-1 ring-inset ring-violet-500/70" : ""}`;
   return (
     <div ref={ref} className={`relative ${className}`}>
-      <button type="button" onClick={() => { setView(ymOf(value || today)); setAlign(side(ref.current, 280)); setOpen((v) => !v); }} className={trigger} aria-haspopup="dialog" aria-expanded={open}>
+      <button type="button" onClick={() => { setView(ymOf(value || today)); setPos(place(ref.current, 280, 350)); setOpen((v) => !v); }} className={trigger} aria-haspopup="dialog" aria-expanded={open}>
         <Icon />{value ? dayLabel(value) : "Выбрать дату"}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 bg-black/50 z-[79] sm:hidden" onClick={() => setOpen(false)} />
-          <div role="dialog" aria-label="Выбор даты" className={`${panel} ${align}`}>
+          <div role="dialog" aria-label="Выбор даты" className={panel} style={pos}>
             <Month y={view.y} m={view.m} cell={cell} onPick={(d) => { if (!off(d)) { onChange(d); setOpen(false); } }}
                    nav={{ prev: () => setView(shiftMonth(view.y, view.m, -1)), next: () => setView(shiftMonth(view.y, view.m, 1)) }} />
             <div className="flex justify-between mt-2 px-1">
