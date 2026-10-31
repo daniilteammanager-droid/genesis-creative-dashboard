@@ -6,7 +6,7 @@ import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { DateRange } from "@/components/DatePicker";
-import { seg, Spinner } from "@/components/ui";
+import { Busy, seg, Spinner } from "@/components/ui";
 
 
 
@@ -138,9 +138,6 @@ export default function LiveCheck() {
             <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} className="accent-violet-500" />Только активные
           </label>
         )}
-        {pending && !loading && (
-          <Spinner small />
-        )}
       </div>
 
       {/* Переключатель баеров показывается и когда выбирать некого: иначе
@@ -188,7 +185,7 @@ export default function LiveCheck() {
       )}
 
       {data && !loading && (
-        <div className={pending ? "opacity-40 transition-opacity" : "transition-opacity"}>
+        <Busy on={pending}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {([
               ["Расход", `$${nf(data.totals.spend)}`],
@@ -266,7 +263,7 @@ export default function LiveCheck() {
               несколько стран, сведены в одну строку: доход между странами разделить нечем.
             </p>
           )}
-        </div>
+        </Busy>
       )}
 
       <div data-tour="check-history" className="card p-5 mt-5">

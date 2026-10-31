@@ -8,7 +8,7 @@ import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/me
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { toLegacy } from "./toLegacy";
-import { seg, Spinner } from "@/components/ui";
+import { Busy, seg, Spinner } from "@/components/ui";
 
 // Плитка новой картотеки: то же, что на легаси-странице, но за выбранный период.
 //
@@ -49,6 +49,7 @@ type Sort = (typeof SORTS)[number]["id"];
 export default function CreativeCards({
   data,
   loading,
+  busy = false,
   media,
   suffixes,
   notes,
@@ -56,6 +57,7 @@ export default function CreativeCards({
 }: {
   data: CreativesResult | null;
   loading: boolean;
+  busy?: boolean; // пришёл новый фильтр, ответ ещё едет
   media: MediaFile[];
   suffixes: string[];
   notes: Record<string, CreativeNote>;
@@ -234,6 +236,7 @@ export default function CreativeCards({
         </div>
       )}
 
+      <Busy on={busy}>
       {data && !loading && (
         <>
           {withoutFile > 0 && (
@@ -283,6 +286,7 @@ export default function CreativeCards({
           )}
         </>
       )}
+      </Busy>
 
       {selected && (
         <CreativeModal

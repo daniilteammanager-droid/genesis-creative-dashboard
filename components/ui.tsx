@@ -18,6 +18,22 @@ export function Spinner({ small = false }: { small?: boolean }) {
   );
 }
 
+// Пока едет ответ на новый фильтр (дата, баер, страна): прежние цифры приглушены и не
+// нажимаются, поверх — кружок, видный и в прокрученной таблице. Без этого экран стоял
+// как есть, а потом цифры резко менялись (31.10.2026). Фильтры в обёртку не кладём.
+export function Busy({ on, children }: { on: boolean; children: React.ReactNode }) {
+  return (
+    <div className="relative" aria-busy={on}>
+      <div className={`transition-opacity ${on ? "opacity-40 pointer-events-none select-none" : ""}`}>{children}</div>
+      {on && (
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="sticky top-[35vh] flex justify-center py-6"><Spinner /></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Иконки вместо эмодзи: эмодзи на каждой системе своего цвета и размера.
 export type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image";
 const PATHS: Record<IconName, string[]> = {

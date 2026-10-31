@@ -8,7 +8,7 @@ import { PERIODS, type PeriodId } from "@/lib/home/periods";
 import type { Board, Standing } from "@/lib/home/leaderboard";
 import { useProfile } from "@/components/Shell";
 import AiBlock from "./AiBlock";
-import { chip, seg } from "@/components/ui";
+import { Busy, chip, seg } from "@/components/ui";
 
 // Главная: свои цифры за период (склад) и рейтинг баеров (таблицы General 4.0).
 // Карточки — столбцы Live Manager: те же формулы, ничего второй раз не считаем.
@@ -36,7 +36,8 @@ const tone = (label: string, x: Metrics): "good" | "bad" | undefined => {
 export default function HomePage() {
   const me = useProfile();
   const [period, setPeriod] = useState<PeriodId>("7d");
-  const [data, setData] = useState<HomeMetrics | null>(null);
+  // Ответ помнит свой период: сменили период — прежние цифры приглушены, пока едут новые (Busy).
+  const [data, setData] = useState<(HomeMetrics & { period: PeriodId }) | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const cards = parseCards(useSyncExternalStore(subscribeCards, readCards, () => null));
   const [cardsOpen, setCardsOpen] = useState(false);
@@ -45,8 +46,8 @@ export default function HomePage() {
     let alive = true;
     fetch(`/api/home/metrics?period=${period}`).then((r) => r.json()).then((j) => {
       if (!alive) return;
-      if (j.error) setErr(j.error); else setData(j);
-    }).catch(() => alive && setErr("Не удалось загрузить"));
+      if (j.error) { setErr(j.error); setData(null); } else { setErr(null); setData({ ...j, period }); }
+    }).catch(() => { if (alive) { setErr("Не удалось загрузить"); setData(null); } });
     return () => { alive = false; };
   }, [period]);
 
@@ -69,7 +70,7 @@ export default function HomePage() {
         <div data-tour="home-periods" className="flex flex-wrap items-center gap-2 mb-3">
           <div className="seg">
             {PERIODS.map((p) => (
-              <button key={p.id} onClick={() => { if (p.id !== period) { setData(null); setErr(null); setPeriod(p.id); } }} {...seg(period === p.id)}>{p.label}</button>
+              <button key={p.id} onClick={() => setPeriod(p.id)} {...seg(period === p.id)}>{p.label}</button>
             ))}
           </div>
           <button onClick={() => setCardsOpen((v) => !v)} {...chip(cardsOpen)}>⚙ Настроить</button>
@@ -84,11 +85,13 @@ export default function HomePage() {
           </div>
         )}
 
+        <Busy on={Boolean(data) && data!.period !== period}>
         <div data-tour="home-metrics" className="stats mb-2">
           {cards.map((l) => CARDS.find((c) => c.label === l)).filter((c) => c !== undefined).map((c) => (
             <SummaryCard key={c.label} label={c.label} value={data ? c.cell(data.totals) : "…"} tone={data ? tone(c.label, data.totals) : undefined} />
           ))}
         </div>
+        </Busy>
         <div className="text-xs text-hint mb-10 space-y-1">
           {err && <p className="text-red-400">{err}</p>}
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}

@@ -10,7 +10,7 @@ import {
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
 import AiPanel, { VERDICT, type Verdict } from "./AiPanel";
-import { chip, seg } from "@/components/ui";
+import { Busy, chip, seg } from "@/components/ui";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за любой период, из склада.
 // Крео оцениваем по ROMI и этапу теста — правила и цвета в lib/traffic-report/build.ts.
@@ -77,6 +77,9 @@ export default function TrafficReportPage() {
   const [buyer, setBuyer] = useState("all");
   const [data, setData] = useState<TrafficReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Прежние цифры не стираем: пока едет ответ на новый период или баера, они приглушены (Busy).
+  const reqKey = `${range.since}|${range.until}|${buyer}`;
+  const [loadedKey, setLoadedKey] = useState("");
   const [closed, setClosed] = useState<Set<string>>(new Set());   // свёрнутые баеры (по умолчанию раскрыты)
   const [open, setOpen] = useState<Set<string>>(new Set());       // раскрытые страны (по умолчанию свёрнуты)
   const [stage, setStage] = useState<Stage | "">("");
@@ -86,12 +89,14 @@ export default function TrafficReportPage() {
 
   useEffect(() => {
     let alive = true;
+    const k = `${range.since}|${range.until}|${buyer}`;
     const p = new URLSearchParams({ since: range.since, until: range.until });
     if (buyer !== "all") p.set("buyer", buyer);
     fetch(`/api/traffic-report?${p}`).then((r) => r.json()).then((j) => {
       if (!alive) return;
       if (j.error) setErr(j.error); else { setErr(null); setData(j); }
-    }).catch(() => alive && setErr("Не удалось загрузить"));
+      setLoadedKey(k);
+    }).catch(() => { if (alive) { setErr("Не удалось загрузить"); setLoadedKey(k); } });
     return () => { alive = false; };
   }, [range, buyer]);
 
@@ -172,7 +177,7 @@ export default function TrafficReportPage() {
   const collapseAll = () => { setOpen(new Set()); setClosed(new Set(tree.map((b) => b.key))); };
 
   const t = data ? totalOf(base) : null;
-  const pick = (r: { since: string; until: string }) => { setData(null); setRange(r); };
+  const pick = (r: { since: string; until: string }) => setRange(r);
 
   return (
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
@@ -191,9 +196,9 @@ export default function TrafficReportPage() {
         </div>
         {data && !data.isBuyer && data.buyers.length > 1 && (
           <div className="seg mb-5">
-            <button onClick={() => { setData(null); setBuyer("all"); }} {...seg(buyer === "all")}>Все баеры</button>
+            <button onClick={() => setBuyer("all")} {...seg(buyer === "all")}>Все баеры</button>
             {data.buyers.map((b) => (
-              <button key={b.id} onClick={() => { setData(null); setBuyer(b.id); }} {...seg(buyer === b.id)}>{b.label}</button>
+              <button key={b.id} onClick={() => setBuyer(b.id)} {...seg(buyer === b.id)}>{b.label}</button>
             ))}
           </div>
         )}
@@ -225,6 +230,7 @@ export default function TrafficReportPage() {
           )}
         </div>
 
+        <Busy on={Boolean(data) && loadedKey !== reqKey}>
         <div className="stats mb-2">
           <SummaryCard label="Спенд" value={t ? usd0(t.sums.spend) : "…"} />
           <SummaryCard label="Ревенью" value={t ? usd0(t.sums.rev) : "…"} />
@@ -232,6 +238,7 @@ export default function TrafficReportPage() {
           <SummaryCard label="Депозиты" value={t ? t.sums.deps.toLocaleString("ru-RU") : "…"} />
           <SummaryCard label="Цена депа" value={t ? show(t.m.cpdep, usd0) : "…"} />
         </div>
+        </Busy>
         <div className="text-xs mb-6 space-y-1">
           {err && <p className="text-red-400">{err}</p>}
           {favErr && <p className="text-red-400">{favErr}</p>}
@@ -273,6 +280,7 @@ export default function TrafficReportPage() {
             <input id="traffic-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск крео" className={`field min-w-[10rem] flex-1 max-w-xs`} />
           </div>
 
+          <Busy on={Boolean(data) && loadedKey !== reqKey}>
           <div className="overflow-auto max-h-[70vh] rounded-xl border border-line [color-scheme:dark]">
             <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
               <thead>
@@ -336,6 +344,7 @@ export default function TrafficReportPage() {
               </tbody>
             </table>
           </div>
+          </Busy>
           <p className="text-[11px] text-hint mt-3 max-w-5xl">
             Спенд, показы и клики — склад (Meta, Telegram Ads; у Артёма за 19.09–23.10 — снимки Genesis Manager), клики — все клики Meta.
             Подписки, диалоги, депы и ревенью — Torro по связке «кампания × объявление», ревенью — депы и редепы за период. Страна — из таргета адсета,

@@ -12,7 +12,7 @@ import { isSupabaseConfigured, supabase, selectAllRows, type CreativeNote } from
 import type { CreativesResult } from "@/lib/warehouse/creatives";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { DateRange } from "@/components/DatePicker";
-import { Icon, seg } from "@/components/ui";
+import { Busy, Icon, seg } from "@/components/ui";
 
 // Оболочка раздела: виды, загрузка крео и Медиатека.
 //
@@ -47,6 +47,9 @@ export default function CreativesView() {
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // На какой фильтр пришёл показанный ответ: не совпал с выбранным — новый ещё едет (Busy).
+  const reqKey = `${since}|${until}|${buyer}|${country}`;
+  const [loadedKey, setLoadedKey] = useState("");
   const [media, setMedia] = useState<MediaFile[]>([]);
   const [suffixes, setSuffixes] = useState<string[]>([]);
   const [notes, setNotes] = useState<Record<string, CreativeNote>>({});
@@ -75,6 +78,7 @@ export default function CreativesView() {
 
   useEffect(() => {
     let alive = true;
+    const k = `${since}|${until}|${buyer}|${country}`;
     const q = new URLSearchParams({ since, until });
     if (buyer !== "all") q.set("buyer", buyer);
     if (country !== "all") q.set("country", country);
@@ -83,9 +87,9 @@ export default function CreativesView() {
       .then((d) => {
         if (!alive) return;
         if (d.error) throw new Error(d.error);
-        setData(d); setError(null); setLoading(false);
+        setData(d); setError(null); setLoading(false); setLoadedKey(k);
       })
-      .catch((e: Error) => { if (alive) { setData(null); setError(e.message); setLoading(false); } });
+      .catch((e: Error) => { if (alive) { setData(null); setError(e.message); setLoading(false); setLoadedKey(k); } });
     return () => { alive = false; };
   }, [since, until, buyer, country]);
 
@@ -224,10 +228,12 @@ export default function CreativesView() {
       )}
 
       {view === "cards" && (
-        <CreativeCards data={data} loading={loading} media={media} suffixes={suffixes}
+        <CreativeCards data={data} loading={loading} busy={Boolean(data) && loadedKey !== reqKey} media={media} suffixes={suffixes}
                        notes={notes} onNotesChange={setNotes} />
       )}
-      {view === "analytics" && <CreativeAnalytics data={data} loading={loading} />}
+      {view === "analytics" && (
+        <Busy on={Boolean(data) && loadedKey !== reqKey}><CreativeAnalytics data={data} loading={loading} /></Busy>
+      )}
       {view === "table" && <CreativesTable />}
 
       {showUpload && (

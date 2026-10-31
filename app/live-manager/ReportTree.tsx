@@ -6,7 +6,7 @@ import type { LiveState } from "@/lib/reports-live/manage";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, SORTS, money, n, romi, sortBy, totalsOf } from "./columns";
 import { DateRange } from "@/components/DatePicker";
-import { seg, Spinner } from "@/components/ui";
+import { Busy, seg, Spinner } from "@/components/ui";
 import { SummaryCard } from "@/components/general-report/shared";
 
 
@@ -131,6 +131,10 @@ export default function ReportTree() {
   const [data, setData] = useState<ReportTreeResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // На какой период и баера пришёл показанный ответ: не совпал — новый едет (Busy).
+  // Автообновление «Live» и «Обновить сейчас» сюда не входят: там экран не гасим.
+  const reqKey = `${since}|${until}|${buyer}`;
+  const [loadedKey, setLoadedKey] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
   // Live Manager (Decision 079)
   const [live, setLive] = useState<Map<string, LiveState>>(new Map());
@@ -167,6 +171,7 @@ export default function ReportTree() {
 
   useEffect(() => {
     let alive = true;
+    const k = `${since}|${until}|${buyer}`;
     const q = new URLSearchParams({ since, until });
     if (buyer !== "all") q.set("buyer", buyer);
     if (refresh) q.set("refresh", "1");
@@ -175,9 +180,9 @@ export default function ReportTree() {
       .then((d) => {
         if (!alive) return;
         if (d.error) throw new Error(d.error);
-        setData(d); setError(null); setLoading(false); setRefresh(false); setBusy(null);
+        setData(d); setError(null); setLoading(false); setRefresh(false); setBusy(null); setLoadedKey(k);
       })
-      .catch((e: Error) => { if (alive) { setError(e.message); setLoading(false); setRefresh(false); setBusy(null); } });
+      .catch((e: Error) => { if (alive) { setError(e.message); setLoading(false); setRefresh(false); setBusy(null); setLoadedKey(k); } });
     return () => { alive = false; };
   }, [since, until, buyer, tick, refresh]);
 
@@ -481,6 +486,7 @@ export default function ReportTree() {
         </div>
       )}
 
+      <Busy on={Boolean(data) && loadedKey !== reqKey}>
       {!loading && !error && (data?.nodes.length ?? 0) > 0 && (
         <>
           {/* Итоги того, что на экране (с фильтрами), — как карточки у Артёма. */}
@@ -537,6 +543,7 @@ export default function ReportTree() {
           </p>
         </>
       )}
+      </Busy>
     </div>
   );
 }

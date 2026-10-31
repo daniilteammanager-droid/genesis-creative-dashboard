@@ -6,7 +6,7 @@ import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
 import { DateRange } from "@/components/DatePicker";
-import { seg, Spinner } from "@/components/ui";
+import { Busy, seg, Spinner } from "@/components/ui";
 
 // Сортировка кликом по заголовку — по числу, а не по тексту ячейки.
 const ratio = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
@@ -58,6 +58,9 @@ export default function CreativesTable() {
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // На какой фильтр пришёл показанный ответ: не совпал с выбранным — новый ещё едет.
+  const reqKey = `${since}|${until}|${buyer}|${country}`;
+  const [loadedKey, setLoadedKey] = useState("");
   const isBuyer = data?.isBuyer ?? false;
 
   useEffect(() => {
@@ -67,6 +70,7 @@ export default function CreativesTable() {
     // alive закрывает гонку: при быстром переключении дат ответ на старый запрос
     // мог прийти после нового и подменить свежие цифры прошлыми.
     let alive = true;
+    const k = `${since}|${until}|${buyer}|${country}`;
     const q = new URLSearchParams({ since, until });
     if (buyer !== "all") q.set("buyer", buyer);
     if (country !== "all") q.set("country", country);
@@ -79,19 +83,21 @@ export default function CreativesTable() {
         setData(d);
         setError(null);
         setLoading(false);
+        setLoadedKey(k);
       })
       .catch((e: Error) => {
         if (!alive) return;
         setError(e.message);
         setLoading(false);
+        setLoadedKey(k);
       });
 
     return () => { alive = false; };
   }, [since, until, buyer, country]);
 
-  // Пока едет новый ответ, на экране прежние цифры. Помечаем их, чтобы не
-  // принять данные за прошлый период за текущие.
-  const stale = Boolean(data) && (data!.since !== since || data!.until !== until);
+  // Пока едет новый ответ, на экране прежние цифры — приглушены (Busy), чтобы не
+  // принять данные за прошлый период или другого баера за текущие.
+  const busy = Boolean(data) && loadedKey !== reqKey;
 
   // Лицо и склейка версий — поверх ответа, без нового запроса (как у Артёма в «Дашборде»).
   const all: CreativeRow[] = data?.rows ?? [];
@@ -224,12 +230,6 @@ export default function CreativesTable() {
         </div>
       )}
 
-      {stale && (
-        <p className="text-[11px] text-hint mb-3">
-          Показаны цифры за {data!.since} — {data!.until}, новые ещё едут.
-        </p>
-      )}
-
       {!loading && !error && rows.length === 0 && (
         <div className="card p-6">
           <h2 className="text-lg font-semibold text-white mb-2">За этот период пусто</h2>
@@ -241,6 +241,7 @@ export default function CreativesTable() {
         </div>
       )}
 
+      <Busy on={busy}>
       {!loading && !error && rows.length > 0 && (
         <>
           {/* Карточки — как в «Дашборде» Артёма: число и цена под ним. */}
@@ -335,6 +336,7 @@ export default function CreativesTable() {
           </p>
         </>
       )}
+      </Busy>
     </div>
   );
 }
