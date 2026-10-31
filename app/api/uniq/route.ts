@@ -6,8 +6,14 @@ import { renderFailed, replaceInMeta } from "@/lib/uniq/replace";
 // Очередь уникализации для воркера на VPS (Decision 076). Сессии нет — как у
 // /api/ingest: вход по общему секрету, роут в PUBLIC_PATHS middleware.
 //   GET  — взять следующее задание: исходник по ссылке и куда положить результат;
-//   POST — {id, stage} ход работы, {id, status: "ready", duration, bytes} готово,
-//          {id, status: "failed", error} ошибка. Готовое сразу едет в Meta.
+//   POST — {id, stage} ход работы (и пульс раз в минуту), {id, status: "ready", duration, bytes} готово,
+//          {id, status: "failed", error} ошибка. Готовое сразу едет в Meta. Задание отменили —
+//          на ход работы отвечаем {cancelled: true}, и воркер его бросает.
+
+// Воркер шлёт пульс раз в минуту (runner.cjs от 31.10.2026; прежний — только на смене этапа,
+// а самое долгое задание шло 18 минут). Тишина 25 минут — он упал или завис: задание — в ошибку
+// с «Повторить», а не обратно в очередь (то, что роняет воркер, уронило бы его снова).
+const SILENT_MS = 25 * 60_000;
 
 export const maxDuration = 300;
 
@@ -26,9 +32,9 @@ const deny = () => NextResponse.json({ error: "Нет доступа" }, { statu
 
 export async function GET(req: Request) {
   if (!authorized(req)) return deny();
-  // Упавший посреди монтажа воркер (рестарт) — задание снова в очереди через час.
-  await db().from("video_variant_jobs").update({ status: "queued" }).eq("status", "processing")
-    .lt("updated_at", new Date(Date.now() - 3600_000).toISOString());
+  const { data: silent } = await db().from("video_variant_jobs").select("id").eq("status", "processing")
+    .lt("updated_at", new Date(Date.now() - SILENT_MS).toISOString());
+  for (const s of silent ?? []) await renderFailed(s.id as string, "Воркер не отвечал 25 минут — задание остановлено. Нажми «Повторить».");
   const { data: next } = await db().from("video_variant_jobs").select("id").eq("status", "queued").order("created_at").limit(1);
   if (!next?.length) return NextResponse.json({ job: null });
   const { data: j } = await db().from("video_variant_jobs").update({ status: "processing", stage: "Взял в работу", updated_at: new Date().toISOString() })
@@ -54,7 +60,8 @@ export async function POST(req: Request) {
     }).eq("id", b.id).eq("status", "processing");
     after(() => replaceInMeta(b.id!));
   } else if (b.stage) {
-    await db().from("video_variant_jobs").update({ stage: b.stage.slice(0, 300), updated_at: now }).eq("id", b.id).eq("status", "processing");
+    const { data } = await db().from("video_variant_jobs").update({ stage: b.stage.slice(0, 300), updated_at: now }).eq("id", b.id).eq("status", "processing").select("id");
+    if (!data?.length) return NextResponse.json({ ok: true, cancelled: true });
   }
   return NextResponse.json({ ok: true });
 }

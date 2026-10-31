@@ -54,8 +54,9 @@ export async function replaceInMeta(id: string): Promise<void> {
 
 // Монтаж упал на воркере.
 export async function renderFailed(id: string, error: string): Promise<void> {
+  // Отменённое и готовое ошибкой не перетираем: воркер мог доложить о сбое уже после «Отменить».
   const { data: j } = await db().from("video_variant_jobs").update({ status: "failed", error: error.slice(0, 600), updated_at: new Date().toISOString() })
-    .eq("id", id).select("chat_id, thread_id, source_name").maybeSingle();
+    .eq("id", id).in("status", ["choosing", "queued", "processing", "ready", "replacing"]).select("chat_id, thread_id, source_name").maybeSingle();
   if (!j?.chat_id) return;
   await sendMessage(Number(j.chat_id), `Уникализация ${escapeHtml(j.source_name)} остановлена: ${escapeHtml(error.slice(0, 600))}`, j.thread_id === null ? null : Number(j.thread_id),
     { reply_markup: { inline_keyboard: [[{ text: "Повторить", callback_data: `uv:r:${id}` }]] } }).catch(() => undefined);

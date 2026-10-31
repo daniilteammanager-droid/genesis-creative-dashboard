@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { warehouse } from "@/lib/warehouse/read";
 import { myCreatives } from "@/lib/autoupload/options";
-import { findSource, originalKey, publicUrl } from "@/lib/uniq/source";
+import { downloadUrl, findSource, originalKey, publicUrl } from "@/lib/uniq/source";
 import { TYPES } from "@/lib/uniq/bot";
 import { confirm, options, preview, scanTokens, type Kind } from "@/lib/antireject/web";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
@@ -37,22 +37,30 @@ export async function GET() {
   let eq = db().from("antireject_events").select("id, created_at, kind, ad_id, ad_name, campaign_name, actor, text, ok, status")
     .order("created_at", { ascending: false }).limit(50);
   if (mine) eq = eq.or(`account_id.in.(${mine.join(",") || "0"}),owner_user_id.eq.${me.id}`);
-  const [{ data: rejected }, { data: jobs }, videos, { data: events }, landings, { data: lastRun }] = await Promise.all([
+  const [{ data: rejected }, { data: jobs }, videos, { data: events }, landings, { data: lastRun }, { data: queue }, { count: busy }] = await Promise.all([
     rq, jq, myCreatives(me).then((c) => c.filter((x) => x.kind === "video").map((x) => ({ ...x, url: publicUrl(x.key) }))), eq,
     myLandings(me).catch(() => []),
     db().from("wh_ingest_runs").select("finished_at").eq("kind", "today").not("finished_at", "is", null).order("finished_at", { ascending: false }).limit(1),
+    db().from("video_variant_jobs").select("id").eq("status", "queued").order("created_at").limit(200),
+    db().from("video_variant_jobs").select("id", { count: "exact", head: true }).eq("status", "processing"),
   ]);
   return NextResponse.json({
     rejected: rejected ?? [], types: TYPES, videos, events: events ?? [],
     landings: landings.slice(0, 10), checkedAt: lastRun?.[0]?.finished_at ?? null,
-    jobs: (jobs ?? []).map((j) => ({ ...j, url: j.result_key && ["done", "failed"].includes(j.status as string) ? publicUrl(j.result_key as string) : null })),
+    jobs: await Promise.all((jobs ?? []).map(async (j) => ({
+      ...j,
+      url: j.result_key && ["done", "failed"].includes(j.status as string) ? await downloadUrl(j.result_key as string, j.source_name as string) : null,
+      link: j.result_key && ["done", "failed"].includes(j.status as string) ? publicUrl(j.result_key as string) : null,   // «Копировать ссылку» — постоянная
+      // Очередь общая на всю команду, воркер один: место считается с тем, что сейчас монтируется.
+      queue: j.status === "queued" ? (queue ?? []).findIndex((q) => q.id === j.id) + 1 + (busy ?? 0) : null,
+    }))),
   });
 }
 
 export async function POST(req: Request) {
   const me = await getProfile();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string; kind?: string; value?: string; nonce?: string; retry?: string };
+  const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string; kind?: string; value?: string; nonce?: string; retry?: string; id?: string };
   const KINDS = ["link", "page", "multi"];
   try {
     if (b.op === "options" && b.adId && KINDS.includes(b.kind ?? "")) return NextResponse.json(await options(me, b.adId, b.kind as Kind));
@@ -66,12 +74,22 @@ export async function POST(req: Request) {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
+  // «Отменить» уникализацию: из очереди — сразу; в монтаже — воркер бросит её на ближайшем пульсе (до минуты).
+  if (b.op === "cancel" && b.id) {
+    const { data: j } = await db().from("video_variant_jobs").select("owner_id").eq("id", b.id).maybeSingle();
+    if (!j) return NextResponse.json({ error: "Задание не найдено" }, { status: 404 });
+    if (j.owner_id !== me.id && me.role !== "main") return NextResponse.json({ error: "Это не твоё задание" }, { status: 403 });
+    const { data } = await db().from("video_variant_jobs").update({ status: "cancelled", stage: "Отменено", updated_at: new Date().toISOString() })
+      .eq("id", b.id).in("status", ["choosing", "queued", "processing"]).select("id");
+    if (!data?.length) return NextResponse.json({ error: "Это задание уже не отменить — оно смонтировано или закончено" }, { status: 400 });
+    return NextResponse.json({ ok: true });
+  }
   if (b.op !== "start" || !TYPES[b.tail ?? ""] || !TYPES[b.frame ?? ""]) return NextResponse.json({ error: "Выбери вставку и кадры" }, { status: 400 });
   let row: Record<string, unknown>;
   if (b.retry) {
-    // Повтор упавшего задания из библиотеки — новое задание с тем же исходником.
+    // Повтор упавшего или отменённого задания из библиотеки — новое задание с тем же исходником.
     const { data: j } = await db().from("video_variant_jobs").select("owner_id, source_key, source_name, ad_id, status").eq("id", b.retry).maybeSingle();
-    if (!j || j.status !== "failed" || j.ad_id) return NextResponse.json({ error: "Повторить можно только упавшее задание из библиотеки" }, { status: 400 });
+    if (!j || !["failed", "cancelled"].includes(j.status as string) || j.ad_id) return NextResponse.json({ error: "Повторить можно упавшее или отменённое задание из библиотеки" }, { status: 400 });
     if (j.owner_id !== me.id && me.role !== "main") return NextResponse.json({ error: "Это не твоё задание" }, { status: 403 });
     row = { owner_id: j.owner_id, source_key: j.source_key, source_name: j.source_name };
   } else if (b.adId) {

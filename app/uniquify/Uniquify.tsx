@@ -9,10 +9,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 const card = "card p-5";
 
 interface Video { key: string; code: string; url: string; thumb: string | null; face: string | null; version: string }
-interface Job { id: string; ad_id: string | null; source_name: string; tail_type: string; frame_type: string; status: string; stage: string | null; error: string | null; duration: number | null; created_at: string; url: string | null }
+interface Job { id: string; ad_id: string | null; source_name: string; tail_type: string; frame_type: string; status: string; stage: string | null; error: string | null; duration: number | null; created_at: string; url: string | null; link: string | null; queue: number | null }
 interface View { jobs: Job[]; types: Record<string, string>; videos: Video[] }
 
-const STATUS: Record<string, string> = { choosing: "Выбор в боте", queued: "В очереди", processing: "Монтаж", ready: "Смонтировано", replacing: "Замена в Meta", done: "Готово", failed: "Ошибка" };
+const STATUS: Record<string, string> = { choosing: "Выбор в боте", queued: "В очереди", processing: "Монтаж", ready: "Смонтировано", replacing: "Замена в Meta", done: "Готово", failed: "Ошибка", cancelled: "Отменено" };
+// Одно задание — 10–15 минут, воркер монтирует по одному: место в очереди → примерное ожидание.
+const JOB_MIN = 12;
 const when = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
 
 export default function Uniquify() {
@@ -40,7 +42,13 @@ export default function Uniquify() {
     setNote(null);
     const r = await fetch("/api/antireject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "start", tail, frame, ...body }) });
     const d = await r.json().catch(() => ({}));
-    setNote(d.error ?? "В очереди — монтаж занимает 7–10 минут, ход и ссылка — ниже");
+    setNote(d.error ?? "В очереди — одно видео монтируется 10–15 минут, по одному. Место в очереди, ход и ссылка — ниже");
+    load();
+  }
+  async function cancel(id: string) {
+    const r = await fetch("/api/antireject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "cancel", id }) });
+    const d = await r.json().catch(() => ({}));
+    if (d.error) setNote(d.error);
     load();
   }
 
@@ -105,12 +113,17 @@ export default function Uniquify() {
               <div key={j.id} className="py-2.5 flex flex-wrap gap-3 items-start">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200 truncate">{j.source_name} <span className="text-hint">· {v.types[j.tail_type]} · кадры: {v.types[j.frame_type]}{j.ad_id ? " · с заменой в объявлении" : ""}</span></p>
-                  <p className="text-[11px] text-hint">{when(j.created_at)}{j.duration ? ` · ${Math.round(Number(j.duration))} с` : ""}{j.stage ? ` · ${j.stage}` : ""}</p>
+                  <p className="text-[11px] text-hint">
+                    {when(j.created_at)}{j.duration ? ` · ${Math.round(Number(j.duration))} с` : ""}
+                    {j.status === "queued" && j.queue ? ` · ${j.queue}-е в очереди, ≈ ${j.queue * JOB_MIN} мин` : j.stage ? ` · ${j.stage}` : ""}
+                  </p>
                   {j.error && <p className="text-[11px] text-red-300 mt-0.5">{j.error}</p>}
                 </div>
                 <span className="text-[11px] px-2 py-1 rounded-full border border-line text-zinc-300 shrink-0">{STATUS[j.status] ?? j.status}</span>
-                {j.status === "failed" && !j.ad_id && <button type="button" onClick={() => start({ retry: j.id })} className={`btn border-line text-zinc-300 shrink-0`}>Повторить</button>}
-                {j.url && <a href={j.url} target="_blank" rel="noreferrer" className={`btn border-violet-700/50 text-violet-200 shrink-0`}>Скачать ↓</a>}
+                {["choosing", "queued", "processing"].includes(j.status) && <button type="button" onClick={() => cancel(j.id)} className="btn btn-sm border-red-900/40 text-red-300 shrink-0">Отменить</button>}
+                {["failed", "cancelled"].includes(j.status) && !j.ad_id && <button type="button" onClick={() => start({ retry: j.id })} className="btn btn-sm shrink-0">Повторить</button>}
+                {j.link && <button type="button" onClick={() => navigator.clipboard.writeText(j.link!).then(() => setNote("Ссылка на видео скопирована"))} className="btn btn-sm shrink-0">Копировать ссылку</button>}
+                {j.url && <a href={j.url} download className="btn btn-sm border-violet-700/50 text-violet-200 shrink-0">Скачать ↓</a>}
               </div>
             ))}
           </div>

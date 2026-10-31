@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getFileBaseName, normalize } from "@/lib/creatives/naming";
 import { shootKey } from "@/lib/creatives/code";
@@ -54,6 +54,11 @@ export async function findSource(adName: string): Promise<string | null> {
 export const resultKey = (jobId: string) => `variants/${jobId}.mp4`;
 export const uploadUrl = (key: string) =>
   getSignedUrl(s3, new PutObjectCommand({ Bucket: BUCKET(), Key: key, ContentType: "video/mp4" }), { expiresIn: 6 * 3600 });
+// «Скачать» — файлом с понятным именем, а не 60 МБ видео, которое браузер открывает во вкладке.
+export const downloadUrl = (key: string, sourceName: string) => {
+  const name = `${sourceName.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_")}-uniq.mp4`;
+  return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET(), Key: key, ResponseContentDisposition: `attachment; filename="${name}"` }), { expiresIn: 24 * 3600 });
+};
 
 // Тот же поиск оригинала, но по одному ключу — без листинга бакета (автозалив, Decision 081).
 export async function originalKey(key: string): Promise<string> {
