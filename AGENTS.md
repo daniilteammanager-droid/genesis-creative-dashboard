@@ -699,6 +699,7 @@ Do not redesign existing UI without a clear reason.
 фильтр с несколькими выбранными — `<button {...chip(on)}>` (`components/ui.tsx`); выбранное отмечается `aria-pressed`.
 Иконки — `<Icon name=…>` оттуда же, не эмодзи. Спиннер — `<Spinner>`. Страница — `p-4 md:p-8`, заголовок — `page-title`.
 Нужен новый цвет или вид кнопки — сначала токен или класс в `globals.css`, потом страница.
+Свой брейкпоинт — в rem (`min-[106.25rem]:`), не в px: в px Tailwind ставит его в CSS раньше `xl:`, и он молча не срабатывает.
 
 ---
 
