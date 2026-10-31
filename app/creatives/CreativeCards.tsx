@@ -247,8 +247,9 @@ export default function CreativeCards({
             <p className="text-hint text-sm py-8">За этот период не крутилось ни одного крео.</p>
           ) : (
             <>
-              {/* Колонок столько же, сколько в легаси-библиотеке: на широком экране — больше колонок, а не шире карточка. */}
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1700px]:grid-cols-6 min-[2000px]:grid-cols-7 min-[2400px]:grid-cols-8 gap-4">
+              {/* Колонок столько же, сколько в легаси-библиотеке (1700 / 2000 / 2400px). Брейкпоинты — в rem, как у Tailwind:
+                  в px они встают в CSS раньше xl, и xl:grid-cols-5 их перебивает. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[106.25rem]:grid-cols-6 min-[125rem]:grid-cols-7 min-[150rem]:grid-cols-8 gap-4">
                 {shown.map((r) => {
                   const match = findMedia(r.code);
                   return (
