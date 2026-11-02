@@ -11,8 +11,11 @@ import { deliver } from "./deliver";
 //
 // Кабинеты собираются всеми ключами сразу — командным и баерскими: кабинет,
 // который видит хоть один ключ, жив. «Пропал» — это когда его не видит никто,
-// и решается это только по полному прогону: упал хоть один ключ — пропажу не
-// объявляем, иначе каждый сбой Meta рассылал бы «кабинет пропал» пачкой.
+// и решается это только тогда, когда все ключи его владельца прочитались: упал ключ —
+// пропажу его кабинетов не объявляем, иначе каждый сбой Meta рассылал бы «кабинет
+// пропал» пачкой. Раньше ждали полного прогона по всей команде, и один заблокированный
+// ключ баера держал «живыми» пропавшие кабинеты всех (02.11.2026). Кабинет без владельца —
+// по-прежнему только по полному прогону.
 //
 // Баер на Dolphin — тот же поток, только состояние берётся из Dolphin (Decision 064).
 // Свежесть — как у его синхронизации, часы, а не 15 минут: сами Dolphin не пинаем.
@@ -131,16 +134,15 @@ function alertText(next: CabinetState, prev: CabinetState, at: Date): string {
 export function diffCabinets(
   prev: Map<string, CabinetState>,
   seen: CabinetState[],
-  complete: boolean,
+  complete: boolean | ((accountId: string) => boolean),
   at: Date = new Date()
 ): { states: CabinetState[]; alerts: CabinetAlert[] } {
   const states = new Map<string, CabinetState>();
   for (const s of seen) states.set(s.accountId, s);
-  // Пропавшие объявляем только по полному прогону (см. шапку файла).
-  if (complete) {
-    for (const [id, p] of prev) {
-      if (!states.has(id) && p.status !== "MISSING") states.set(id, { ...p, status: "MISSING" });
-    }
+  // Пропавшие объявляем, только если их прочитали полностью (см. шапку файла).
+  const sure = typeof complete === "function" ? complete : () => complete;
+  for (const [id, p] of prev) {
+    if (!states.has(id) && p.status !== "MISSING" && sure(id)) states.set(id, { ...p, status: "MISSING" });
   }
 
   const alerts: CabinetAlert[] = [];
@@ -197,13 +199,17 @@ export interface CabinetCheckResult {
   fbtoolFor: Map<string, { key: string; account: string }>; // живой кабинет → ключ и аккаунт FB Tool
 }
 
-export async function checkCabinets(buyerTokens: string[], dolphinTokens: string[] = [], fbtool: { key: string; userId: string }[] = []): Promise<CabinetCheckResult> {
+type Keyed = { token: string; userId: string };
+
+export async function checkCabinets(buyerTokens: Keyed[], dolphinTokens: Keyed[] = [], fbtool: { key: string; userId: string }[] = []): Promise<CabinetCheckResult> {
   const db = warehouse();
-  const tokens: { token: string; withBusinesses: boolean }[] = [
-    ...(process.env.META_ACCESS_TOKEN ? [{ token: process.env.META_ACCESS_TOKEN, withBusinesses: true }] : []),
+  const tokens: { token: string; withBusinesses: boolean; userId: string | null }[] = [
+    ...(process.env.META_ACCESS_TOKEN ? [{ token: process.env.META_ACCESS_TOKEN, withBusinesses: true, userId: null }] : []),
     // Как в складе: напрямую и через Business Manager (Decision 062).
-    ...buyerTokens.map((token) => ({ token, withBusinesses: true })),
+    ...buyerTokens.map((k) => ({ token: k.token, withBusinesses: true, userId: k.userId })),
   ];
+  // Чей ключ не прочитался — пропажу его кабинетов не объявляем.
+  const failedUsers = new Set<string>();
 
   const seen = new Map<string, CabinetState>();
   // Каким ключом читать живой кабинет дальше — антиотклону.
@@ -224,11 +230,12 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
       }
     } catch (e) {
       failedTokens++;
+      if (t.userId) failedUsers.add(t.userId);
       console.warn("cabinets: ключ не прочитался:", e instanceof Error ? e.message : e);
     }
   }
   // Dolphin — после Meta: кабинет, который видят оба, читаем через Meta, она свежее.
-  for (const token of dolphinTokens) {
+  for (const { token, userId } of dolphinTokens) {
     try {
       for (const c of await dolphinCabinets(token, mskDay())) {
         const s: CabinetState = {
@@ -241,6 +248,7 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
       }
     } catch (e) {
       failedTokens++;
+      failedUsers.add(userId);
       console.warn("cabinets: Dolphin не прочитался:", e instanceof Error ? e.message : e);
     }
   }
@@ -268,6 +276,7 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
       }
     } catch (e) {
       failedTokens++;
+      failedUsers.add(userId);
       console.warn("cabinets: FB Tool не прочитался:", e instanceof Error ? e.message : e);
     }
   }
@@ -281,16 +290,20 @@ export async function checkCabinets(buyerTokens: string[], dolphinTokens: string
     currency: r.currency, balance: r.balance === null ? null : Number(r.balance), prepay: r.prepay,
   }]));
 
-  if (keepOwners.size) {
-    const { data: kept } = await db.from("wh_account_owners").select("account_id").in("owner_user_id", [...keepOwners]);
-    for (const k of kept ?? []) {
-      const p = prev.get(k.account_id as string);
-      if (p && !seen.has(p.accountId)) seen.set(p.accountId, p);
-    }
+  const { data: owners, error: oe } = await db.from("wh_account_owners").select("account_id, owner_user_id");
+  if (oe) throw new Error(`wh_account_owners: ${oe.message}`);
+  const ownerOf = new Map((owners ?? []).map((o) => [o.account_id as string, o.owner_user_id as string | null]));
+  for (const [id, owner] of ownerOf) {
+    const p = prev.get(id);
+    if (owner && keepOwners.has(owner) && p && !seen.has(id)) seen.set(id, p);
   }
 
   const now = new Date();
-  const { states, alerts } = diffCabinets(prev, [...seen.values()], failedTokens === 0, now);
+  const complete = failedTokens === 0;
+  const { states, alerts } = diffCabinets(prev, [...seen.values()], (id) => {
+    const owner = ownerOf.get(id);
+    return complete || (Boolean(owner) && !failedUsers.has(owner!));
+  }, now);
 
   // Прошлые отметки времени передаются явно: в пакетном upsert пропущенное поле
   // становится значением по умолчанию, и changed_at сбрасывался бы каждый прогон.

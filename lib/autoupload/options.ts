@@ -24,7 +24,7 @@ const s3 = new S3Client({
 // Кабинеты, закреплённые за мной (Decision 061): заливаю только в свои. Как у Артёма —
 // только живые: ACTIVE без ограничения Meta. Бан, unsettled, пропавшие не показываются.
 // live — статусы прямо из Meta своими ключами (при открытии страницы и «Обновить кабинеты»), иначе — с последнего
-// прогона склада (до 15 минут). В склад live не пишет: смену статуса ловят алерты.
+// прогона склада, если он видел кабинет за последний час прогонов. В склад live не пишет: смену статуса ловят алерты.
 export async function myAccounts(me: Profile, live = false): Promise<{ id: string; name: string; status: string; timezone: string | null }[]> {
   const { data: own } = await warehouse().from("wh_account_owners").select("account_id").eq("owner_user_id", me.id);
   const ids = (own ?? []).map((r) => r.account_id as string);
@@ -43,8 +43,19 @@ export async function myAccounts(me: Profile, live = false): Promise<{ id: strin
     }
     if (!read) throw new Error("Meta не ответила ни одним ключом — статусы не обновлены");
   } else {
-    const { data: st } = await warehouse().from("wh_cabinet_states").select("account_id, name, status, disable_reason, timezone").in("account_id", ids);
-    for (const s of st ?? []) by.set(s.account_id as string, { name: s.name, status: s.status, disableReason: s.disable_reason, timezone: s.timezone });
+    // Только кабинеты, которые прогон склада видел в последний час своих прогонов (идут раз в
+    // 15 минут). Ключ баера упал — склад держит его кабинеты в прежнем статусе, и ACTIVE оттуда —
+    // уже догадка: в заливку такие не предлагаем (02.11.2026). Час — от последнего прогона, а не
+    // от «сейчас»: встал крон — не пропадают все кабинеты разом.
+    const [{ data: st }, { data: last }] = await Promise.all([
+      warehouse().from("wh_cabinet_states").select("account_id, name, status, disable_reason, timezone, seen_at").in("account_id", ids),
+      warehouse().from("wh_cabinet_states").select("seen_at").order("seen_at", { ascending: false }).limit(1),
+    ]);
+    const since = Date.parse(last?.[0]?.seen_at ?? "") - 60 * 60_000;
+    for (const s of st ?? []) {
+      if (!(Date.parse(s.seen_at) >= since)) continue;
+      by.set(s.account_id as string, { name: s.name, status: s.status, disableReason: s.disable_reason, timezone: s.timezone });
+    }
   }
   return ids.flatMap((id) => {
     const s = by.get(id);

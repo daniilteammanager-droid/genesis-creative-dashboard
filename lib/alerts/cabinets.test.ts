@@ -43,6 +43,13 @@ assert.match(r.alerts[0].text, /снова доступен/);
 r = diffCabinets(map(cab("5", "MISSING")), [], true);
 assert.equal(r.alerts.length, 0);
 
+// Пропажа по владельцу: ключи владельца прочитались — пропал, его ключ упал — держим как было
+r = diffCabinets(map(cab("7", "ACTIVE"), cab("8", "ACTIVE")), [], (id) => id === "7");
+assert.equal(r.states.length, 1, "кабинет с упавшим ключом владельца не трогаем");
+assert.equal(r.states[0].accountId, "7");
+assert.equal(r.states[0].status, "MISSING");
+assert.equal(r.alerts.length, 1);
+
 // Имя экранируется: в HTML-сообщении «<» сломал бы разметку
 r = diffCabinets(map(cab("6", "ACTIVE")), [cab("6", "DISABLED", { name: "A<b>" })], true);
 assert.match(r.alerts[0].text, /A&lt;b&gt;/);

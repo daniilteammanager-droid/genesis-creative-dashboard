@@ -119,9 +119,9 @@ export async function POST(req: Request) {
     let rejected: unknown = null;
     if (kind === "today") {
       try {
-        const tokens = (await Promise.all(users.map((u) => metaTokensOf(u)))).flat().map((k) => k.token);
+        const tokens = (await Promise.all(users.map(async (u) => (await metaTokensOf(u)).map((k) => ({ token: k.token, userId: u }))))).flat();
         const conns = await Promise.all(users.map((u) => getConnection(u).catch(() => null)));
-        const dolphin = conns.flatMap((c) => (c?.spendSource === "dolphin" && c.dolphinToken ? [c.dolphinToken] : []));
+        const dolphin = conns.flatMap((c, i) => (c?.spendSource === "dolphin" && c.dolphinToken ? [{ token: c.dolphinToken, userId: users[i] }] : []));
         const fbtool = conns.flatMap((c, i) => (c?.spendSource === "fbtool" && c.fbtoolKey ? [{ key: c.fbtoolKey, userId: users[i] }] : []));
         // tokenFor, dolphinFor, fbtoolFor — ключи, в ответ роута им нельзя.
         const { tokenFor, dolphinFor, fbtoolFor, ...summary } = await checkCabinets(tokens, dolphin, fbtool);
