@@ -510,8 +510,8 @@ export default function ReportTree() {
       <Busy on={Boolean(data) && loadedKey !== reqKey}>
       {!loading && !error && (data?.nodes.length ?? 0) > 0 && (
         <>
-          {/* Итоги того, что на экране (с фильтрами), — как карточки у Артёма. */}
-          <div className="stats mb-5">
+          {/* Итоги того, что на экране (с фильтрами), — как карточки у Артёма: на ПК два ряда по 6. */}
+          <div className="stats mb-5 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             {([
               ["Расход", money(totals.spend)],
               ["Клики FB", n(totals.clicks)],
