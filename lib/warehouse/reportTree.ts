@@ -94,6 +94,20 @@ function addCrm(to: Crm, c: Crm): void {
   to.quals = addQuals(to.quals, c.quals);
 }
 
+// Что осталось от среза Torro по имени после строк с этим именем; ничего — null. Минус не
+// показываем: связки по объявлениям бывают свежее среза по кампании на час-другой.
+function restOf(full: Crm, on: Crm | undefined): Crm | null {
+  const d = (a: number | null, b: number | null | undefined) => Math.max(0, Math.round(((a ?? 0) - (b ?? 0)) * 100) / 100);
+  const r: Crm = {
+    lpClicks: d(full.lpClicks, on?.lpClicks), subscribers: d(full.subscribers, on?.subscribers), dialogs: d(full.dialogs, on?.dialogs),
+    depCount: d(full.depCount, on?.depCount), depSum: d(full.depSum, on?.depSum),
+    quals: full.quals ? full.quals.map((v, i) => Math.max(0, v - (on?.quals?.[i] ?? 0))) as Quals : null,
+  };
+  return something(r) ? r : null;
+}
+// Torro отдаёт и строки кампаний, где за день всё по нулям, — в дерево их не несём.
+const something = (c: Crm) => Boolean(c.lpClicks || c.subscribers || c.dialogs || c.depCount || c.depSum || c.quals?.some((v) => v));
+
 type CrmRow = {
   clicks?: number | null; subscribers: number | null; dialogs: number | null;
   dep_count: number | null; dep_sum: number | string | null; redep_count: number | null; redep_sum: number | string | null;
@@ -284,38 +298,59 @@ export async function loadReportTree(
     });
   }
 
-  // Torro кампании без расхода в периоде: депы почти всегда приходят со старых, уже
-  // выключенных кампаний. Нашлась по имени в истории расхода кабинетов того же человека —
-  // своей строкой с нулевым расходом, как в чеке (Decision 096); чего в его кабинетах не
-  // было никогда, в дерево не идёт (Decision 102). Раньше такие депы пропадали молча (02.11.2026).
-  const shown = new Set(nodes.map((n) => n.name.trim()));
-  const orphan = new Map<string, Crm>();   // «человек|имя кампании»
+  // Весь Torro периода — в дереве, итог Live Manager равен Torro (02.11.2026, Decision 109,
+  // отменяет Decision 102): цикл сделки до трёх недель, депы приходят со старых кампаний, и
+  // делить «со спендом / без» только путает. Кампания со спендом взяла свой срез по имени
+  // выше; всё, что осталось, — по имени кампании Torro:
+  //   - старая кампания своих кабинетов — её строкой с нулевым расходом, кабинетом и статусом;
+  //   - переименованная (расход в периоде под новым именем) — к её строке;
+  //   - чего в кабинетах нет, и остаток имени, которое носят две кампании со спендом
+  //     (срез по имени между ними не делится), — строкой Torro без кабинета.
+  const onNodes = new Map<string, Crm>();   // имя → сколько Torro уже на строках с этим именем
+  for (const n of nodes) {
+    const cur = onNodes.get(n.name.trim()) ?? NO_CRM();
+    addCrm(cur, n);
+    onNodes.set(n.name.trim(), cur);
+  }
+  const orphan = new Map<string, Crm>();   // «человек|имя» — имена, которых среди строк нет
   for (const c of campaignCrm) {
     const name = c.campaign_name.trim();
-    if (!name || shown.has(name)) continue;
+    if (!name || onNodes.has(name)) continue;
     const cur = orphan.get(`${c.user_id}|${name}`) ?? NO_CRM();
     addCrm(cur, toCrm(c));
     orphan.set(`${c.user_id}|${name}`, cur);
   }
-  // Строки с одними кликами не нужны — как в чеке.
-  const worth = [...orphan].filter(([, c]) => (c.subscribers ?? 0) + (c.dialogs ?? 0) + (c.depCount ?? 0) + (c.depSum ?? 0) > 0);
-  const past = await pastCampaigns(db, scope, [...new Set(worth.map(([k]) => k.slice(k.indexOf("|") + 1)))]);
+  const past = await pastCampaigns(db, scope, [...new Set([...orphan.keys()].map((k) => k.slice(k.indexOf("|") + 1)))]);
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  for (const [key, crm] of worth) {
+  const torroOnly = new Map<string, Crm>();   // имя → Torro без кабинета
+  const campaignRow = (id: string, name: string, crm: Crm, accountId?: string): TreeNode => {
+    const p = parseName(name);
+    return {
+      id, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...crm,
+      children: [], accountId, face: p.face ?? faceInName(name), countries: p.geo && p.geo !== "LATAM" ? [p.geo] : [],
+    };
+  };
+  for (const [key, crm] of orphan) {
+    if (!something(crm)) continue;
+    const name = key.slice(key.indexOf("|") + 1);
     const hit = past.get(key);
-    if (!hit || (accountIds && !accountIds.includes(hit.accountId))) continue;
-    // Кампанию переименовали: расход в периоде под новым именем, Torro — под старым.
+    if (!hit || (accountIds && !accountIds.includes(hit.accountId))) {
+      const cur = torroOnly.get(name) ?? NO_CRM();
+      addCrm(cur, crm);
+      torroOnly.set(name, cur);
+      continue;
+    }
     const same = byId.get(hit.id);
     if (same) { addCrm(same, crm); continue; }
-    const name = key.slice(key.indexOf("|") + 1);
-    const geo = parseName(name).geo;
-    const node: TreeNode = {
-      id: hit.id, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...crm,
-      children: [], accountId: hit.accountId, face: parseName(name).face ?? faceInName(name), countries: geo && geo !== "LATAM" ? [geo] : [],
-    };
+    const node = campaignRow(hit.id, name, crm, hit.accountId);
     nodes.push(node);
     byId.set(hit.id, node);
   }
+  for (const [name, full] of crmByCampaign) {
+    const rest = restOf(full, onNodes.get(name));
+    if (rest && onNodes.has(name)) torroOnly.set(name, rest);
+  }
+  for (const [name, crm] of torroOnly) nodes.push(campaignRow(`torro:${name}`, name, crm));
   nodes.sort((a, b) => b.spend - a.spend);
 
   // Охват кампании за один день — из дневной строки кампании (Meta отдаёт его точно).
