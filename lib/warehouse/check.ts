@@ -315,7 +315,7 @@ async function placeOrphans(
 // человека (Decision 095). Депы доходят со старых кампаний, и их доход уходил в «Нет в
 // подключённых кабинетах», хотя кабинет подключён. Ключ ответа — «человек|имя», только
 // у однозначного имени. Имени нет в Meta вовсе — оно остаётся неразобранным.
-async function pastCampaigns(
+export async function pastCampaigns(
   db: ReturnType<typeof warehouse>, userIds: string[], names: string[],
 ): Promise<Map<string, { id: string; accountId: string }>> {
   const out = new Map<string, { id: string; accountId: string }>();

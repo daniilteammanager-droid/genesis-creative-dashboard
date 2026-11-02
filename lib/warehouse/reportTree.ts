@@ -1,7 +1,7 @@
 import { warehouse, selectAll } from "./read";
 import { NO_CABINETS, resolveScope } from "./accounts";
 import type { Profile } from "@/lib/auth/types";
-import { faceInName } from "./check";
+import { faceInName, pastCampaigns } from "./check";
 import { parseName } from "@/lib/creatives/code";
 
 // Reports как аналог FB Tool: кампании, внутри адсеты, внутри объявления.
@@ -282,6 +282,39 @@ export async function loadReportTree(
       accountId: accountOf.get(campaignId), face: parseName(name).face ?? faceInName(name),
       countries: [...new Set(adsetNodes.flatMap((a) => a.countries))].sort(),
     });
+  }
+
+  // Torro кампании без расхода в периоде: депы почти всегда приходят со старых, уже
+  // выключенных кампаний. Нашлась по имени в истории расхода кабинетов того же человека —
+  // своей строкой с нулевым расходом, как в чеке (Decision 096); чего в его кабинетах не
+  // было никогда, в дерево не идёт (Decision 102). Раньше такие депы пропадали молча (02.11.2026).
+  const shown = new Set(nodes.map((n) => n.name.trim()));
+  const orphan = new Map<string, Crm>();   // «человек|имя кампании»
+  for (const c of campaignCrm) {
+    const name = c.campaign_name.trim();
+    if (!name || shown.has(name)) continue;
+    const cur = orphan.get(`${c.user_id}|${name}`) ?? NO_CRM();
+    addCrm(cur, toCrm(c));
+    orphan.set(`${c.user_id}|${name}`, cur);
+  }
+  // Строки с одними кликами не нужны — как в чеке.
+  const worth = [...orphan].filter(([, c]) => (c.subscribers ?? 0) + (c.dialogs ?? 0) + (c.depCount ?? 0) + (c.depSum ?? 0) > 0);
+  const past = await pastCampaigns(db, scope, [...new Set(worth.map(([k]) => k.slice(k.indexOf("|") + 1)))]);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const [key, crm] of worth) {
+    const hit = past.get(key);
+    if (!hit || (accountIds && !accountIds.includes(hit.accountId))) continue;
+    // Кампанию переименовали: расход в периоде под новым именем, Torro — под старым.
+    const same = byId.get(hit.id);
+    if (same) { addCrm(same, crm); continue; }
+    const name = key.slice(key.indexOf("|") + 1);
+    const geo = parseName(name).geo;
+    const node: TreeNode = {
+      id: hit.id, name, level: "campaign", spend: 0, clicks: 0, impressions: 0, linkClicks: null, results: null, reach: null, ...crm,
+      children: [], accountId: hit.accountId, face: parseName(name).face ?? faceInName(name), countries: geo && geo !== "LATAM" ? [geo] : [],
+    };
+    nodes.push(node);
+    byId.set(hit.id, node);
   }
   nodes.sort((a, b) => b.spend - a.spend);
 
