@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dirOf, kids, layout, progress, under, zone, NH, NW, type Task, type Where } from "@/lib/tasks/tree";
 import { StatusDot, Who } from "./parts";
 
@@ -24,7 +24,7 @@ export interface CanvasProps {
   onRename: (id: string) => void;
   onCreateMap: (at: { x: number; y: number }) => void;
   onShift: (id: string, x: number, y: number) => void; // карта — x, y; узел — dx, dy
-  onDrop: (id: string, target: { id: string; w: Where } | null) => void;
+  onDrop: (id: string, target: { id: string; w: Where } | null, heights: Record<string, number>) => void;
   onTidy: () => void;
 }
 
@@ -38,23 +38,42 @@ export default function Canvas(p: CanvasProps) {
   const grab = useRef<Grab | null>(null);
   const dropRef = useRef(drop);
   const clickGuard = useRef(false);
-  const { pos, edges } = useMemo(() => layout(p.list, { collapsed: p.collapsed, hideDone: p.hideDone }), [p.list, p.collapsed, p.hideDone]);
+  // Высота каждого узла — по факту: длинный текст переносится, и раскладка раздвигает соседей.
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const sizes = useRef<ResizeObserver | null>(null);
+  useEffect(() => {
+    const ro = new ResizeObserver((entries) => setHeights((h) => {
+      let next = h;
+      for (const e of entries) {
+        const el = e.target as HTMLElement, id = el.dataset.node!, v = el.offsetHeight;
+        if (v && h[id] !== v) { if (next === h) next = { ...h }; next[id] = v; }
+      }
+      return next;
+    }));
+    sizes.current = ro;
+    stage.current?.querySelectorAll<HTMLElement>("[data-node]").forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, []);
+  const measure = useCallback((el: HTMLDivElement | null) => { if (el) sizes.current?.observe(el); }, []);
+
+  const { pos, edges } = useMemo(() => layout(p.list, { collapsed: p.collapsed, hideDone: p.hideDone, heights }), [p.list, p.collapsed, p.hideDone, heights]);
   // Свежие props и вид для обработчиков на window — они вешаются один раз.
-  const live = useRef({ p, view, pos });
-  useLayoutEffect(() => { live.current = { p, view, pos }; });
+  const live = useRef({ p, view, pos, heights });
+  useLayoutEffect(() => { live.current = { p, view, pos, heights }; });
 
   // Вписать все карты: по сигналу (открыли холст) и кнопкой.
   const fit = () => {
     const el = stage.current, ps = Object.values(live.current.pos);
     if (!el) return;
     if (!ps.length) return setView({ px: 40, py: 40, z: 1 });
-    const x0 = Math.min(...ps.map((q) => q.x)), y0 = Math.min(...ps.map((q) => q.cy - NH / 2));
-    const x1 = Math.max(...ps.map((q) => q.x + NW + 30)), y1 = Math.max(...ps.map((q) => q.cy + NH / 2));
+    const x0 = Math.min(...ps.map((q) => q.x)), y0 = Math.min(...ps.map((q) => q.cy - q.h / 2));
+    const x1 = Math.max(...ps.map((q) => q.x + NW + 30)), y1 = Math.max(...ps.map((q) => q.cy + q.h / 2));
     const r = el.getBoundingClientRect();
     const z = clamp(Math.min((r.width - 80) / (x1 - x0), (r.height - 80) / (y1 - y0)), 0.25, 1);
     setView({ z, px: (r.width - (x1 - x0) * z) / 2 - x0 * z, py: (r.height - (y1 - y0) * z) / 2 - y0 * z });
   };
-  useEffect(fit, [p.fitSignal]);
+  // Второй раз — когда узлы померились: длинный текст делает их выше, чем в первой раскладке.
+  useEffect(() => { fit(); const t = setTimeout(fit, 150); return () => clearTimeout(t); }, [p.fitSignal]);
 
   const zoomAt = (f: number, mx: number, my: number) => setView((v) => {
     const z = clamp(v.z * f, 0.25, 2);
@@ -96,7 +115,7 @@ export default function Canvas(p: CanvasProps) {
       if (!g?.moved) return;
       clickGuard.current = true; setTimeout(() => { clickGuard.current = false; }, 0);
       setLifted(null);
-      if (g.id) live.current.p.onDrop(g.id, dropRef.current);
+      if (g.id) live.current.p.onDrop(g.id, dropRef.current, live.current.heights);
       dropRef.current = null; setDrop(null);
     };
     addEventListener("pointermove", move);
@@ -121,24 +140,24 @@ export default function Canvas(p: CanvasProps) {
       : d === 1 ? "font-semibold cursor-grab" : "bg-raised border-line-strong hover:border-violet-600 cursor-grab";
     return (
       <div
-        key={t.id} data-node={t.id}
+        key={t.id} data-node={t.id} ref={measure}
         onClick={(e) => { e.stopPropagation(); if (!clickGuard.current) p.onSelect(t.id); }}
         onDoubleClick={(e) => { e.stopPropagation(); p.onRename(t.id); }}
-        className={`group absolute flex items-center gap-2 pl-2.5 pr-2 rounded-[10px] border text-[13px] select-none ${look}
+        className={`group absolute flex items-start gap-2 pl-2.5 pr-2 py-2 rounded-[10px] border text-[13px] leading-[18px] select-none ${look}
           ${t.id === p.sel ? "ring-2 ring-violet-400" : ""} ${isDrop && drop.w === "inside" ? "ring-2 ring-violet-300" : ""}
           ${lifted && under(p.list, t.id, lifted) ? "pointer-events-none opacity-85 shadow-xl shadow-black/50" : ""}`}
         style={{
-          left: q.x, top: q.cy - NH / 2, width: NW, height: NH,
+          left: q.x, top: q.cy - q.h / 2, width: NW,
           ...(d === 1 && t.color ? { background: `color-mix(in srgb, ${t.color} 16%, var(--card))`, borderColor: `color-mix(in srgb, ${t.color} 60%, transparent)` } : {}),
         }}
       >
         {isDrop && drop.w !== "inside" && <span className={`absolute left-0 right-0 h-[3px] rounded bg-violet-300 ${drop.w === "before" ? "-top-[7px]" : "-bottom-[7px]"}`} />}
-        {t.status && <StatusDot status={t.status} onClick={() => p.onCycle(t.id)} />}
+        {t.status && <span className="mt-0.5"><StatusDot status={t.status} onClick={() => p.onCycle(t.id)} /></span>}
         {p.title(t)}
         {t.assignee && <Who name={p.who(t.assignee)} />}
         {t.id !== p.editing && (
           <button type="button" title="Настройки" onClick={(e) => { e.stopPropagation(); p.onSelect(t.id, true); }}
-                  className={`flex-none w-5 h-5 rounded-md text-hint hover:text-white hover:bg-white/10 ${t.id === p.sel ? "" : "opacity-0 group-hover:opacity-100"}`}>⋯</button>
+                  className={`flex-none w-5 h-[18px] leading-[18px] rounded-md text-hint hover:text-white hover:bg-white/10 ${t.id === p.sel ? "" : "opacity-0 group-hover:opacity-100"}`}>⋯</button>
         )}
         {d === 1 && <span className="text-[11px] text-hint tabular-nums">{progress(p.list, t.id)}</span>}
         {n > 0 && d > 0 && (
@@ -149,7 +168,7 @@ export default function Canvas(p: CanvasProps) {
                 className={`absolute -right-7 top-[7px] w-[22px] h-[22px] rounded-full bg-violet-600 text-white leading-[22px] text-[15px] ${t.id === p.sel ? "" : "opacity-0 group-hover:opacity-100"}`}>+</button>
       </div>
     );
-  }), [p, pos, drop, lifted]);
+  }), [p, pos, drop, lifted, measure]);
 
   const lines = useMemo(() => edges.map(([a, b]) => {
     const s = pos[a], e = pos[b], x1 = s.x + NW, x2 = e.x, mx = (x1 + x2) / 2;

@@ -50,6 +50,11 @@ assert.equal(shifted[id(7)].x - pos[id(7)].x, 30);
 assert.equal(shifted[id(7)].cy - pos[id(7)].cy, 40);
 assert.equal(layout(L, { collapsed: new Set(), hideDone: true }).pos[id(5)], undefined);
 
+// Высокий узел (длинный текст в несколько строк) раздвигает соседей.
+const tall = layout(L, { collapsed: new Set(), hideDone: false, heights: { [id(4)]: 80 } }).pos;
+assert.equal(tall[id(5)].cy - tall[id(5)].h / 2 - (tall[id(4)].cy + 40), pos[id(5)].cy - NH / 2 - (pos[id(4)].cy + NH / 2));
+assert.equal(tall[id(4)].h, 80);
+
 // Бросили задачу на пустом месте ниже соседа — встала после него и осталась там, где бросили.
 const opts = { collapsed: new Set<string>(), hideDone: false };
 const dropped = L.map((x) => (x.id === id(4) ? { ...x, dy: 200 } : x));

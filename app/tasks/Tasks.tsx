@@ -192,7 +192,7 @@ export default function Tasks({ me }: { me: string }) {
   const title = (t: Task) => t.id === editing
     ? <TitleInput key={t.id} value={t.title} placeholder={["Карта", "Направление"][depth(list, t)] ?? "Задача"}
                   onKey={(k, v) => onEditKey(t.id, k, v)} onDone={(v) => commit(t.id, v)} />
-    : <span className="flex-1 min-w-0 truncate" title={t.title}>{t.title || <span className="text-hint">Без названия</span>}</span>;
+    : <span className="flex-1 min-w-0 whitespace-normal [overflow-wrap:anywhere]">{t.title || <span className="text-hint">Без названия</span>}</span>;
 
   // Клавиши на холсте для выделенной задачи. Обработчик свежий каждый рендер, слушатель — один.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -295,9 +295,9 @@ export default function Tasks({ me }: { me: string }) {
           onRename={rename}
           onCreateMap={(at) => create(null, null, at)}
           onShift={(id, x, y) => change((l) => (byId(l, id)?.parent ? patch(l, id, { dx: x, dy: y }) : patch(l, id, { x, y })))}
-          onDrop={(id, target) => {
+          onDrop={(id, target, heights) => {
             if (target) change((l) => move(l, id, target.id, target.w));
-            else if (byId(listRef.current, id)?.parent) change((l) => placeFree(l, id, opts));
+            else if (byId(listRef.current, id)?.parent) change((l) => placeFree(l, id, { ...opts, heights }));
           }}
           onTidy={() => change((l) => l.map((t) => (t.dx || t.dy ? { ...t, dx: null, dy: null } : t)))}
         />

@@ -26,8 +26,9 @@ export type Row = Task & { sort: number };
 export const COLORS = ["#8b5cf6", "#38bdf8", "#34d399", "#f472b6", "#f59e0b", "#f87171"];
 export const STATUS: [Status, string][] = [["todo", "Надо"], ["doing", "В работе"], ["done", "Готово"]];
 export const NEXT: Record<Status, Status> = { todo: "doing", doing: "done", done: "todo" };
-// Размеры узла и раскладки на холсте, px.
-export const NW = 196, NH = 36, GAP = 10, COLW = 236;
+// Размеры узла и раскладки на холсте, px. NH — высота в одну строку: длинный текст переносится,
+// и узел выше (его высоту меряет холст и отдаёт в раскладку).
+export const NW = 236, NH = 36, GAP = 10, COLW = 276;
 
 const find = (l: Task[], id: string | null) => (id ? l.find((t) => t.id === id) : undefined);
 export const byId = find;
@@ -103,12 +104,12 @@ export function insert(l: Task[], t: Task, after?: string | null): Task[] {
 export const patch = (l: Task[], id: string, ch: Partial<Task>) => l.map((t) => (t.id === id ? { ...t, ...ch } : t));
 export const removeBranch = (l: Task[], id: string) => l.filter((t) => !under(l, t.id, id));
 
-export interface Pos { x: number; cy: number; d: number }
-export interface LayoutOpts { collapsed: Set<string>; hideDone: boolean }
+export interface Pos { x: number; cy: number; d: number; h: number }
+export interface LayoutOpts { collapsed: Set<string>; hideDone: boolean; heights?: Record<string, number> }
 
 // Раскладка: карта слева, уровни — колонками вправо, родитель по центру своих детей.
 // Потом к каждому узлу добавляется свободный сдвиг его и всех предков.
-export function layout(l: Task[], { collapsed, hideDone }: LayoutOpts) {
+export function layout(l: Task[], { collapsed, hideDone, heights }: LayoutOpts) {
   const pos: Record<string, Pos> = {}, edges: [string, string][] = [];
   const shown = (t: Task) => !(hideDone && t.status === "done");
   const children = new Map<string, Task[]>();
@@ -117,14 +118,17 @@ export function layout(l: Task[], { collapsed, hideDone }: LayoutOpts) {
     let y = r.y ?? 0;
     const lay = (t: Task, d: number): number => {
       const k = (children.get(t.id) ?? []).filter(shown);
+      const h = heights?.[t.id] ?? NH, top = y;
       let cy: number;
-      if (!k.length || collapsed.has(t.id)) { cy = y + NH / 2; y += NH + GAP; }
+      if (!k.length || collapsed.has(t.id)) { cy = y + h / 2; y += h + GAP; }
       else {
         const c = k.map((x) => lay(x, d + 1));
-        cy = (c[0] + c[c.length - 1]) / 2;
+        // Узел выше своих детей — не залезает на соседа сверху и раздвигает соседа снизу.
+        cy = Math.max((c[0] + c[c.length - 1]) / 2, top + h / 2);
+        y = Math.max(y, top + h + GAP);
         for (const x of k) edges.push([t.id, x.id]);
       }
-      pos[t.id] = { x: (r.x ?? 0) + d * COLW, cy, d };
+      pos[t.id] = { x: (r.x ?? 0) + d * COLW, cy, d, h };
       return cy;
     };
     lay(r, 0);

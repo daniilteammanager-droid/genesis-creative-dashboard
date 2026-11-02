@@ -43,7 +43,7 @@ export function TitleInput({ value, placeholder, onKey, onDone }: {
 export function Who({ name }: { name: string }) {
   return (
     <span title={`Ответственный: ${name}`}
-          className="flex-none w-5 h-5 rounded-full bg-violet-600/30 border border-violet-500/50 text-[10px] font-semibold text-violet-100 grid place-items-center uppercase">
+          className="flex-none w-[18px] h-[18px] rounded-full bg-violet-600/30 border border-violet-500/50 text-[10px] font-semibold text-violet-100 grid place-items-center uppercase">
       {name.trim()[0] ?? "?"}
     </span>
   );
