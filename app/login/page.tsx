@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
+import { seg } from "@/components/ui";
 
 type Mode = "signin" | "signup";
 
@@ -90,17 +91,14 @@ function LoginForm() {
         </div>
 
         <div className="card p-6">
-          <div className="flex gap-1 mb-5 bg-panel border border-line rounded-xl p-1">
+          <div className="seg w-full mb-5">
             {(["signin", "signup"] as const).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => { setMode(m); setError(null); setNotice(null); }}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                  mode === m
-                    ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
-                    : "text-zinc-400 hover:text-violet-300"
-                }`}
+                {...seg(mode === m)}
+                className="seg-btn flex-1 justify-center"
               >
                 {m === "signin" ? "Вход" : "Регистрация"}
               </button>

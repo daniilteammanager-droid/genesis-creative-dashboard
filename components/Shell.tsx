@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import Onboarding from "./Onboarding";
 import { WORK_AREAS } from "@/lib/nav";
+import { Icon } from "./ui";
 
 // Оболочка приложения: рабочие области, аккаунт и содержимое страницы.
 //
@@ -59,7 +60,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
   const railShown  = open === false ? "hidden md:flex" : "hidden";
   const fabShown   = open === true  ? "hidden"         : "md:hidden";
 
-  const item = "block px-3 py-2 rounded-xl text-sm font-medium transition";
+  const item = "flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition";
   const iconBtn =
     "flex items-center justify-center h-8 w-8 rounded-lg text-hint " +
     "hover:text-violet-300 hover:bg-violet-900/20 transition text-base leading-none";
@@ -103,6 +104,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
                     : "text-zinc-400 hover:text-violet-300 hover:bg-violet-900/15"
                 }`}
               >
+                <Icon name={a.icon} />
                 {a.label}
               </Link>
             );
