@@ -35,7 +35,7 @@ export function Busy({ on, children }: { on: boolean; children: React.ReactNode 
 }
 
 // Иконки вместо эмодзи: эмодзи на каждой системе своего цвета и размера.
-export type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image" | "user";
+export type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image" | "user" | "users" | "lock";
 const PATHS: Record<IconName, string[]> = {
   folder: ["M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   upload: ["M12 15V3", "m7 8 5-5 5 5", "M5 21h14"],
@@ -46,6 +46,8 @@ const PATHS: Record<IconName, string[]> = {
   film: ["M4 4h16v16H4z", "M8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"],
   image: ["M4 5h16v14H4z", "m4 16 5-5 4 4 3-3 4 4", "M15 9.5h.01"],
   user: ["M20 21a8 8 0 0 0-16 0", "M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
+  users: ["M16 21a6 6 0 0 0-12 0", "M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M22 21a6 6 0 0 0-4-5.7", "M15 4.2a4 4 0 0 1 0 7.6"],
+  lock: ["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4"],
 };
 
 export function Icon({ name, className = "w-4 h-4" }: { name: IconName; className?: string }) {

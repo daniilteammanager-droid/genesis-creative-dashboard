@@ -14,6 +14,7 @@ import { runOpenJobs } from "@/lib/autoupload/jobs";
 import { syncAll as syncGr4 } from "@/lib/general-report-4/store";
 import { runQueue as runAiQueue } from "@/lib/ai/creo";
 import { runWeekly as runAiWeekly } from "@/lib/ai/summary";
+import { runTaskReminders } from "@/lib/tasks/store";
 
 // Точка входа для крона. Дёргает её VPS, на которой уже крутится воркер: у
 // бесплатного тарифа Vercel крон запускается раз в сутки, а нам нужен час и чаще.
@@ -69,12 +70,14 @@ export async function POST(req: Request) {
     }
   }
   // AI-разборы — раз в час, в :20 (после часовой проверки границы теста): очередь автоматических
-  // разборов и недельная сводка (Decision 101).
+  // разборов и недельная сводка (Decision 101). Тем же прогоном — напоминания о сроках задач:
+  // им нужен раз в час, а не своя строка в кроне VPS.
   if (raw === "ai") {
     try {
+      const reminders = await runTaskReminders().catch((e) => `error: ${e instanceof Error ? e.message : e}`);
       const queue = await runAiQueue(200_000);
       const weekly = await runAiWeekly().catch((e) => `error: ${e instanceof Error ? e.message : e}`);
-      return NextResponse.json({ kind: "ai", queue, weekly });
+      return NextResponse.json({ kind: "ai", queue, weekly, reminders });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status: 500 });
     }

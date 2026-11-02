@@ -2,6 +2,8 @@
 // проверяет стартовую страницу на сервере — в профиль можно записать что угодно.
 export const WORK_AREAS = [
   { href: "/home", label: "Главная" },
+  // Личный холст задач у каждого и общие холсты (02.11.2026).
+  { href: "/tasks", label: "Задачи" },
   { href: "/library", label: "Легаси крео" },
   { href: "/creatives", label: "Креативы" },
   { href: "/check", label: "Checks" },
