@@ -40,8 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local scripts (not tracked in git)
-/scripts/
+# local scripts (not tracked in git) — кроме проверки дизайна, её зовёт хук из .claude/settings.json
+/scripts/*
+!/scripts/check-design.mjs
 
 # video source files and generated thumbnails (local only)
 /public/creatives/*
