@@ -6,7 +6,7 @@ import type { CheckResult, CheckGroup, CheckRow } from "@/lib/warehouse/check";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { DateRange } from "@/components/DatePicker";
-import { Busy, seg, Spinner } from "@/components/ui";
+import { Busy, Icon, seg, Spinner } from "@/components/ui";
 
 
 
@@ -302,7 +302,7 @@ function CheckLine({ r, level = "row" }: { r: CheckRow; level?: "platform" | "fa
   const soft = head ? "text-zinc-200 font-semibold" : "text-zinc-400";
   return (
     <tr className={level === "platform" ? "bg-violet-900/25" : head ? "bg-violet-900/15" : "hover:bg-violet-900/10 transition"}>
-      <td className={`px-3 py-2.5 max-w-[320px] truncate ${head ? strong : `${strong} pl-6`}`} title={r.label}>{level === "face" ? `👤 ${r.label}` : r.label}</td>
+      <td className={`px-3 py-2.5 max-w-[320px] truncate ${head ? strong : `${strong} pl-6`}`} title={r.label}>{level === "face" ? <span className="inline-flex items-center gap-1.5"><Icon name="user" className="w-3.5 h-3.5 text-violet-300" />{r.label}</span> : r.label}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.dailyBudget === null ? "—" : `$${nf(r.dailyBudget, 0)}`}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${strong}`}>${nf(r.spend)}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.costPdp === null ? "—" : `$${nf(r.costPdp)}`}</td>

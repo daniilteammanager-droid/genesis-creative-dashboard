@@ -7,7 +7,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
   return (
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-3">Здесь что-то сломалось</h1>
+        <h1 className="page-title mb-3">Здесь что-то сломалось</h1>
         <p className="text-sm text-zinc-400 leading-relaxed mb-4">
           Остальные разделы работают — панель слева на месте.
         </p>

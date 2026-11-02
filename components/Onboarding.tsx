@@ -121,7 +121,7 @@ export default function Onboarding({ profile }: { profile: Profile }) {
         </div>
         <h2 className="text-base font-semibold text-white mb-1.5">{s.title}</h2>
         <p className="text-sm text-zinc-300 leading-relaxed">{s.text}</p>
-        {clickStep && <p className="text-sm text-violet-300 mt-2">👆 Нажми на подсвеченное</p>}
+        {clickStep && <p className="text-sm text-violet-300 mt-2">Нажми на подсвеченное</p>}
         {searching && !rect && <p className="text-xs text-hint mt-2">Открываю раздел…</p>}
         <div className="flex items-center gap-2 mt-4">
           {!last && <button type="button" onClick={finish} className="text-xs text-hint hover:text-zinc-300 mr-auto">Пропустить</button>}

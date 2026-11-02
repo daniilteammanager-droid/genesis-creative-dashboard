@@ -6,6 +6,7 @@ import type { CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
 import { noteOf } from "@/lib/creatives/notes";
 import { type MediaFile, buildMediaIndex, lookupMedia, getFileBaseName, isVideo, getApproach } from "@/lib/creatives/media";
+import { Icon } from "@/components/ui";
 
 // "Медиатека" — modal opened from the Creatives toolbar (next to "Загрузить").
 // Shows what's already in R2 vs. what's still missing per CSV creative code
@@ -256,7 +257,7 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
           // eslint-disable-next-line @next/next/no-img-element
           <img src={file.posterUrl} alt="" className="w-full h-full object-cover" />
         ) : isVideo(file.url) ? (
-          <span className="text-lg opacity-50">🎬</span>
+          <Icon name="film" className="w-5 h-5 text-violet-300/50" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={file.url} alt="" className="w-full h-full object-cover" />

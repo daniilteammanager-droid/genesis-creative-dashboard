@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { Icon } from "@/components/ui";
 
 // Bulk drag-n-drop upload → R2, direct from the browser via a presigned PUT URL
 // (never through our own API route — Vercel's body limit would reject a video).
@@ -189,7 +190,7 @@ export default function CreativeUploadModal({
               dragActive ? "border-violet-500 bg-violet-900/10" : "border-line hover:border-violet-600/50"
             }`}
           >
-            <span className="text-3xl opacity-70">📁</span>
+            <Icon name="folder" className="w-8 h-8 text-violet-300/70" />
             <p className="text-sm text-zinc-300">Перетащи файлы сюда или нажми, чтобы выбрать</p>
             <p className="text-xs text-hint">mp4, mov, jpg, jpeg, png, webp — можно сразу несколько</p>
             <input

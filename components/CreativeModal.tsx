@@ -9,6 +9,7 @@ import { legacyTile } from "@/lib/creatives/tile";
 import { noteKey } from "@/lib/creatives/notes";
 import CreativeStats from "./CreativeStats";
 import CreativeAi from "./CreativeAi";
+import { Icon } from "./ui";
 
 // Модалка крео — общая для легаси-библиотеки и новой картотеки: видео, расшифровка,
 // заметка, избранное и все цифры крео со склада за выбранный период и по неделям
@@ -160,10 +161,10 @@ export default function CreativeModal({
                 <img src={mediaFile.url} alt={item.creative} className="w-full h-full object-contain" />
               )
             ) : (
-              <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-900/30 to-[#080710]">
-                <span className="text-5xl opacity-40">🎬</span>
+              <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-900/30 to-background">
+                <Icon name="film" className="w-12 h-12 text-violet-300/40" />
                 <p className="text-white/75 text-sm font-semibold text-center px-6">
-                  Крео отошел на дейлик 😄
+                  Крео отошел на дейлик :)
                 </p>
               </div>
             )}

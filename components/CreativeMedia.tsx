@@ -10,9 +10,9 @@ import { Icon } from "@/components/ui";
 // тянет до нажатия.
 
 const NO_FILE_WIDE =
-  "w-full aspect-square flex items-center justify-center bg-gradient-to-br from-violet-900/20 to-[#0a080f]";
+  "w-full aspect-square flex items-center justify-center bg-gradient-to-br from-violet-900/20 to-background";
 const NO_FILE_SQUARE =
-  "w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center bg-gradient-to-br from-violet-900/25 to-[#0d0a1f]";
+  "w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center bg-gradient-to-br from-violet-900/25 to-background";
 
 export function MediaWide({ file }: { file?: MediaFile }) {
   const wrapCls = "w-full aspect-square bg-zinc-900";
