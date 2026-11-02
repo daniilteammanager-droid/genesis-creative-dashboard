@@ -88,14 +88,32 @@ export default function Autoupload() {
 
   const loadOptions = useCallback(() =>
     fetch("/api/autoupload?op=options").then((r) => r.json()).then((d) => (d.error ? setErr(d.error) : setOpt(d))).catch(() => setErr("Сеть не ответила")), []);
+  // Пиксели и страницы каких кабинетов уже спрошены.
+  const asked = useRef(new Set<string>());
+  // Кабинеты из склада видны сразу, следом — живые статусы из Meta своими ключами, как по кнопке
+  // «Обновить кабинеты». Склад — сводная картина всех ключей команды раз в 15 минут: кабинет,
+  // который только что забанили или который ключ баера больше не видит, там ещё ACTIVE (02.11.2026).
+  const refreshAccounts = useCallback(async (silent = false) => {
+    setRefreshing(true);
+    try {
+      const d = await fetch("/api/autoupload?op=accounts").then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      setOpt((o) => (o ? { ...o, accounts: d.accounts } : o));
+      if (!silent) { setDetails({}); asked.current.clear(); }
+    } catch (e) {
+      // Сама проверка при открытии молчит: остаётся список склада.
+      if (!silent) setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
   useEffect(() => {
     setF(loadDraft()); // eslint-disable-line react-hooks/set-state-in-effect -- черновик есть только в браузере
-    loadOptions();
-  }, [loadOptions]);
+    loadOptions().then(() => refreshAccounts(true));
+  }, [loadOptions, refreshAccounts]);
   useEffect(() => { try { localStorage.setItem(DRAFT, JSON.stringify(f)); } catch { /* приватный режим */ } }, [f]);
 
   // Пиксели и страницы выбранных кабинетов (черновик мог принести их сразу).
-  const asked = useRef(new Set<string>());
   useEffect(() => {
     for (const id of f.accountIds) {
       if (asked.current.has(id)) continue;
@@ -140,20 +158,6 @@ export default function Autoupload() {
   const inputKey = JSON.stringify(input);
   const fresh = plan && plan.key === inputKey ? plan.plan : null;
 
-  async function refreshAccounts() {
-    setRefreshing(true);
-    try {
-      const d = await fetch("/api/autoupload?op=accounts").then((r) => r.json());
-      if (d.error) throw new Error(d.error);
-      setOpt((o) => (o ? { ...o, accounts: d.accounts } : o));
-      setDetails({});
-      asked.current.clear();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRefreshing(false);
-    }
-  }
   const toggleAccount = (id: string) => set({ accountIds: accountIds.includes(id) ? accountIds.filter((x) => x !== id) : [...accountIds, id] });
 
   async function post(op: "preview" | "launch") {
@@ -236,7 +240,7 @@ export default function Autoupload() {
       <div data-tour="au-base" className={card}>
         <div className="flex items-center gap-2 mb-3">
           <h2 className={`${h2} mb-0`}>01 · Кабинеты и основа</h2>
-          <button type="button" disabled={refreshing} onClick={refreshAccounts} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>
+          <button type="button" disabled={refreshing} onClick={() => refreshAccounts()} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>
             {refreshing ? "Обновляю…" : "↻ Обновить кабинеты"}
           </button>
         </div>

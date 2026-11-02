@@ -23,7 +23,7 @@ const s3 = new S3Client({
 
 // Кабинеты, закреплённые за мной (Decision 061): заливаю только в свои. Как у Артёма —
 // только живые: ACTIVE без ограничения Meta. Бан, unsettled, пропавшие не показываются.
-// live — статусы прямо из Meta своими ключами («Обновить кабинеты»), иначе — с последнего
+// live — статусы прямо из Meta своими ключами (при открытии страницы и «Обновить кабинеты»), иначе — с последнего
 // прогона склада (до 15 минут). В склад live не пишет: смену статуса ловят алерты.
 export async function myAccounts(me: Profile, live = false): Promise<{ id: string; name: string; status: string; timezone: string | null }[]> {
   const { data: own } = await warehouse().from("wh_account_owners").select("account_id").eq("owner_user_id", me.id);
