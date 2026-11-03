@@ -13,7 +13,6 @@ import CreativeTile from "@/components/CreativeTile";
 import { legacyTile } from "@/lib/creatives/tile";
 import MediaLibrary from "@/components/MediaLibrary";
 import { useProfile } from "@/components/Shell";
-import CreativeUploadModal from "./CreativeUploadModal";
 import { Icon, seg } from "@/components/ui";
 import { SummaryCard } from "@/components/general-report/shared";
 
@@ -50,7 +49,6 @@ export default function Home() {
   const [activeApproach, setActiveApproach] = useState("all");
   const [activeSort, setActiveSort] = useState<"none" | "romi" | "spend" | "deposits">("none");
   const [topTab,     setTopTab]     = useState<"creatives" | "analytics">("creatives");
-  const [showUpload, setShowUpload] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const isBuyer = useProfile()?.role === "buyer";
   const [notes,      setNotes]      = useState<Record<string, CreativeNote>>({});
@@ -444,13 +442,7 @@ export default function Home() {
                   >
                     <Icon name="folder" />Медиатека
                   </button>}
-
-                  <button
-                    onClick={() => setShowUpload(true)}
-                    className="btn btn-primary"
-                  >
-                    <Icon name="upload" />Загрузить
-                  </button>
+                  {/* Загрузки в легаси нет (03.11.2026): новые крео — только в Креативах, в свою папку баера. */}
                 </div>
               </div>
             </div>
@@ -538,10 +530,6 @@ export default function Home() {
             setNotes((prev) => ({ ...prev, [noteKey(updated.creative_code)]: updated }))
           }
         />
-      )}
-
-      {showUpload && (
-        <CreativeUploadModal onClose={() => setShowUpload(false)} onUploaded={() => loadMedia(true)} />
       )}
 
       {showLibrary && !isBuyer && (

@@ -296,3 +296,18 @@ export async function loadCreatives(
     generatedAt: new Date().toISOString(),
   };
 }
+
+// Имена крео из статистики человека за всё время — расход и Torro — и суффиксы для
+// сопоставления с файлами: по ним Медиатека баера оставляет только его крео (libraryOf).
+export async function libraryScope(userId: string): Promise<{ names: Set<string>; suffixes: Set<string> }> {
+  const db = warehouse();
+  const [spend, crm, { data: sfx }] = await Promise.all([
+    selectAll<{ ad_name: string }>((f, t) => db.from("wh_ad_days").select("ad_name").eq("user_id", userId).order("date").order("ad_id").range(f, t)),
+    selectAll<{ ad_name: string }>((f, t) => db.from("wh_crm_ad_periods").select("ad_name").eq("user_id", userId).order("period_start").order("ad_name").range(f, t)),
+    db.from("creative_match_suffixes").select("suffix"),
+  ]);
+  return {
+    names: new Set([...spend, ...crm].map((r) => r.ad_name).filter(Boolean)),
+    suffixes: new Set((sfx ?? []).map((s) => s.suffix as string)),
+  };
+}

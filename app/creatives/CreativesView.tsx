@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import CreativeCards from "./CreativeCards";
 import CreativeAnalytics from "./CreativeAnalytics";
 import CreativesTable from "./CreativesTable";
@@ -117,12 +117,21 @@ export default function CreativesView() {
     })();
   }, []);
 
+  // Файлы Медиатеки — свой список (?for=library): баеру только его крео — из его статистики,
+  // где бы ни лежал файл, и свои загрузки (03.11.2026). Плитке нужен весь бакет (Decision 036).
+  const [libraryMedia, setLibraryMedia] = useState<MediaFile[]>([]);
+  const loadLibraryMedia = useCallback(async () => {
+    try {
+      const d = await fetch(`/api/media?for=library&_=${Date.now()}`, { cache: "no-store" }).then((r) => r.json());
+      setLibraryMedia(Array.isArray(d) ? d : []);
+    } catch { setLibraryMedia([]); }
+  }, []);
+
   // Список крео для Медиатеки берём только когда её открывают: лишний запрос
   // на каждое открытие раздела ни к чему.
-  const ownMedia = useMemo(() => media.filter((f) => f.own), [media]);
-
   async function openLibrary() {
     setShowLibrary(true);
+    loadLibraryMedia();
     try {
       const q = new URLSearchParams({ since: mskDaysAgo(29), until: mskDay() });
       const res = await fetch(`/api/creatives?${q}`);
@@ -225,13 +234,11 @@ export default function CreativesView() {
       {showLibrary && (
         <MediaLibrary
           rows={libraryRows.map(toLegacy)}
-          // Баеру в Медиатеке — только его папка (Decision 077). Плитке нужен весь
-          // список: там файл ищется и среди легаси (Decision 036).
-          media={ownMedia}
+          media={libraryMedia}
           notes={notes}
           matchSuffixes={suffixes}
           supabaseAvailable={isSupabaseConfigured}
-          onRefresh={() => loadMedia(true)}
+          onRefresh={() => { loadMedia(true); loadLibraryMedia(); }}
           onSuffixesChanged={loadSuffixes}
           onToggleIgnored={toggleIgnored}
           onClose={() => setShowLibrary(false)}

@@ -294,6 +294,9 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
               Отмена
             </button>
           </>
+        ) : file.own === false ? (
+          // Легаси-файл его крео: видно, а трогать — только своё (Decision 077).
+          <span className="text-xs text-hint">только просмотр</span>
         ) : (
           <>
             <button onClick={() => setEditing(true)} disabled={busy} className="text-xs px-2.5 py-1 rounded-lg border border-line text-zinc-300 hover:border-violet-600/50 transition disabled:opacity-50">

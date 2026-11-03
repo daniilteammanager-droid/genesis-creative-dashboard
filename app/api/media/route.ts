@@ -2,6 +2,8 @@ import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/server";
 import { mayManageKey, maySeeKey } from "@/lib/creatives/access";
+import { libraryOf } from "@/lib/creatives/media";
+import { libraryScope } from "@/lib/warehouse/creatives";
 
 const s3 = new S3Client({
   region: "auto",
@@ -18,7 +20,7 @@ function fileBasename(key: string): string {
   return filename.toLowerCase().replace(/\.(mov|mp4|jpg|jpeg|png|webp)$/i, "");
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     // Баер не видит папок других баеров (Decision 077). Middleware пускает только
     // вошедших, но роль он не знает — её проверяем здесь.
@@ -69,6 +71,13 @@ export async function GET() {
         const own = mayManageKey(me, f.key);
         return posterUrl ? { ...f, posterUrl, own } : { ...f, own };
       });
+
+    // ?for=library — Медиатека: баеру только его крео — из его статистики и свои загрузки
+    // (03.11.2026). Плитке нужен весь список: файл к строке ищется по всему бакету (Decision 036).
+    if (me.role === "buyer" && new URL(req.url).searchParams.get("for") === "library") {
+      const { names, suffixes } = await libraryScope(me.id);
+      return NextResponse.json(libraryOf(mediaFiles, names, suffixes), { headers: { "Cache-Control": "private, no-store" } });
+    }
 
     return NextResponse.json(mediaFiles, {
       headers: {

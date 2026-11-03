@@ -88,6 +88,18 @@ export function lookupMedia(index: MediaIndex, creative: string): MediaMatch | u
   return file ? { file, exact: false } : undefined;
 }
 
+// Медиатека баера — только его крео (03.11.2026): файлы, к которым подходит имя из его
+// статистики, где бы файл ни лежал, и его собственные загрузки — свежие ещё не крутились.
+export function libraryOf(media: MediaFile[], names: Iterable<string>, suffixes: ReadonlySet<string>): MediaFile[] {
+  const index = buildMediaIndex(media, suffixes);
+  const keep = new Set(media.filter((f) => f.own).map((f) => f.key));
+  for (const name of names) {
+    const hit = lookupMedia(index, name);
+    if (hit) keep.add(hit.file.key);
+  }
+  return media.filter((f) => keep.has(f.key));
+}
+
 // Разовый поиск там, где индекс строить незачем — например один выбранный креатив.
 export function findMedia(creative: string, media: MediaFile[]): MediaFile | undefined {
   const key = normalize(creative);
