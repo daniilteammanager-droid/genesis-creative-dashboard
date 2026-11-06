@@ -142,6 +142,10 @@ async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): 
 }
 
 export const tgId = (accountId: string, adId: number) => `tg:${accountId}:${adId}`;
+// Кампания TG — по имени в кабинете: копии объявления с одним именем («Static 6 Spain» ×3)
+// в Torro — одна кампания, и раздельно доход к ним не приклеить (уходил в «Нет в кабинетах»).
+// ponytail: в пределах кабинета; одно имя в двух кабинетах одного баера всё ещё неоднозначно.
+export const tgCampaignId = (accountId: string, title: string) => `tg:${accountId}:name:${nameKey(title)}`;
 
 // Строки склада в той же форме, что у Dolphin: кампания = адсет = объявление.
 // Имя кампании в Torro баер пишет руками, и регистр расходится с объявлением
@@ -164,7 +168,7 @@ export async function tgadsAdDays(key: { token: string; accountId: string; accou
       const rate = await tonUsd(day);
       out.push({
         date: day, adId: id, adName: creativeOfTitle(a.title),
-        adsetId: id, adsetName: a.title, campaignId: id, campaignName: a.title,
+        adsetId: id, adsetName: a.title, campaignId: tgCampaignId(key.accountId, a.title), campaignName: a.title,
         accountId: key.accountId, accountName: key.accountTitle,
         spend: Math.round(d.spend * rate * 100) / 100, clicks: d.clicks, impressions: d.views,
         // Клик в TG Ads — это и есть переход по ссылке; охвата и результатов API не отдаёт.

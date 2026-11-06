@@ -394,7 +394,16 @@ async function dolphinCampaigns(token: LiveSource, day: string) {
 
 async function dolphinBudgets(token: LiveSource, day: string): Promise<CampaignMeta> {
   const dailyBudgets = new Map<string, number>();
-  for (const r of await dolphinRows(token, day)) if (r.campaignDailyBudget) dailyBudgets.set(r.campaignId, r.campaignDailyBudget);
+  // У Dolphin и FB Tool бюджет кампании повторяется в каждом объявлении, у TG Ads в одной
+  // кампании объявления-копии, у каждого свой бюджет — их складываем (по разу на объявление).
+  const seen = new Set<string>();
+  for (const r of await dolphinRows(token, day)) {
+    if (!r.campaignDailyBudget) continue;
+    if (!r.campaignId.startsWith("tg:")) { dailyBudgets.set(r.campaignId, r.campaignDailyBudget); continue; }
+    if (seen.has(r.adId)) continue;
+    seen.add(r.adId);
+    dailyBudgets.set(r.campaignId, (dailyBudgets.get(r.campaignId) ?? 0) + r.campaignDailyBudget);
+  }
   return { statuses: new Map(), dailyBudgets };
 }
 

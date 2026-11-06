@@ -1,6 +1,6 @@
 // Самопроверка разбора имён TG Ads. Запуск: npx tsx lib/tgads/api.test.ts
 import assert from "node:assert/strict";
-import { creativeOfTitle, geoOfTitle, NO_GEO, torroSpelling } from "./api";
+import { creativeOfTitle, geoOfTitle, NO_GEO, tgCampaignId, torroSpelling } from "./api";
 
 // Страна — словом или кодом; PR — опечатка Перу
 assert.equal(geoOfTitle("Static 2 Mexico"), "MX");
@@ -28,5 +28,9 @@ assert.equal(creativeOfTitle("Static 6 channels PARSING FOREX"), "Static 6 FOREX
 // Имя Torro главнее регистра TG
 assert.equal(torroSpelling("Static 4 channels", ["Static 4 Channels", "Static 2 Mexico"]), "Static 4 Channels");
 assert.equal(torroSpelling("Static 6 Channels Invest", ["Static 6 Spain Channels Invest"]), "Static 6 Channels Invest");
+
+// Копии объявления с одним именем — одна кампания
+assert.equal(tgCampaignId("A", "Static 6 Spain"), tgCampaignId("A", " static 6  Spain"));
+assert.notEqual(tgCampaignId("A", "Static 6 Spain"), tgCampaignId("A", "Static 3 Spain"));
 
 console.log("tgads: страна и крео из имени объявления — верно");
