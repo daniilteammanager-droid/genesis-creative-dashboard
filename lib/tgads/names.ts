@@ -14,7 +14,6 @@ const GEO_CODES: Record<string, string> = { ES: "ES", AR: "AR", MX: "MX", CL: "C
 // как в таблицах; тип канала — Invest / Crypto / Parsing. Страна в имени при этом не считается.
 export const NO_GEO = "🌐 Без гео";
 const CHANNELS = /\bchannels?\b/i;
-const CHANNEL_TYPES = /\b(invest|crypto|parsing)\b/gi;
 
 export function geoOfTitle(title: string): string | null {
   if (CHANNELS.test(title)) return NO_GEO;
@@ -30,7 +29,10 @@ export function geoOfTitle(title: string): string | null {
 
 // Крео — имя без страны и без «TG Ads»: так его пишет Torro в ad_name.
 export function creativeOfTitle(title: string): string {
-  let s = title.replace(/\btg[\s_]*ads\b/gi, " ").replace(CHANNELS, " ").replace(CHANNEL_TYPES, " ");
+  // Канальное объявление: крео — всё до «Channels» («Static 6 channels PARSING FOREX» → «Static 6»),
+  // после — тип и подтип канала, в Torro их в имени объявления нет.
+  const ch = CHANNELS.exec(title);
+  let s = (ch ? title.slice(0, ch.index) : title).replace(/\btg[\s_]*ads\b/gi, " ");
   for (const [w] of GEO_WORDS) s = s.replace(new RegExp(`\\b${w}\\b`, "gi"), " ");
   s = s.split(/\s+/).filter((tok) => !(tok.toUpperCase() in GEO_CODES))
     // Код v2 — без страны в конце: Torro пишет «stat-balance-t4-v1-b9-es», объявление «…-es-ar».

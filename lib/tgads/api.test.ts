@@ -25,7 +25,8 @@ assert.equal(geoOfTitle("stat-balance-t4-v1-b9-es-es"), "ES");
 assert.equal(creativeOfTitle("stat-balance-t4-v1-b9-es-ar"), "stat-balance-t4-v1-b9-es");
 assert.equal(creativeOfTitle("stat-balance-t7-v1-b9-es Channels"), "stat-balance-t7-v1-b9-es");
 assert.equal(creativeOfTitle("Static 6 Channels Invest"), "Static 6");
-assert.equal(creativeOfTitle("Static 6 channels PARSING FOREX"), "Static 6 FOREX");
+assert.equal(creativeOfTitle("Static 6 channels PARSING FOREX"), "Static 6");
+assert.equal(creativeOfTitle("Static 6 Spain Channels Crypto"), "Static 6");
 
 // Имя Torro главнее регистра TG
 assert.equal(torroSpelling("Static 4 channels", ["Static 4 Channels", "Static 2 Mexico"]), "Static 4 Channels");
