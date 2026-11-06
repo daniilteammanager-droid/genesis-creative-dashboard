@@ -28,6 +28,7 @@ export function romiBand(romi: number | null): RomiBand | null {
 
 const LATAM = new Set(["AR", "MX", "CO", "CL", "PE", "PY", "UY", "EC", "PA", "BO", "VE", "CR", "GT", "DO", "HN", "SV", "NI", "LATAM"]);
 export const MULTI = "MULTI", NO_GEO = "??", REST = "REST";
+const NO_GEO_CHANNELS = "🌐 Без гео"; // каналы TG Ads, см. lib/tgads/api.ts
 const GEO_NAMES: Record<string, string> = {
   ES: "Испания", AR: "Аргентина", MX: "Мексика", CO: "Колумбия", CL: "Чили", PE: "Перу", PY: "Парагвай", UY: "Уругвай",
   EC: "Эквадор", PA: "Панама", BO: "Боливия", VE: "Венесуэла", CR: "Коста-Рика", GT: "Гватемала", DO: "Доминикана",
@@ -69,7 +70,7 @@ export type Dim = (typeof DIMS)[number];
 export const DIM_LABELS: Record<Dim, string> = { face: "Лицо", region: "Регион", geo: "Гео", platform: "Площадка", funnel: "Воронка" };
 export type Filters = Partial<Record<Dim, string[]>>;
 const FACE_LABELS: Record<string, string> = { ROMAN: "Роман", RICKY: "Рики" };
-export const regionName = (geo: string) => (geo === "ES" ? "Испания" : LATAM.has(geo) ? "Латам" : geo === REST ? "Не разнесено" : "Другие");
+export const regionName = (geo: string) => (geo === "ES" ? "Испания" : LATAM.has(geo) ? "Латам" : geo === REST ? "Не разнесено" : geo === NO_GEO_CHANNELS ? "Без гео" : "Другие");
 export function dimValue(c: Cell, d: Dim): string {
   switch (d) {
     case "face": return FACE_LABELS[c.face] ?? "Без лица";

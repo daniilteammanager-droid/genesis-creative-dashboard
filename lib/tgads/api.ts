@@ -1,6 +1,7 @@
 import { mskDay } from "@/lib/day";
 import { usdRate } from "@/lib/fx";
 import type { DolphinAdDay } from "@/lib/dolphin/api";
+import { parseCreativeCode } from "@/lib/creatives/code";
 
 // Telegram Ads как источник расхода (Decision 068).
 //
@@ -77,7 +78,17 @@ const GEO_WORDS: [string, string][] = [
 ];
 const GEO_CODES: Record<string, string> = { ES: "ES", AR: "AR", MX: "MX", CL: "CL", PE: "PE", PR: "PE", EC: "EC", CO: "CO" };
 
+// Кампании на каналы (Павел, 06.11.2026): «Channels» в имени — не страна, а гео «Без гео»,
+// как в таблицах; тип канала — Invest / Crypto / Parsing. Страна в имени при этом не считается.
+export const NO_GEO = "🌐 Без гео";
+const CHANNELS = /\bchannels?\b/i;
+const CHANNEL_TYPES = /\b(invest|crypto|parsing)\b/gi;
+
 export function geoOfTitle(title: string): string | null {
+  if (CHANNELS.test(title)) return NO_GEO;
+  // Код крео v2 (stat-balance-t4-v1-b9-es-ar): страна — последняя позиция, а не язык.
+  const v2 = parseCreativeCode(title.trim().split(/\s+/)[0]);
+  if (v2.scheme === "v2" && v2.geo.toUpperCase() in GEO_CODES) return GEO_CODES[v2.geo.toUpperCase()];
   const t = title.toLowerCase();
   const word = GEO_WORDS.find(([w]) => t.includes(w));
   if (word) return word[1];
@@ -87,7 +98,7 @@ export function geoOfTitle(title: string): string | null {
 
 // Крео — имя без страны и без «TG Ads»: так его пишет Torro в ad_name.
 export function creativeOfTitle(title: string): string {
-  let s = title.replace(/\btg[\s_]*ads\b/gi, " ");
+  let s = title.replace(/\btg[\s_]*ads\b/gi, " ").replace(CHANNELS, " ").replace(CHANNEL_TYPES, " ");
   for (const [w] of GEO_WORDS) s = s.replace(new RegExp(`\\b${w}\\b`, "gi"), " ");
   s = s.split(/\s+/).filter((tok) => !(tok.toUpperCase() in GEO_CODES)).join(" ");
   return s.replace(/\s+/g, " ").trim() || title.trim();
@@ -133,8 +144,16 @@ async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): 
 export const tgId = (accountId: string, adId: number) => `tg:${accountId}:${adId}`;
 
 // Строки склада в той же форме, что у Dolphin: кампания = адсет = объявление.
-export async function tgadsAdDays(key: { token: string; accountId: string; accountTitle: string }, since: string, until: string): Promise<DolphinAdDay[]> {
-  const ads = (await listAds(key.token)).filter((a) => mskDay(new Date(a.created_date * 1000)) <= until);
+// Имя кампании в Torro баер пишет руками, и регистр расходится с объявлением
+// («Static 4 Channels» / «Static 4 channels») — доход тогда не клеится. Имя Torro главнее.
+const nameKey = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+export function torroSpelling(title: string, torroNames: string[] = []): string {
+  return torroNames.find((n) => nameKey(n) === nameKey(title))?.trim() ?? title;
+}
+
+export async function tgadsAdDays(key: { token: string; accountId: string; accountTitle: string; torroNames?: string[] }, since: string, until: string): Promise<DolphinAdDay[]> {
+  const ads = (await listAds(key.token)).filter((a) => mskDay(new Date(a.created_date * 1000)) <= until)
+    .map((a) => ({ ...a, title: torroSpelling(a.title, key.torroNames) }));
   const perAd = await mapLimit(ads, 4, (a) => adDays(key.token, a.ad_id, since, until));
   const out: DolphinAdDay[] = [];
   for (const [i, a] of ads.entries()) {

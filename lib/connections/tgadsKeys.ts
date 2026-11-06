@@ -34,13 +34,20 @@ export async function allTgadsKeys(): Promise<{ token: string; accountId: string
 }
 
 // Расшифрованные ключи — только серверному коду, который идёт в Telegram Ads.
-export async function tgadsKeysOf(userId: string): Promise<{ id: string; token: string; accountId: string; accountTitle: string }[]> {
+// torroNames — как баер назвал кампании в Torro за 60 дней: по ним выравнивается регистр имён TG.
+export async function tgadsKeysOf(userId: string): Promise<{ id: string; token: string; accountId: string; accountTitle: string; torroNames: string[] }[]> {
   const { data, error } = await warehouse().from("tgads_keys").select("id, token_enc, account_id, account_title, name")
     .eq("user_id", userId).order("created_at");
   if (error) throw new Error(error.message);
-  return (data ?? []).map((k) => ({
+  if (!data?.length) return [];
+  const from = new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 10);
+  // ponytail: одна страница в 1000 строк — у TG-баера десятки кампаний; селект всех страниц, если упрётся.
+  const { data: crm } = await warehouse().from("wh_crm_campaign_periods").select("campaign_name")
+    .eq("user_id", userId).gte("period_start", from).limit(1000);
+  const torroNames = [...new Set((crm ?? []).map((c) => c.campaign_name as string))];
+  return data.map((k) => ({
     id: k.id as string, token: decryptSecret(k.token_enc as string),
-    accountId: k.account_id as string, accountTitle: (k.account_title as string) || (k.name as string),
+    accountId: k.account_id as string, accountTitle: (k.account_title as string) || (k.name as string), torroNames,
   }));
 }
 
