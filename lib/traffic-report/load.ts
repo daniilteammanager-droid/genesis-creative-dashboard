@@ -3,7 +3,8 @@ import { NO_CABINETS, resolveScope } from "@/lib/warehouse/accounts";
 import type { Profile } from "@/lib/auth/types";
 import { faceInName } from "@/lib/warehouse/check";
 import { parseName } from "@/lib/creatives/code";
-import { cellsOf, geoOf, type Cell, type SpendRow, type TorroRow } from "./build";
+import { cellsOf, geoOf, REST, type Cell, type Sums, type SpendRow, type TorroRow } from "./build";
+import { creativeOfTitle } from "@/lib/tgads/names";
 
 // Отчёт по трафику из склада (Decision 098). Баеру — свои подключения, владельцу и
 // тимлиду — вся команда или один баер (resolveScope, как у Live Manager).
@@ -16,8 +17,12 @@ export interface TrafficReport {
   // Ячейки баер × страна × лицо × воронка × площадка × крео: фильтры и дерево — на странице
   // (filterCells, treeOf), чтобы фильтр пересчитывал итоги без нового запроса.
   cells: Cell[];
+  // Крео баера за всё время (все страны) и его последний статус — рядом с цифрами периода.
+  // active: хоть одно объявление с этим именем сейчас крутится; null — объявлений в складе нет.
+  creos: CreoAllTime[];
   notice?: string;
 }
+export interface CreoAllTime { buyer: string; creo: string; sums: Sums; active: boolean | null }
 
 type Crm = { subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
 const torroOf = (r: Crm) => ({
@@ -28,7 +33,7 @@ const torroOf = (r: Crm) => ({
 export async function loadTrafficReport(me: Profile, since: string, until: string, buyerFilter?: string): Promise<TrafficReport> {
   const db = warehouse();
   const { buyers, userIds, accountIds } = await resolveScope(db, me, buyerFilter);
-  const empty: TrafficReport = { since, until, buyers, isBuyer: me.role === "buyer", cells: [] };
+  const empty: TrafficReport = { since, until, buyers, isBuyer: me.role === "buyer", cells: [], creos: [] };
   if (accountIds !== null && accountIds.length === 0) return { ...empty, notice: NO_CABINETS };
   if (!userIds.length) return empty;
   const label = new Map(buyers.map((b) => [b.id, b.label]));
@@ -108,5 +113,52 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
     r.deps += Math.max(0, camp.deps - pair.deps); r.rev += Math.max(0, camp.rev - pair.rev);
   }
 
-  return { ...empty, cells: cellsOf(spend, torro, rest) };
+  const cells = cellsOf(spend, torro, rest);
+  return { ...empty, cells, creos: await allTimeOf(db, cells, userIds, [...owner.keys()], label) };
+}
+
+// Всё время крео: спенд по объявлениям с тем же именем в кабинетах баера, Torro — по связкам
+// с тем же объявлением, статус — последнее состояние объявлений (wh_entities, раз в час).
+// ponytail: читает все дни этих крео; станет медленно — копить итоги крео в отдельной таблице.
+async function allTimeOf(db: ReturnType<typeof warehouse>, cells: Cell[], userIds: string[], accounts: string[], label: Map<string, string>): Promise<CreoAllTime[]> {
+  const names = [...new Set(cells.filter((c) => c.geo !== REST).map((c) => c.creo))];
+  if (!names.length || !accounts.length) return [];
+  const { data: own } = await db.from("wh_account_owners").select("account_id, owner_user_id").in("account_id", accounts);
+  const owner = new Map((own ?? []).map((o) => [o.account_id as string, label.get(o.owner_user_id as string) ?? (o.owner_user_id as string)]));
+  const out = new Map<string, CreoAllTime>();
+  const slot = (buyer: string, creo: string) => {
+    const k = `${buyer}\u0000${creo}`;
+    return out.get(k) ?? out.set(k, { buyer, creo, sums: { spend: 0, impr: 0, clicks: 0, subs: 0, dia: 0, deps: 0, rev: 0 }, active: null }).get(k)!;
+  };
+  for (let i = 0; i < names.length; i += 200) {
+    const part = names.slice(i, i + 200);
+    const [days, pairs] = await Promise.all([
+      selectAll<{ account_id: string; ad_name: string; spend: number | string; impressions: number; clicks: number }>((from, to) =>
+        db.from("wh_ad_days").select("account_id, ad_name, spend, impressions, clicks").in("ad_name", part).in("account_id", accounts)
+          .order("date").order("ad_id").range(from, to)),
+      selectAll<{ user_id: string; ad_name: string } & Crm>((from, to) =>
+        db.from("wh_crm_pairs").select("user_id, ad_name, subscribers, dialogs, dep_count, dep_sum, redep_sum").in("user_id", userIds).in("ad_name", part)
+          .order("period_start").order("campaign_name").order("ad_name").range(from, to)),
+    ]);
+    for (const d of days) {
+      const s = slot(owner.get(d.account_id) ?? "", d.ad_name.trim()).sums;
+      s.spend += Number(d.spend) || 0; s.impr += d.impressions || 0; s.clicks += d.clicks || 0;
+    }
+    for (const p of pairs) {
+      const s = slot(label.get(p.user_id) ?? p.user_id, p.ad_name.trim()).sums, t = torroOf(p);
+      s.subs += t.subs; s.dia += t.dia; s.deps += t.deps; s.rev += t.rev;
+    }
+  }
+  // Статус: у Meta имя объявления — само крео, у TG Ads — заголовок, крео из него.
+  const wanted = new Set(names);
+  const ents = await selectAll<{ account_id: string; name: string | null; effective_status: string | null; source: string; missing: boolean }>((from, to) =>
+    db.from("wh_entities").select("account_id, name, effective_status, source, missing").eq("level", "ad").in("account_id", accounts)
+      .order("entity_id").range(from, to));
+  for (const e of ents) {
+    const creo = e.source === "tgads" ? creativeOfTitle(e.name ?? "") : (e.name ?? "").trim();
+    if (!wanted.has(creo)) continue;
+    const c = slot(owner.get(e.account_id) ?? "", creo);
+    c.active = Boolean(c.active) || (!e.missing && (e.effective_status ?? "").toUpperCase() === "ACTIVE");
+  }
+  return [...out.values()];
 }

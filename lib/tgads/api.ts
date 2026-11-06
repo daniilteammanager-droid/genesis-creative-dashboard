@@ -1,7 +1,8 @@
 import { mskDay } from "@/lib/day";
 import { usdRate } from "@/lib/fx";
 import type { DolphinAdDay } from "@/lib/dolphin/api";
-import { parseCreativeCode } from "@/lib/creatives/code";
+import { creativeOfTitle, geoOfTitle, nameKey, torroSpelling } from "./names";
+export { NO_GEO, geoOfTitle, creativeOfTitle, torroSpelling } from "./names";
 
 // Telegram Ads как источник расхода (Decision 068).
 //
@@ -27,7 +28,8 @@ async function call<T>(token: string, method: string, params: Record<string, unk
       body: JSON.stringify(params),
       signal: AbortSignal.timeout(30_000),
     }).catch((e) => { throw new Error(`Telegram Ads недоступен: ${e instanceof Error ? e.message : e}`); });
-    if (res.status === 429 && attempt < 3) {
+    // 429 и разовые 5xx Telegram (502 замечен 06.11.2026) — повтор, а не упавший кабинет.
+    if ((res.status === 429 || res.status >= 500) && attempt < 3) {
       await new Promise((r) => setTimeout(r, (Number(res.headers.get("retry-after")) || 3) * 1000));
       continue;
     }
@@ -69,40 +71,6 @@ export async function listAds(token: string): Promise<TgAd[]> {
 
 // Курс — общий (lib/fx.ts): свой день — свой курс.
 export const tonUsd = (day: string) => usdRate("TON", day);
-
-// ─── Имя объявления ─────────────────────────────────────────────────────────
-// Слова стран — как в боте; PR у Павла — опечатка Перу (Daniil 21.10.2026).
-const GEO_WORDS: [string, string][] = [
-  ["spain", "ES"], ["argentina", "AR"], ["mexico", "MX"], ["chile", "CL"], ["peru", "PE"], ["ecuador", "EC"],
-  ["colombia", "CO"], ["uruguay", "UY"], ["paraguay", "PY"], ["panama", "PA"],
-];
-const GEO_CODES: Record<string, string> = { ES: "ES", AR: "AR", MX: "MX", CL: "CL", PE: "PE", PR: "PE", EC: "EC", CO: "CO" };
-
-// Кампании на каналы (Павел, 06.11.2026): «Channels» в имени — не страна, а гео «Без гео»,
-// как в таблицах; тип канала — Invest / Crypto / Parsing. Страна в имени при этом не считается.
-export const NO_GEO = "🌐 Без гео";
-const CHANNELS = /\bchannels?\b/i;
-const CHANNEL_TYPES = /\b(invest|crypto|parsing)\b/gi;
-
-export function geoOfTitle(title: string): string | null {
-  if (CHANNELS.test(title)) return NO_GEO;
-  // Код крео v2 (stat-balance-t4-v1-b9-es-ar): страна — последняя позиция, а не язык.
-  const v2 = parseCreativeCode(title.trim().split(/\s+/)[0]);
-  if (v2.scheme === "v2" && v2.geo.toUpperCase() in GEO_CODES) return GEO_CODES[v2.geo.toUpperCase()];
-  const t = title.toLowerCase();
-  const word = GEO_WORDS.find(([w]) => t.includes(w));
-  if (word) return word[1];
-  const code = title.toUpperCase().split(/[\s_\-|/.,()]+/).find((tok) => tok in GEO_CODES);
-  return code ? GEO_CODES[code] : null;
-}
-
-// Крео — имя без страны и без «TG Ads»: так его пишет Torro в ad_name.
-export function creativeOfTitle(title: string): string {
-  let s = title.replace(/\btg[\s_]*ads\b/gi, " ").replace(CHANNELS, " ").replace(CHANNEL_TYPES, " ");
-  for (const [w] of GEO_WORDS) s = s.replace(new RegExp(`\\b${w}\\b`, "gi"), " ");
-  s = s.split(/\s+/).filter((tok) => !(tok.toUpperCase() in GEO_CODES)).join(" ");
-  return s.replace(/\s+/g, " ").trim() || title.trim();
-}
 
 // ─── Расход по дням ─────────────────────────────────────────────────────────
 
@@ -148,12 +116,6 @@ export const tgId = (accountId: string, adId: number) => `tg:${accountId}:${adId
 export const tgCampaignId = (accountId: string, title: string) => `tg:${accountId}:name:${nameKey(title)}`;
 
 // Строки склада в той же форме, что у Dolphin: кампания = адсет = объявление.
-// Имя кампании в Torro баер пишет руками, и регистр расходится с объявлением
-// («Static 4 Channels» / «Static 4 channels») — доход тогда не клеится. Имя Torro главнее.
-const nameKey = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
-export function torroSpelling(title: string, torroNames: string[] = []): string {
-  return torroNames.find((n) => nameKey(n) === nameKey(title))?.trim() ?? title;
-}
 
 export async function tgadsAdDays(key: { token: string; accountId: string; accountTitle: string; torroNames?: string[] }, since: string, until: string): Promise<DolphinAdDay[]> {
   const ads = (await listAds(key.token)).filter((a) => mskDay(new Date(a.created_date * 1000)) <= until)

@@ -22,6 +22,8 @@ assert.equal(geoOfTitle("Static 6 Spain Channels Crypto"), NO_GEO);
 assert.equal(geoOfTitle("stat-balance-t7-v1-b9-es Channels"), NO_GEO);
 assert.equal(geoOfTitle("stat-balance-t4-v1-b9-es-ar"), "AR");
 assert.equal(geoOfTitle("stat-balance-t4-v1-b9-es-es"), "ES");
+assert.equal(creativeOfTitle("stat-balance-t4-v1-b9-es-ar"), "stat-balance-t4-v1-b9-es");
+assert.equal(creativeOfTitle("stat-balance-t7-v1-b9-es Channels"), "stat-balance-t7-v1-b9-es");
 assert.equal(creativeOfTitle("Static 6 Channels Invest"), "Static 6");
 assert.equal(creativeOfTitle("Static 6 channels PARSING FOREX"), "Static 6 FOREX");
 

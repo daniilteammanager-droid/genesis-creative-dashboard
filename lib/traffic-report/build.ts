@@ -1,4 +1,5 @@
 import { parseCreativeCode, parseName } from "@/lib/creatives/code";
+import { NO_GEO as NO_GEO_CHANNELS, geoOfTitle } from "@/lib/tgads/names";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за период. Чистая сборка —
 // без базы, её проверяет build.test.ts. Читает склад load.ts.
@@ -28,7 +29,6 @@ export function romiBand(romi: number | null): RomiBand | null {
 
 const LATAM = new Set(["AR", "MX", "CO", "CL", "PE", "PY", "UY", "EC", "PA", "BO", "VE", "CR", "GT", "DO", "HN", "SV", "NI", "LATAM"]);
 export const MULTI = "MULTI", NO_GEO = "??", REST = "REST";
-const NO_GEO_CHANNELS = "🌐 Без гео"; // каналы TG Ads, см. lib/tgads/api.ts
 const GEO_NAMES: Record<string, string> = {
   ES: "Испания", AR: "Аргентина", MX: "Мексика", CO: "Колумбия", CL: "Чили", PE: "Перу", PY: "Парагвай", UY: "Уругвай",
   EC: "Эквадор", PA: "Панама", BO: "Боливия", VE: "Венесуэла", CR: "Коста-Рика", GT: "Гватемала", DO: "Доминикана",
@@ -175,12 +175,15 @@ export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, 
     const ad = ads.get(`${r.buyer}\u0000${r.ad.trim()}`);
     const name = parseName(r.campaign);
     const own = platforms.get(r.buyer);
+    const platform = one(seen?.platform, "fb" as Platform) ?? only(ad?.platform) ?? (own?.size === 1 ? [...own][0] : "fb");
+    // У TG Ads страна — в имени кампании («Static 4 Spain», «… Channels»), а parseName его не узнаёт.
+    const tgGeo = platform === "tg" ? geoOfTitle(r.campaign) : null;
     const s = cell(
       r.buyer,
-      one(seen?.geo, MULTI) ?? name.geo ?? creoGeo(r.ad) ?? only(ad?.geo) ?? NO_GEO,
+      one(seen?.geo, MULTI) ?? name.geo ?? tgGeo ?? creoGeo(r.ad) ?? only(ad?.geo) ?? NO_GEO,
       one(seen?.face, "") || named(ad?.face) || name.face || "",
       one(seen?.funnel, "") || named(ad?.funnel) || name.funnel || "",
-      one(seen?.platform, "fb" as Platform) ?? only(ad?.platform) ?? (own?.size === 1 ? [...own][0] : "fb"),
+      platform,
       creoName(r.ad),
     );
     s.subs += r.subs; s.dia += r.dia; s.deps += r.deps; s.rev += r.rev;

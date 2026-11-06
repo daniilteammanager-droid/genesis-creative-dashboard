@@ -5,7 +5,7 @@ import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import {
-  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, romiBand, sortCreos, totalOf, treeOf,
+  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, metricsOf, romiBand, sortCreos, totalOf, treeOf,
   type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage,
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
@@ -176,6 +176,9 @@ export default function TrafficReportPage() {
   const expandAll = () => { setClosed(new Set()); setOpen(new Set(tree.flatMap((b) => (b.children ?? []).map((g) => g.key)))); };
   const collapseAll = () => { setOpen(new Set()); setClosed(new Set(tree.map((b) => b.key))); };
 
+  // Крео за всё время и его статус: ключ — подпись баера и имя крео, как в строках дерева.
+  const allTime = useMemo(() => new Map((data?.creos ?? []).map((c) => [`${c.buyer}\u0000${c.creo}`, c])), [data]);
+
   const t = data ? totalOf(base) : null;
   const pick = (r: { since: string; until: string }) => setRange(r);
 
@@ -287,14 +290,16 @@ export default function TrafficReportPage() {
                 <tr className="text-hint">
                   <th className="sticky top-0 left-0 z-30 bg-card text-left font-medium px-3 py-2 border-b border-line min-w-[13rem]">Баер / страна / крео</th>
                   <th className="sticky top-0 z-20 bg-card text-left font-medium px-3 py-2 border-b border-line">Этап</th>
+                  <th className="sticky top-0 z-20 bg-card text-left font-medium px-3 py-2 border-b border-line" title="Последнее состояние объявлений с этим крео у баера (обновляется раз в час)">Статус</th>
                   {COLS.map((c) => <th key={c.label} className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line whitespace-nowrap">{c.label}</th>)}
                   <th className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line">ROMI</th>
+                  <th className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line whitespace-nowrap" title="ROMI крео за всё время, все страны. Наведи на цифру — спенд, ревенью, цены">ROMI всё время</th>
                 </tr>
               </thead>
               <tbody>
-                {!data && !err && <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-hint">Загружаю…</td></tr>}
+                {!data && !err && <tr><td colSpan={COLS.length + 5} className="px-3 py-6 text-hint">Загружаю…</td></tr>}
                 {data && rows.length === 0 && (
-                  <tr><td colSpan={COLS.length + 3} className="px-3 py-6 text-hint">
+                  <tr><td colSpan={COLS.length + 5} className="px-3 py-6 text-hint">
                     {!onlyFav ? "За этот период расхода и Torro нет."
                       : favs.size ? "Избранные крео в этом периоде не крутились и Torro по ним нет."
                       : "Избранного пока нет — отметь крео звездой ☆ слева от названия."}
@@ -308,6 +313,9 @@ export default function TrafficReportPage() {
                   const band = romiBand(n.m.romi);
                   const bg = n.level === 0 ? "bg-raised" : "bg-card";
                   const st = STAGES.find((s) => s.id === n.stage);
+                  const all = creoRow ? allTime.get(`${rowBuyer}\u0000${n.label}`) : undefined;
+                  const allM = all ? metricsOf(all.sums) : null;
+                  const allBand = allM ? romiBand(allM.romi) : null;
                   return (
                     <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
                       <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-line/50 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>
@@ -334,9 +342,20 @@ export default function TrafficReportPage() {
                           </span>
                         ) : null}
                       </td>
+                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 whitespace-nowrap`}>
+                        {all?.active === true ? <span className="text-green-300">● активно</span>
+                          : all?.active === false ? <span className="text-hint">○ остановлено</span> : null}
+                      </td>
                       {COLS.map((c) => <td key={c.label} className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>{c.cell(n)}</td>)}
                       <td className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>
                         <span className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md ${band ? BAND[band] : "text-hint"}`}>{show(n.m.romi, romiText)}</span>
+                      </td>
+                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>
+                        {all && allM && (
+                          <span title={[`Всё время, все страны`, `Спенд: ${usd0(all.sums.spend)}`, `Ревенью: ${usd0(all.sums.rev)}`,
+                            `Цена подп.: ${show(allM.cps, usd2)}`, `Цена диал.: ${show(allM.cpd, usd2)}`, `Депы: ${all.sums.deps}`].join("\n")}
+                                className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md cursor-help ${allBand ? BAND[allBand] : "text-hint"}`}>{show(allM.romi, romiText)}</span>
+                        )}
                       </td>
                     </tr>
                   );
