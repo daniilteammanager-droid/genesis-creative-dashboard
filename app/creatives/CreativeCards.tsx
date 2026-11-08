@@ -6,7 +6,7 @@ import CreativeTile from "@/components/CreativeTile";
 import { costPer, romiOf, warehouseTile } from "@/lib/creatives/tile";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/media";
 import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
-import { noteKey, noteOf } from "@/lib/creatives/notes";
+import { noteKey, noteOf, transcriptOf } from "@/lib/creatives/notes";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { toLegacy } from "./toLegacy";
 import { Busy, seg, Spinner } from "@/components/ui";
@@ -85,6 +85,7 @@ export default function CreativeCards({
 
   const index = useMemo(() => buildMediaIndex(media, new Set(suffixes)), [media, suffixes]);
   const findMedia = useCallback((code: string) => lookupMedia(index, code), [index]);
+  const selectedMatch = selected ? findMedia(selected.code) : undefined;
 
   const toggleFavorite = useCallback(async (code: string) => {
     if (!isSupabaseConfigured) return;
@@ -265,6 +266,7 @@ export default function CreativeCards({
                       countries={r.countries}
                       file={match?.file}
                       exact={match?.exact}
+                      otherVersion={match?.otherVersion}
                       geoMismatch={r.geoMismatch}
                       m={warehouseTile(r)}
                       favorite={noteOf(notes, r.code)?.favorite ?? false}
@@ -293,8 +295,10 @@ export default function CreativeCards({
       {selected && (
         <CreativeModal
           item={toLegacy(selected)}
-          mediaFile={findMedia(selected.code)?.file}
+          mediaFile={selectedMatch?.file}
+          otherVersion={selectedMatch?.otherVersion}
           note={noteOf(notes, selected.code)}
+          transcript={transcriptOf(notes, selected.code, selectedMatch?.file.key)}
           supabaseAvailable={isSupabaseConfigured}
           onClose={() => setSelected(null)}
           onToggleFavorite={toggleFavorite}

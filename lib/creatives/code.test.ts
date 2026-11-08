@@ -103,7 +103,9 @@ assert.equal(lookupMedia(index, "vid-storytell-t31-v1-b2-pt-es")?.file.key, "vid
 
 // А вот это разные креативы, и подставлять чужое превью нельзя.
 assert.equal(lookupMedia(index, "vid-storytell-t99-v1-b2-es-es"), undefined, "другой текст");
-assert.equal(lookupMedia(index, "vid-storytell-t31-v2-b2-es-es"), undefined, "другая версия");
+// Другой версии нет — показываем загруженную версию того же крео и говорим, какую (08.11.2026).
+assert.deepEqual(lookupMedia(index, "vid-storytell-t31-v2-b2-es-es"),
+  { file: media[0], exact: false, otherVersion: "v1" }, "другая версия");
 assert.equal(lookupMedia(index, "vid-storytell-t31-v1-b7-es-es"), undefined, "другой байер");
 assert.equal(lookupMedia(index, "vid-checklist-t31-v1-b2-es-es"), undefined, "другой подход");
 assert.equal(lookupMedia(index, "stat-storytell-t31-v1-b2-es-es"), undefined, "другой носитель");
@@ -118,6 +120,24 @@ const noSuffix = buildMediaIndex(media, new Set());
 assert.equal(lookupMedia(noSuffix, "qa-6-ar"), undefined, "без суффиксов старый запасной путь выключен");
 assert.equal(lookupMedia(noSuffix, "vid-storytell-t31-v1-b2-es-ar")?.exact, false, "новый путь работает всегда");
 
+
+// Код до vN (08.11.2026): имя файла не по схеме, баер — из имени или из папки bN/.
+{
+  const idx = buildMediaIndex([
+    file("b2/vid-checklist-t30-v1-b2-es-.mp4"),
+    file("b3/vid-balance-t30-v9.mp4"),
+    file("vid/vid-edit-t5-v2.mp4"),
+  ], suffixes);
+  assert.equal(lookupMedia(idx, "vid-checklist-t30-v1-b2-es-ar")?.file.key, "b2/vid-checklist-t30-v1-b2-es-.mp4", "хвост после кода не мешает");
+  assert.equal(lookupMedia(idx, "vid-balance-t30-v9-b3-es-ar")?.file.key, "b3/vid-balance-t30-v9.mp4", "баер из папки");
+  assert.equal(lookupMedia(idx, "vid-balance-t30-v9-b1-es-ar"), undefined, "чужой баер — другой текст");
+  assert.equal(lookupMedia(idx, "vid-edit-t5-v2-b3-es-mx")?.file.key, "vid/vid-edit-t5-v2.mp4", "ничей файл подходит всем");
+  assert.equal(lookupMedia(idx, "vid-edit-t5-v3-b3-es-mx")?.otherVersion, "v2", "ничья другая версия");
+  assert.equal(lookupMedia(idx, "vid-balance-t30-v2-b3-es-ar")?.otherVersion, "v9", "своя другая версия");
+  assert.equal(lookupMedia(idx, "vid-balance-t30-v2-b1-es-ar"), undefined, "чужой баер — и другой версии нет");
+  assert.equal(lookupMedia(idx, "vid-balance-t31-v9-b3-es-ar"), undefined, "другой текст");
+  assert.equal(lookupMedia(idx, "vid-balance-t30-v9-b3-es-ar")?.otherVersion, undefined);
+}
 
 // ─── Хвост от дублирования в кабинете ────────────────────────────────────────
 // Meta дописывает его сама. Без отрезания новый код проваливается в legacy и

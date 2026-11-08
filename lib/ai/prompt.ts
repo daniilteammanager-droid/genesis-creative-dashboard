@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { escapeHtml } from "@/lib/telegram/api";
 import { metricsOf, TARGET_DEP, TEST_MULT, type Stage, type Sums } from "@/lib/traffic-report/build";
+import { buyerCodeIn, versionCode } from "@/lib/creatives/code";
 
 // AI-разбор крео (Decision 101): что модель получает и как читаем её ответ. Чистые функции —
 // самопроверка в prompt.test.ts.
@@ -68,8 +69,8 @@ export function creoPrompt(f: CreoFacts): string {
 }
 
 // Код текста крео без баера и гео: vid-balance-t30-v9-b3-es-es → vid-balance-t30-v9; баер — b3.
-export const textBase = (creo: string) => creo.toLowerCase().match(/^([a-z]+-[a-z0-9]+-t\d+-v\d+)(?=-|$)/)?.[1] ?? null;
-export const buyerCodeIn = (code: string) => code.toLowerCase().match(/-(b\d+)(?=-|$)/)?.[1] ?? null;
+export const textBase = versionCode;
+export { buyerCodeIn };
 
 // Транскрипт к крео — как файлы к строкам (Decision 077): своя папка баера или легаси без кода баера,
 // чужой bN — никогда. Свой — первым.

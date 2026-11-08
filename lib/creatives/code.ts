@@ -113,6 +113,14 @@ export function shootKey(code: string): string | undefined {
   return `${parsed.medium}-${parsed.approach}-t${parsed.textNo}-v${parsed.version}-${parsed.buyer}`;
 }
 
+// Код до версии включительно: vid-balance-t30-v9-b3-es-es → vid-balance-t30-v9. Читается и у имён не
+// по схеме — без гео, с «-» на конце, с хвостом («…-b2-es-», «…-v9.mp4»): файл к объявлению ищется по
+// нему (08.11.2026), язык, гео и всё после vN не важны.
+export const versionCode = (name: string) => /^([a-z]+-[a-z0-9]+-t\d+-v\d+)(?![a-z0-9])/.exec(normalize(name))?.[1] ?? null;
+// Номер текста: …-t30-v9… → t30. Свой у каждого баера — t30 Артёма и t30 Андрея разные тексты.
+export const textNoOf = (name: string) => /^[a-z]+-[a-z0-9]+-(t\d+)-v\d+(?![a-z0-9])/.exec(normalize(name))?.[1] ?? null;
+export const buyerCodeIn = (name: string) => /-(b\d+)(?![a-z0-9])/.exec(normalize(name))?.[1] ?? null;
+
 // ─── Имена РК и адсетов ───────────────────────────────────────────────────────
 //
 // Шаблон (вики баера, «Имена РК и адсета»):

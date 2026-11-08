@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { supabase, isSupabaseConfigured, selectAllRows, currentUserId, type CreativeNote } from "@/lib/supabase";
 import type { CreativeRow } from "@/lib/creatives/types";
-import { noteKey, noteOf, notesMap } from "@/lib/creatives/notes";
+import { noteKey, noteOf, notesMap, transcriptOf } from "@/lib/creatives/notes";
 import { loadCreativeRows } from "@/lib/creatives/loadCreativeRows";
 import { type MediaFile, buildMediaIndex, lookupMedia, getApproach } from "@/lib/creatives/media";
 import { parseNumber, formatSummaryNumber, formatRomiPct, formatUsd } from "@/lib/creatives/format";
@@ -522,7 +522,9 @@ export default function Home() {
         <CreativeModal
           item={selected}
           mediaFile={findMedia(selected.creative)?.file}
+          otherVersion={findMedia(selected.creative)?.otherVersion}
           note={noteOf(notes, selected.creative)}
+          transcript={transcriptOf(notes, selected.creative, findMedia(selected.creative)?.file.key)}
           supabaseAvailable={!supabaseDown}
           onClose={() => setSelected(null)}
           onToggleFavorite={toggleFavorite}

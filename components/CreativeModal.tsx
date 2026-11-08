@@ -20,7 +20,9 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 export default function CreativeModal({
   item,
   mediaFile,
+  otherVersion,
   note,
+  transcript,
   supabaseAvailable,
   onClose,
   onToggleFavorite,
@@ -28,7 +30,9 @@ export default function CreativeModal({
 }: {
   item: CreativeRow;
   mediaFile?: MediaFile;
+  otherVersion?: string; // нужной vN нет, показана эта версия того же крео
   note?: CreativeNote;
+  transcript?: string | null; // своя, файла или того же tN баера — transcriptOf()
   supabaseAvailable: boolean;
   onClose: () => void;
   onToggleFavorite: (code: string) => void;
@@ -48,7 +52,7 @@ export default function CreativeModal({
   const [noteStatus,          setNoteStatus]          = useState<SaveStatus>("idle");
   const [noteEditing,         setNoteEditing]         = useState(false);
   const [noteDraft,           setNoteDraft]           = useState("");
-  const transcriptionText = note?.transcription_ru || item.text;
+  const transcriptionText = note?.transcription_ru || transcript || item.text;
   const [transcriptionStatus, setTranscriptionStatus] = useState<SaveStatus>("idle");
   const [transcriptionEditing,setTranscriptionEditing]= useState(false);
   const [transcriptionDraft,  setTranscriptionDraft]  = useState("");
@@ -169,6 +173,9 @@ export default function CreativeModal({
               </div>
             )}
             </div>
+            {mediaFile && otherVersion && (
+              <p className="text-xs text-amber-300/90">Этой версии в Медиатеке нет — показана {otherVersion} этого крео</p>
+            )}
 
             {/* Расшифровка */}
             <div className="bg-panel border border-line rounded-xl p-4">

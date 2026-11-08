@@ -10,13 +10,14 @@ import RomiBadge from "./RomiBadge";
 const TAG = "text-[11px] font-medium px-1.5 py-0.5 rounded-md border whitespace-nowrap";
 
 export default function CreativeTile({
-  code, approach, countries, file, exact, geoMismatch, m, favorite, canFavorite, onOpen, onFavorite,
+  code, approach, countries, file, exact, otherVersion, geoMismatch, m, favorite, canFavorite, onOpen, onFavorite,
 }: {
   code: string;
   approach: string;
   countries?: string[];
   file?: MediaFile;
   exact?: boolean;
+  otherVersion?: string; // нужной vN нет, показана эта версия того же крео
   geoMismatch?: boolean;
   m: TileMetrics;
   favorite: boolean;
@@ -41,7 +42,11 @@ export default function CreativeTile({
           <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
             {approach !== "unknown" && <span className={`${TAG} bg-violet-800/35 text-violet-100 border-violet-700/40`}>{approach}</span>}
             {countries?.map((c) => <span key={c} className={`${TAG} bg-zinc-800/60 text-zinc-300 border-zinc-700/40`}>{c}</span>)}
-            {file && exact === false && (
+            {file && otherVersion && (
+              <span title={`Этой версии в Медиатеке нет — показана ${otherVersion} этого крео`}
+                    className={`${TAG} bg-amber-800/25 text-amber-300/90 border-amber-700/40`}>другая версия · {otherVersion}</span>
+            )}
+            {file && exact === false && !otherVersion && (
               <span title="Точного файла нет — превью подставлено по похожему названию"
                     className={`${TAG} bg-amber-800/25 text-amber-300/90 border-amber-700/40`}>≈ похоже</span>
             )}
