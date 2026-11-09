@@ -7,7 +7,7 @@ import type { CampaignRow, SharedAdset } from "./plan";
 // Чистые функции: форма хранит сеты, правки и убранные, сюда — за готовыми строками.
 
 export type SetForm = Omit<CampaignRow, "unit" | "setKey" | "set">;
-export type ChildOverride = Partial<Omit<SetForm, "key" | "adsetNames">> & { adsetName?: string };
+export type ChildOverride = Partial<Omit<SetForm, "key" | "adsetNames" | "adsetBudgets">> & { adsetName?: string; adsetBudget?: string };
 
 export const childKey = (setKey: string, adsetId: string, creativeKey: string) => `${setKey}::${adsetId}::${creativeKey}`;
 
@@ -18,13 +18,14 @@ export function expandSet(set: SetForm, setNumber: number, adsets: SharedAdset[]
   adsets.forEach((a, ai) => a.creatives.forEach((c, ci) => {
     const key = childKey(set.key, a.id, c.key);
     if (omitted.has(key)) return;
-    const { adsetName, ...own } = overrides[key] ?? {};
+    const { adsetName, adsetBudget, ...own } = overrides[key] ?? {};
     out.push({
       key, setKey: set.key, adsetIndex: ai, adIndex: ci, code: c.code, overridden: Boolean(overrides[key]),
       row: {
         ...set, ...own, key, setKey: set.key, set: setNumber,
         startAtByAccount: { ...set.startAtByAccount, ...own.startAtByAccount },
         adsetNames: [adsetName ?? set.adsetNames?.[ai] ?? ""],
+        adsetBudgets: [adsetBudget ?? set.adsetBudgets?.[ai] ?? ""],
         unit: { adset: ai, ad: ci, key: c.key },
       },
     });

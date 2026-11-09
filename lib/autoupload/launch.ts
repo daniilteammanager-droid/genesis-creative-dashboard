@@ -7,7 +7,7 @@ import { originalKey, publicUrl } from "@/lib/uniq/source";
 import { zonedToUtc, type Plan, type PlanCampaign } from "./plan";
 
 // Автозалив (Decision 081, 087): собранный план → кампании, адсеты и объявления в Meta.
-// Шаги — как у Артёма (meta-launch.cjs): CBO-кампания OUTCOME_LEADS, адсет на
+// Шаги — как у Артёма (meta-launch.cjs): кампания OUTCOME_LEADS (CBO, или ABO — бюджет на адсетах), адсет на
 // конверсию SUBSCRIBE пикселя, мобильные плейсменты FB/IG, креатив видео или
 // картинки с CTA на ссылку MVP, Multi-advertiser выключен.
 //
@@ -199,6 +199,14 @@ function minor(usd: number, rate: number, currency: string): number {
   return Math.round((usd / rate) * 10 ** digits);
 }
 
+// Бюджет кампании: CBO — сумма и стратегия на ней. ABO — их нет, стратегия и сумма на адсете, а Meta
+// с v24 требует сказать, делятся ли адсеты деньгами: нет, у каждого свой бюджет.
+export function campaignBudget(budgetUsd: number | null, bidStrategy: string, rate: number, currency: string) {
+  return budgetUsd !== null
+    ? { daily_budget: String(minor(budgetUsd, rate, currency)), bid_strategy: bidStrategy }
+    : { is_adset_budget_sharing_enabled: false };
+}
+
 // Уже созданный объект с этим именем у родителя — после оборванного запроса.
 async function adopt(token: string, edge: string, name: string): Promise<string | undefined> {
   const r = await graph<{ data?: { id: string; name: string }[] }>(token, edge, { fields: "id,name", limit: "500" });
@@ -270,8 +278,8 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
       if (!cs.id) {
         cs.tried = true; await stage(`Создаю кампанию ${c.name}`);
         const r = await graph<{ id: string }>(token, `act_${c.accountId}/campaigns`, {
-          name: c.name, objective: "OUTCOME_LEADS", status, daily_budget: String(minor(c.budgetUsd, rate, acc.currency)),
-          bid_strategy: bidStrategy, special_ad_categories: [],
+          name: c.name, objective: "OUTCOME_LEADS", status, ...campaignBudget(c.budgetUsd, bidStrategy, rate, acc.currency),
+          special_ad_categories: [],
         }, "POST");
         cs.id = r.id;
       }
@@ -292,6 +300,7 @@ export async function advance(job: Job, deadline: number): Promise<boolean> {
             promoted_object: { pixel_id: c.pixelId, custom_event_type: "SUBSCRIBE" },
             start_time: zonedToUtc(c.startLocal, acc.timezone),
             ...(bidAmount !== null ? { bid_amount: String(bidAmount) } : {}),
+            ...(a.budgetUsd !== undefined ? { daily_budget: String(minor(a.budgetUsd, rate, acc.currency)) } : {}),
             ...(c.dsa ? { dsa_beneficiary: c.dsa, dsa_payor: c.dsa } : {}),
           };
           as.tried = true; await stage(`Создаю адсет ${a.name}`);

@@ -56,4 +56,16 @@ assert.equal(q.summary.sets, 2);
 assert.throws(() => buildPlan({ ...input, oneToOne: true, campaigns: rows, adsets: [{ ...input.adsets[0], creatives: [c2, c1] }] }, accounts, 9567), /изменился/);
 assert.throws(() => buildPlan({ ...input, pixelId: "" }, accounts, 9567), /пиксель/);
 assert.throws(() => buildPlan({ ...input, campaigns: [{ ...row, lander: "ART1" }] }, accounts, 9567), /воронку/);
+// ABO: бюджет на адсетах, у кампании его нет. Пустой — бюджет по умолчанию, бюджет кампании в черновике не мешает.
+const twoAdsets = [input.adsets[0], { id: "a2", target: "INT", creatives: [c2] }];
+const abo = buildPlan({ ...input, abo: true, accountIds: ["111"], adsets: twoAdsets, campaigns: [{ ...row, budgetUsd: "99", adsetBudgets: ["7,5"] }] }, accounts, 9567);
+assert.equal(abo.campaigns[0].budgetUsd, null);
+assert.deepEqual(abo.campaigns[0].adsets.map((a) => a.budgetUsd), [7.5, 20]);
+assert.throws(() => buildPlan({ ...input, abo: true, campaigns: [{ ...row, adsetBudgets: ["-1"] }] }, accounts, 9567), /адсет 1: укажи бюджет/);
+assert.equal(p.campaigns[0].adsets[0].budgetUsd, undefined);   // CBO — как было
+// ABO в 1-1-1: у кампании сета один адсет, бюджет — её правка, иначе адсета в сете.
+const aboSet = [{ ...row, key: "s1", adsetBudgets: ["10", "15"] }];
+const aboRows = rowsFor(true, aboSet, twoAdsets, new Set(), { [childKey("s1", "a1", c2.key)]: { adsetBudget: "33" } });
+const abo1 = buildPlan({ ...input, abo: true, oneToOne: true, accountIds: ["111"], adsets: twoAdsets, campaigns: aboRows }, accounts, 9567);
+assert.deepEqual(abo1.campaigns.map((c) => c.adsets[0].budgetUsd), [10, 33, 15]);
 console.log("autoupload plan: ok");

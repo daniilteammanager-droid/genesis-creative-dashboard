@@ -31,6 +31,7 @@ export interface CampaignRow {
   pageId?: string; budgetUsd?: number | string; bidCapEnabled?: boolean; bidCapUsd?: number | string;
   startAtByAccount?: Record<string, string>;
   campaignName?: string; adsetNames?: string[];
+  adsetBudgets?: string[];    // ABO: бюджет адсета по порядку набора, пусто — бюджет по умолчанию
   unit?: { adset: number; ad: number; key: string };
 }
 export interface PlanInput {
@@ -41,6 +42,7 @@ export interface PlanInput {
   campaignNumber: number;     // с какого N нумеровать
   dailyBudgetUsd: number | string; // бюджет по умолчанию — для строк без своего
   oneToOne: boolean;
+  abo?: boolean;              // бюджет на адсете, а не на кампании (нет — CBO, как у Артёма)
   paused: boolean;            // создать на паузе вместо ACTIVE (у Артёма всегда ACTIVE)
   campaigns: CampaignRow[];
   adsets: SharedAdset[];
@@ -49,10 +51,12 @@ export interface PlanInput {
 export interface AccountInfo { id: string; name: string }
 
 export interface PlanAd { name: string; key: string; kind: "video" | "image" }
-export interface PlanAdset { name: string; country: string; target: string; customAudienceId?: string; ads: PlanAd[] }
+export interface PlanAdset { name: string; country: string; target: string; customAudienceId?: string; budgetUsd?: number; ads: PlanAd[] }
 export interface PlanCampaign {
   accountId: string; cab: string; name: string; geo: string; actor: string; set: number | null;
-  pixelId: string; pageId: string; landingUrl: string; budgetUsd: number; bidCapUsd: number | null;
+  pixelId: string; pageId: string; landingUrl: string;
+  budgetUsd: number | null;   // null — ABO, бюджеты у адсетов
+  bidCapUsd: number | null;
   startLocal: string;         // «ГГГГ-ММ-ДДTЧЧ:ММ» во времени кабинета
   dsa: string | null;
   adsets: PlanAdset[];
@@ -159,7 +163,7 @@ export function buildPlan(input: PlanInput, accounts: Map<string, AccountInfo>, 
     if (!clean(row.landingUrl)) throw new Error(`${where}: выбери ссылку MVP`);
     const pageId = clean(row.pageId) || clean(input.pageId);
     if (!/^\d+$/.test(pageId)) throw new Error(`${where}: выбери Facebook Page`);
-    const budget = positive(clean(row.budgetUsd) || input.dailyBudgetUsd, `Бюджет кампании ${ri + 1}: укажи сумму больше нуля`);
+    const budget = input.abo ? null : positive(clean(row.budgetUsd) || input.dailyBudgetUsd, `Бюджет кампании ${ri + 1}: укажи сумму больше нуля`);
     const bidCap = row.bidCapEnabled ? positive(row.bidCapUsd, `Bid cap кампании ${ri + 1}: укажи сумму больше нуля`) : null;
 
     // 1-1-1: один адсет и один креатив сета. Ключ сверяется — набор могли поменять.
@@ -194,6 +198,7 @@ export function buildPlan(input: PlanInput, accounts: Map<string, AccountInfo>, 
         seen.add(name);
         return {
           name, country: COUNTRY_ISO[geo], target: a.target, customAudienceId: clean(a.customAudienceId) || undefined,
+          ...(input.abo ? { budgetUsd: positive(clean(row.adsetBudgets?.[ai]) || input.dailyBudgetUsd, `${where}, адсет ${ai + 1}: укажи бюджет больше нуля`) } : {}),
           ads: a.creatives.map((c) => ({ name: codeForGeo(c.code, geo), key: c.key, kind: c.kind })),
         };
       });

@@ -1,7 +1,11 @@
 // Самопроверка загрузки видео кусками. Сеть подменена: Meta (resumable upload) и R2 (Range)
 // отвечают как в жизни. Запуск: npx tsx lib/autoupload/launch.test.ts
 import assert from "node:assert/strict";
-import { ensureMedia, type JobState } from "./launch";
+import { campaignBudget, ensureMedia, type JobState } from "./launch";
+
+// CBO — сумма и стратегия на кампании; ABO — без них, и Meta (с v24) требует ответа про общий бюджет адсетов.
+assert.deepEqual(campaignBudget(20, "LOWEST_COST_WITHOUT_CAP", 1, "USD"), { daily_budget: "2000", bid_strategy: "LOWEST_COST_WITHOUT_CAP" });
+assert.deepEqual(campaignBudget(null, "LOWEST_COST_WITHOUT_CAP", 1, "USD"), { is_adset_budget_sharing_enabled: false });
 
 const SIZE = 20;                         // «видео» в 20 байт, Meta режет по 8
 const file = Buffer.from("abcdefghijklmnopqrst");

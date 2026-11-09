@@ -37,11 +37,11 @@ const STATUS: Record<string, string> = { creating: "Заливается", creat
 
 interface Draft {
   accountIds: string[]; pixelId: string; pageId: string; date: string; campaignNumber: number; budget: string;
-  oneToOne: boolean; paused: boolean; campaigns: SetForm[]; adsets: SharedAdset[]; omitted: string[];
+  oneToOne: boolean; abo: boolean; paused: boolean; campaigns: SetForm[]; adsets: SharedAdset[]; omitted: string[];
   overrides: Record<string, ChildOverride>; text: PlanInput["text"];
 }
 const EMPTY: Draft = {
-  accountIds: [], pixelId: "", pageId: "", date: mskDay(), campaignNumber: 1, budget: "20", oneToOne: false, paused: false,
+  accountIds: [], pixelId: "", pageId: "", date: mskDay(), campaignNumber: 1, budget: "20", oneToOne: false, abo: false, paused: false,
   campaigns: [newCampaign()], adsets: [newAdset()], omitted: [], overrides: {}, text: { primaryText: "", headline: "", description: "", cta: "LEARN_MORE" },
 };
 function loadDraft(): Draft {
@@ -152,7 +152,7 @@ export default function Autoupload() {
   const withLanding = useCallback((r: SetForm): SetForm => ({ ...r, landingUrl: r.landingUrl || landingChoices(landings, r.geo, r.actor)[0]?.url || "" }), [landings]);
   const input = useMemo((): PlanInput => ({
     accountIds, pixelId: f.pixelId, pageId: f.pageId, date: f.date, campaignNumber: f.campaignNumber, dailyBudgetUsd: f.budget,
-    oneToOne: f.oneToOne, paused: f.paused, adsets: f.adsets, text: f.text,
+    oneToOne: f.oneToOne, abo: f.abo, paused: f.paused, adsets: f.adsets, text: f.text,
     campaigns: rowsFor(f.oneToOne, f.campaigns, f.adsets, omitted, f.overrides).map(withLanding),
   }), [accountIds, f, omitted, withLanding]);
   const inputKey = JSON.stringify(input);
@@ -205,12 +205,13 @@ export default function Autoupload() {
 
   const creativesCount = f.adsets.reduce((s, a) => s + a.creatives.length, 0);
   const rows = input.campaigns;
+  const budgetOk = (v: unknown) => Number(String(v || f.budget).replace(",", ".")) > 0;
   const checks: [string, boolean, string][] = [
     ["Кабинеты", accountIds.length > 0, "выбери хотя бы один живой кабинет"],
     ["Общий пиксель и Facebook Page", Boolean(f.pixelId && pixels.some((p) => p.id === f.pixelId) && (f.pageId || rows.every((r) => r.pageId))), "пиксель, общий для всех кабинетов, и FP"],
     ["Расписание по кабинетам", Boolean(f.date) && rows.every((r) => accountIds.every((a) => /^\d\d:\d\d$/.test(r.startAtByAccount?.[a] || "00:00"))), "дата и время старта ЧЧ:ММ"],
     ["Креативы", creativesCount > 0, "добавь креативы в адсеты"],
-    ["Настройки кампаний", rows.length > 0 && rows.every((r) => r.geo && r.actor && r.funnel && r.marker && r.lander && (r.pageId || f.pageId) && Number(String(r.budgetUsd || f.budget).replace(",", ".")) > 0),
+    ["Настройки кампаний", rows.length > 0 && rows.every((r) => r.geo && r.actor && r.funnel && r.marker && r.lander && (r.pageId || f.pageId) && (f.abo ? f.adsets.every((_, i) => budgetOk(r.adsetBudgets?.[r.unit ? 0 : i])) : budgetOk(r.budgetUsd))),
       f.oneToOne ? `${f.campaigns.length} сетов · ${rows.length} кампаний 1‑1‑1` : "заполни GEO, лицо, воронку, маркер, лендинг, FP и бюджет"],
     ["MVP-ссылки", rows.every((r) => r.landingUrl), "нет ссылки Torro под GEO и лицо"],
   ];
@@ -271,10 +272,11 @@ export default function Autoupload() {
           <label className="flex items-center gap-2 text-xs text-hint">Бюджет по умолчанию, $ <input inputMode="decimal" value={f.budget} onChange={(e) => set({ budget: e.target.value })} className={`field w-24`} /></label>
           <div className="flex items-center gap-4 text-sm text-zinc-300">
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.oneToOne} onChange={(e) => set({ oneToOne: e.target.checked })} className="accent-violet-500" />1‑1‑1</label>
+            <label className="flex items-center gap-2" title="Бюджет на каждый адсет, а не на кампанию"><input type="checkbox" checked={f.abo} onChange={(e) => set({ abo: e.target.checked })} className="accent-violet-500" />ABO</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.paused} onChange={(e) => set({ paused: e.target.checked })} className="accent-violet-500" />на паузе</label>
           </div>
         </div>
-        <p className="text-[11px] text-hint mt-2">Каждая кампания создаётся в каждом выбранном кабинете. 1‑1‑1 — вместо кампаний сеты: по кампании на каждый креатив с одним адсетом, лишние убираются в сете. Без «на паузе» всё создаётся ACTIVE и сразу крутится.</p>
+        <p className="text-[11px] text-hint mt-2">Каждая кампания создаётся в каждом выбранном кабинете. 1‑1‑1 — вместо кампаний сеты: по кампании на каждый креатив с одним адсетом, лишние убираются в сете. ABO — бюджет на каждый адсет вместо бюджета кампании: у кампании появятся поля «Бюджет адсета», пустое — бюджет по умолчанию на этот адсет. Без «на паузе» всё создаётся ACTIVE и сразу крутится.</p>
       </div>
 
       <div data-tour="au-adsets" className={card}>
@@ -338,7 +340,7 @@ export default function Autoupload() {
                   <button type="button" onClick={() => duplicate(i)} className={`btn border-violet-700/50 text-violet-200 ml-auto`}>{f.oneToOne ? "Дублировать весь сет" : "Дублировать"}</button>
                   <button type="button" onClick={() => remove(i)} disabled={f.campaigns.length === 1} className={`btn border-red-900/40 text-red-300`}>{f.oneToOne ? "Удалить сет" : "Удалить"}</button>
                 </div>
-                <CampaignFields value={c} onChange={(p) => editCampaign(i, p)} accounts={selected} adsets={f.adsets} landings={landings} pages={pages} oneToOne={f.oneToOne} />
+                <CampaignFields value={c} onChange={(p) => editCampaign(i, p)} accounts={selected} adsets={f.adsets} landings={landings} pages={pages} oneToOne={f.oneToOne} abo={f.abo} />
                 {!f.oneToOne && (
                   <div className="mt-2 text-[11px] text-hint space-y-0.5">
                     {f.adsets.map((a, ai) => <p key={a.id}>Адсет {ai + 1}: <span className="font-mono text-zinc-400">{a.creatives.map((x) => safeCode(x.code, c.geo)).join(", ") || "—"}</span></p>)}
@@ -357,11 +359,11 @@ export default function Autoupload() {
                             <button type="button" onClick={(e) => { e.preventDefault(); set({ omitted: [...f.omitted, ch.key] }); }} className="ml-auto text-red-300 hover:text-red-200">Убрать из сета</button>
                           </summary>
                           <p className="text-[11px] text-hint mt-2 mb-1">Индивидуальные настройки этой кампании — остальное берётся у сета.</p>
-                          <CampaignFields value={ch.row} accounts={selected} adsets={[f.adsets[ch.adsetIndex]]} landings={landings} pages={pages} oneToOne
+                          <CampaignFields value={ch.row} accounts={selected} adsets={[f.adsets[ch.adsetIndex]]} landings={landings} pages={pages} oneToOne abo={f.abo}
                             onChange={(p) => {
-                              const { adsetNames, ...rest } = p;
+                              const { adsetNames, adsetBudgets, ...rest } = p;
                               const prev = f.overrides[ch.key] ?? {};
-                              set({ overrides: { ...f.overrides, [ch.key]: { ...prev, ...rest, ...(adsetNames ? { adsetName: adsetNames[0] } : {}) } } });
+                              set({ overrides: { ...f.overrides, [ch.key]: { ...prev, ...rest, ...(adsetNames ? { adsetName: adsetNames[0] } : {}), ...(adsetBudgets ? { adsetBudget: adsetBudgets[0] } : {}) } } });
                             }} />
                           {ch.overridden && (
                             <button type="button" onClick={() => { const o = { ...f.overrides }; delete o[ch.key]; set({ overrides: o }); }} className="text-[11px] text-violet-300 mt-1">Сбросить к настройкам сета</button>
@@ -402,14 +404,14 @@ export default function Autoupload() {
           <div className="mt-3 text-sm">
             <p className="text-zinc-300 mb-2">
               Сборка в порядке: {fresh.summary.campaigns} кампаний{fresh.summary.sets ? ` в ${fresh.summary.sets} сетах` : ""} · {fresh.summary.adsets} адсетов · {fresh.summary.ads} объявлений · кабинетов {fresh.summary.accounts}
-              · бюджет кампании (CBO) · bid cap: {fresh.summary.bidCaps} из {fresh.summary.campaigns} · {f.paused ? "PAUSED" : "ACTIVE"} · Multi-advertiser выключен
+              · {f.abo ? "бюджет адсетов (ABO)" : "бюджет кампании (CBO)"} · bid cap: {fresh.summary.bidCaps} из {fresh.summary.campaigns} · {f.paused ? "PAUSED" : "ACTIVE"} · Multi-advertiser выключен
             </p>
             <div className="max-h-80 overflow-y-auto space-y-2">
               {fresh.campaigns.map((c, i) => (
                 <div key={i} className="border border-line rounded-lg px-3 py-2">
-                  <p className="text-zinc-100 font-mono text-xs">{c.name} · ${c.budgetUsd}/день{c.bidCapUsd !== null ? ` · bid cap $${c.bidCapUsd}` : ""} · старт {c.startLocal.replace("T", " ")}</p>
+                  <p className="text-zinc-100 font-mono text-xs">{c.name}{c.budgetUsd !== null ? ` · $${c.budgetUsd}/день` : ""}{c.bidCapUsd !== null ? ` · bid cap $${c.bidCapUsd}` : ""} · старт {c.startLocal.replace("T", " ")}</p>
                   {c.adsets.map((a, k) => (
-                    <p key={k} className="text-zinc-400 font-mono text-[11px] pl-3">↳ {a.name}: {a.ads.map((d) => d.name).join(", ")}</p>
+                    <p key={k} className="text-zinc-400 font-mono text-[11px] pl-3">↳ {a.name}{a.budgetUsd !== undefined ? ` · $${a.budgetUsd}/день` : ""}: {a.ads.map((d) => d.name).join(", ")}</p>
                   ))}
                   <p className="text-hint text-[10px] pl-3 break-all">{c.landingUrl}</p>
                 </div>
@@ -464,9 +466,9 @@ export default function Autoupload() {
 const safeCode = (code: string, geo: string) => { try { return codeForGeo(code, geo); } catch { return code; } };
 
 // Поля кампании — одни и те же у обычной кампании, сета и кампании внутри сета.
-function CampaignFields({ value: c, onChange, accounts, adsets, landings, pages, oneToOne }: {
+function CampaignFields({ value: c, onChange, accounts, adsets, landings, pages, oneToOne, abo }: {
   value: Fields; onChange: (p: Fields) => void; accounts: Account[]; adsets: SharedAdset[];
-  landings: Landing[]; pages: [string, string][]; oneToOne: boolean;
+  landings: Landing[]; pages: [string, string][]; oneToOne: boolean; abo: boolean;
 }) {
   const choices = landingChoices(landings, c.geo ?? "", c.actor ?? "");
   const lander = FUNNEL_LANDERS[c.funnel ?? "TG"] ?? [];
@@ -488,7 +490,10 @@ function CampaignFields({ value: c, onChange, accounts, adsets, landings, pages,
           <option value="">FP по умолчанию</option>
           {pages.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
-        <input inputMode="decimal" placeholder="Бюджет $ (по умолч.)" value={String(c.budgetUsd ?? "")} onChange={(e) => onChange({ budgetUsd: e.target.value })} className="field" />
+        {abo ? adsets.map((a, ai) => (
+          <input key={a.id} inputMode="decimal" placeholder={`Бюджет адсета${adsets.length > 1 ? ` ${ai + 1}` : ""}, $`} value={c.adsetBudgets?.[ai] ?? ""}
+                 onChange={(e) => { const budgets = [...(c.adsetBudgets ?? [])]; budgets[ai] = e.target.value; onChange({ adsetBudgets: budgets }); }} className="field" />
+        )) : <input inputMode="decimal" placeholder="Бюджет $ (по умолч.)" value={String(c.budgetUsd ?? "")} onChange={(e) => onChange({ budgetUsd: e.target.value })} className="field" />}
         <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={Boolean(c.bidCapEnabled)} onChange={(e) => onChange({ bidCapEnabled: e.target.checked })} className="accent-violet-500" />Bid cap</label>
         <input inputMode="decimal" placeholder="Bid cap, $" disabled={!c.bidCapEnabled} value={String(c.bidCapUsd ?? "")} onChange={(e) => onChange({ bidCapUsd: e.target.value })} className={`field disabled:opacity-40`} />
       </div>
