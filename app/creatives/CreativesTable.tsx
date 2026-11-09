@@ -5,6 +5,7 @@ import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { mskDaysAgo } from "@/lib/day";
 import { COLS, money, n, romi, totalsOf, type Metrics } from "@/app/live-manager/columns";
 import { baseKey, mergeVersions, toCsv, type Merged } from "@/lib/creatives/merge";
+import { CreoLink } from "@/components/CreoModal";
 import { DateRange } from "@/components/DatePicker";
 import { PERIODS } from "./periods";
 import { Busy, seg, Spinner } from "@/components/ui";
@@ -270,7 +271,7 @@ export default function CreativesTable() {
                   <tr className={`hover:bg-violet-900/10 transition ${r.details && merge === "all" ? "cursor-pointer" : ""}`} onClick={() => merge === "all" && r.details && toggleRow(r.code)}>
                     <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[48vw] sm:max-w-[280px] truncate sticky left-0 bg-card z-10" title={r.code}>
                       {merge === "all" && <span className="text-hint text-xs mr-1.5">{openRows.has(r.code) ? "▾" : "▸"}</span>}
-                      {r.code}
+                      {merge === "none" ? <CreoLink name={r.code} className="max-w-full truncate align-bottom" /> : r.code}
                       {/* Старый формат помечен, но не спрятан: сейчас все деньги
                           именно на нём (Decision 043). */}
                       {r.scheme === "legacy" && (
@@ -304,7 +305,7 @@ export default function CreativesTable() {
                   {merge === "all" && openRows.has(r.code) && [...(r.details ?? [])].sort((a, b) => b.spend - a.spend).map((d) => (
                     <tr key={d.code} className="bg-violet-950/10">
                       <td className="px-3 py-2 pl-8 text-zinc-400 whitespace-nowrap sticky left-0 bg-panel z-10" title={d.code}>
-                        {d.code}<span className="ml-2 text-[11px] text-hint">{(d.countries.join(", ") || geoOfCode(d.code) || "—")} · {d.faces.join(", ") || "без лица"}</span>
+                        <CreoLink name={d.code} /><span className="ml-2 text-[11px] text-hint">{(d.countries.join(", ") || geoOfCode(d.code) || "—")} · {d.faces.join(", ") || "без лица"}</span>
                       </td>
                       <td className="px-3 py-2 text-hint">{d.countries.join(", ") || "—"}</td>
                       <td className="px-3 py-2 text-hint">{d.approach}</td>

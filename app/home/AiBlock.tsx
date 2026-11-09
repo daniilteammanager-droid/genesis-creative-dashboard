@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AiText, VERDICT, type Verdict } from "@/app/traffic-report/AiPanel";
+import { CreoLink } from "@/components/CreoModal";
 
 // Главная, AI-разборы (Decision 101): свежие разборы крео (баеру — свои и его лимит) и
 // недельная сводка по баерам для владельца и тимлида — с кнопкой «Собрать за 7 дней».
@@ -37,11 +38,15 @@ export default function AiBlock({ lead }: { lead: boolean }) {
               const v = a.verdict ? VERDICT[a.verdict] : null;
               return (
                 <li key={a.id}>
-                  <button onClick={() => setOpen(open === a.id ? null : a.id)} className="w-full flex items-center gap-2 text-left text-sm py-1.5 hover:text-violet-200">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm py-1.5">
                     {v && <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[11px] ${v.tone}`}>{v.label}</span>}
-                    <span className="truncate flex-1">{a.creo}</span>
-                    <span className="shrink-0 text-[11px] text-hint">{lead ? `${data.names[a.buyer_id] ?? ""} · ` : ""}{when(a.created_at)}</span>
-                  </button>
+                    <CreoLink name={a.creo} className="flex-1 min-w-0 truncate" />
+                    <button onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id}
+                            title={open === a.id ? "Свернуть разбор" : "Показать разбор"}
+                            className="w-full sm:w-auto text-left text-[11px] text-hint hover:text-violet-200 whitespace-nowrap">
+                      {lead ? `${data.names[a.buyer_id] ?? ""} · ` : ""}{when(a.created_at)} {open === a.id ? "▾" : "▸"}
+                    </button>
+                  </div>
                   {open === a.id && <div className="pb-3 pl-1"><AiText text={a.text} /></div>}
                 </li>
               );

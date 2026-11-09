@@ -8,6 +8,7 @@ import { COLS, SORTS, money, n, romi, sortBy, totalsOf } from "./columns";
 import { DateRange } from "@/components/DatePicker";
 import { Busy, seg, Spinner } from "@/components/ui";
 import { SummaryCard } from "@/components/general-report/shared";
+import { useOpenCreo } from "@/components/CreoModal";
 
 
 
@@ -63,6 +64,8 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, set
   const isOpen = open.has(node.id);
   const [full, setFull] = useState(false);
   const s = live.get(node.id);
+  const openCreo = useOpenCreo();
+  const isAd = node.level === "ad";
 
   return (
     <>
@@ -78,9 +81,10 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, set
             <div className="text-left flex items-center gap-2 max-w-full min-w-0">
               <button type="button" onClick={() => expandable && toggle(node.id)} aria-label={isOpen ? "Свернуть" : "Раскрыть"}
                       className={`text-hint text-xs w-4 shrink-0 ${expandable ? "cursor-pointer hover:text-zinc-300" : "opacity-0 cursor-default"}`}>{isOpen ? "▾" : "▸"}</button>
-              <button type="button" title={node.name}
-                      onClick={() => (window.matchMedia("(max-width: 639px)").matches ? setFull((v) => !v) : expandable && toggle(node.id))}
-                      className={`text-left min-w-0 sm:whitespace-normal sm:break-words ${full ? "whitespace-normal break-all" : "truncate"} ${depth === 0 ? "text-zinc-100" : "text-zinc-300"} ${expandable ? "cursor-pointer" : "cursor-default sm:cursor-text"}`}>
+              {/* Объявление = крео: по имени — модалка крео с видео и цифрами за любой период (08.11.2026). */}
+              <button type="button" title={isAd ? `${node.name} — открыть крео` : node.name}
+                      onClick={() => (isAd ? openCreo(node.name) : window.matchMedia("(max-width: 639px)").matches ? setFull((v) => !v) : expandable && toggle(node.id))}
+                      className={`text-left min-w-0 sm:whitespace-normal sm:break-words ${full ? "whitespace-normal break-all" : "truncate"} ${depth === 0 ? "text-zinc-100" : "text-zinc-300"} ${isAd ? "cursor-pointer hover:text-violet-300 hover:underline underline-offset-2" : expandable ? "cursor-pointer" : "cursor-default sm:cursor-text"}`}>
                 {node.name}
               </button>
             </div>

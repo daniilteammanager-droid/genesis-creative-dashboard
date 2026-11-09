@@ -9,7 +9,7 @@ import { legacyTile } from "@/lib/creatives/tile";
 import { noteKey } from "@/lib/creatives/notes";
 import CreativeStats from "./CreativeStats";
 import CreativeAi from "./CreativeAi";
-import { Icon } from "./ui";
+import { Icon, Spinner } from "./ui";
 
 // Модалка крео — общая для легаси-библиотеки и новой картотеки: видео, расшифровка,
 // заметка, избранное и все цифры крео со склада за выбранный период и по неделям
@@ -20,6 +20,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 export default function CreativeModal({
   item,
   mediaFile,
+  mediaLoading,
   otherVersion,
   note,
   transcript,
@@ -30,6 +31,7 @@ export default function CreativeModal({
 }: {
   item: CreativeRow;
   mediaFile?: MediaFile;
+  mediaLoading?: boolean; // список файлов ещё едет — крутилка, а не «нет файла»
   otherVersion?: string; // нужной vN нет, показана эта версия того же крео
   note?: CreativeNote;
   transcript?: string | null; // своя, файла или того же tN баера — transcriptOf()
@@ -164,6 +166,8 @@ export default function CreativeModal({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={mediaFile.url} alt={item.creative} className="w-full h-full object-contain" />
               )
+            ) : mediaLoading ? (
+              <div className="w-full h-full min-h-[220px] flex items-center justify-center"><Spinner /></div>
             ) : (
               <div className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-900/30 to-background">
                 <Icon name="film" className="w-12 h-12 text-violet-300/40" />
@@ -275,7 +279,7 @@ export default function CreativeModal({
           {/* Справа: все цифры крео за период и по неделям */}
           <div className="flex-1 min-w-0 p-5 md:overflow-y-auto">
             <CreativeAi key={item.creative} code={item.creative} />
-            <CreativeStats code={item.creative} fallback={m} fallbackLabel="Цифры с карточки" />
+            <CreativeStats code={item.creative} fallback={item.spend ? m : undefined} fallbackLabel="Цифры с карточки" />
           </div>
         </div>
       </div>

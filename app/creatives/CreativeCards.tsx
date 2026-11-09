@@ -5,7 +5,8 @@ import CreativeModal from "@/components/CreativeModal";
 import CreativeTile from "@/components/CreativeTile";
 import { costPer, romiOf, warehouseTile } from "@/lib/creatives/tile";
 import { buildMediaIndex, lookupMedia, type MediaFile } from "@/lib/creatives/media";
-import { isSupabaseConfigured, supabase, currentUserId, type CreativeNote } from "@/lib/supabase";
+import { isSupabaseConfigured, type CreativeNote } from "@/lib/supabase";
+import { saveFavorite } from "@/lib/creatives/notesDb";
 import { noteKey, noteOf, transcriptOf } from "@/lib/creatives/notes";
 import type { CreativesResult, CreativeRow } from "@/lib/warehouse/creatives";
 import { toLegacy } from "./toLegacy";
@@ -96,11 +97,7 @@ export default function CreativeCards({
       ? { ...existing, favorite: next, updated_at: new Date().toISOString() }
       : { creative_code: key, favorite: next, note: null, transcription_ru: null, ignored: false, updated_at: new Date().toISOString() };
     onNotesChange((p) => ({ ...p, [key]: updated }));
-    // Пишем только своё поле: расшифровку сюда класть нельзя, её пишет воркер.
-    await supabase.from("creative_user_notes").upsert(
-      { user_id: await currentUserId(), creative_code: key, favorite: next, updated_at: updated.updated_at },
-      { onConflict: "user_id,creative_code" }
-    );
+    await saveFavorite(code, next, updated.updated_at);
   }, [notes, onNotesChange]);
 
   const all = useMemo(() => data?.rows ?? [], [data]);

@@ -8,8 +8,9 @@ import CreativeUploadModal from "@/app/library/CreativeUploadModal";
 import MediaLibrary from "@/components/MediaLibrary";
 import { toLegacy } from "./toLegacy";
 import type { MediaFile } from "@/lib/creatives/media";
-import { isSupabaseConfigured, supabase, selectAllRows, type CreativeNote } from "@/lib/supabase";
-import { noteKey, notesMap } from "@/lib/creatives/notes";
+import { isSupabaseConfigured, supabase, type CreativeNote } from "@/lib/supabase";
+import { noteKey } from "@/lib/creatives/notes";
+import { loadNotes } from "@/lib/creatives/notesDb";
 import type { CreativesResult } from "@/lib/warehouse/creatives";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { DateRange } from "@/components/DatePicker";
@@ -102,20 +103,7 @@ export default function CreativesView() {
       .then(({ data }) => setSuffixes((data ?? []).map((r) => r.suffix as string)));
   }, []);
 
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    (async () => {
-      try {
-        const [shared, mine] = await Promise.all([
-          selectAllRows<{ creative_code: string; transcription_ru: string | null; ignored: boolean | null; updated_at: string }>(
-            "creative_notes", "creative_code, transcription_ru, ignored, updated_at"),
-          selectAllRows<{ creative_code: string; favorite: boolean; note: string | null; updated_at: string }>(
-            "creative_user_notes", "creative_code, favorite, note, updated_at"),
-        ]);
-        setNotes(notesMap(shared, mine));
-      } catch { /* заметки некритичны (Decision 005) */ }
-    })();
-  }, []);
+  useEffect(() => { loadNotes().then(setNotes); }, []);
 
   // Файлы Медиатеки — свой список (?for=library): баеру только его крео — из его статистики,
   // где бы ни лежал файл, и свои загрузки (03.11.2026). Плитке нужен весь бакет (Decision 036).

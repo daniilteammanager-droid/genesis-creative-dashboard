@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon, type IconName } from "@/components/ui";
+import { CreoLink } from "@/components/CreoModal";
 
 // «Антиотклон» (Decision 083, 091) — как вкладка Артёма: отклонённые объявления своих
 // кабинетов, действия прямо отсюда (ссылка, ФП, Multi-advertiser — выбор, проверка,
@@ -107,7 +108,7 @@ export default function Antireject() {
               <div key={r.ad_id} className="py-2.5">
                 <div className="flex flex-wrap gap-2 items-start">
                   <div className="flex-1 min-w-[220px]">
-                    <p className="text-sm text-zinc-200 truncate">{r.ad_name ?? r.ad_id}</p>
+                    <p className="text-sm text-zinc-200 truncate">{r.ad_name ? <CreoLink name={r.ad_name} className="max-w-full truncate align-bottom" /> : r.ad_id}</p>
                     <p className="text-[11px] text-hint truncate">{r.campaign_name ?? "—"} · CAB{r.account_id.slice(-4)} · с {when(r.first_seen_at)}</p>
                     {r.reason && <p className="text-[11px] text-red-300/90 mt-0.5 line-clamp-2">{r.reason}</p>}
                   </div>
@@ -163,7 +164,7 @@ export default function Antireject() {
                   <span className={e.kind === "rejected" ? "text-red-300" : e.ok ? "text-green-300" : "text-amber-300"}>
                     {e.kind === "rejected" ? "⛔ Отклонено" : e.ok ? "✅ Изменено" : "⚠️ Не вышло"}
                   </span>{" "}
-                  · {e.ad_name ?? e.ad_id} <span className="text-hint">· {when(e.created_at)}{e.actor ? ` · ${e.actor}` : ""}{e.status ? ` · ${e.status}` : ""}</span>
+                  · {e.ad_name ? <CreoLink name={e.ad_name} /> : e.ad_id} <span className="text-hint">· {when(e.created_at)}{e.actor ? ` · ${e.actor}` : ""}{e.status ? ` · ${e.status}` : ""}</span>
                 </p>
                 {e.text && <p className="text-[11px] text-hint break-all">{e.text}</p>}
               </div>

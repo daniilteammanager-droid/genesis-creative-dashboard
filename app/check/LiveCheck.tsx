@@ -7,6 +7,7 @@ import { mskDay, mskDaysAgo } from "@/lib/day";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { DateRange } from "@/components/DatePicker";
 import { Busy, Icon, seg, Spinner } from "@/components/ui";
+import { CreoLink } from "@/components/CreoModal";
 
 
 
@@ -248,7 +249,7 @@ export default function LiveCheck() {
                     {data.faces.filter((f) => !p || f.platform === p.platform).map((f) => (
                       <tbody key={`${f.platform}|${f.face}`} className="divide-y divide-line/50 border-t border-line">
                         <CheckLine r={f} level="face" />
-                        {data.rows.filter((r) => r.platform === f.platform && r.face === f.face).map((r) => <CheckLine key={r.key} r={r} />)}
+                        {data.rows.filter((r) => r.platform === f.platform && r.face === f.face).map((r) => <CheckLine key={r.key} r={r} creo={group === "creative"} />)}
                       </tbody>
                     ))}
                   </Fragment>
@@ -296,13 +297,13 @@ export default function LiveCheck() {
 // Текст ушёл в Telegram как HTML — показываем как читается в чате.
 const unhtml = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
-function CheckLine({ r, level = "row" }: { r: CheckRow; level?: "platform" | "face" | "row" }) {
+function CheckLine({ r, level = "row", creo = false }: { r: CheckRow; level?: "platform" | "face" | "row"; creo?: boolean }) {
   const head = level !== "row";
   const strong = head ? "text-white font-semibold" : "text-zinc-200";
   const soft = head ? "text-zinc-200 font-semibold" : "text-zinc-400";
   return (
     <tr className={level === "platform" ? "bg-violet-900/25" : head ? "bg-violet-900/15" : "hover:bg-violet-900/10 transition"}>
-      <td className={`px-3 py-2.5 max-w-[320px] truncate ${head ? strong : `${strong} pl-6`}`} title={r.label}>{level === "face" ? <span className="inline-flex items-center gap-1.5"><Icon name="user" className="w-3.5 h-3.5 text-violet-300" />{r.label}</span> : r.label}</td>
+      <td className={`px-3 py-2.5 max-w-[320px] truncate ${head ? strong : `${strong} pl-6`}`} title={r.label}>{level === "face" ? <span className="inline-flex items-center gap-1.5"><Icon name="user" className="w-3.5 h-3.5 text-violet-300" />{r.label}</span> : creo ? <CreoLink name={r.label} className="max-w-full truncate align-bottom" /> : r.label}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.dailyBudget === null ? "—" : `$${nf(r.dailyBudget, 0)}`}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${strong}`}>${nf(r.spend)}</td>
       <td className={`px-3 py-2.5 whitespace-nowrap ${soft}`}>{r.costPdp === null ? "—" : `$${nf(r.costPdp)}`}</td>

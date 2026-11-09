@@ -21,7 +21,7 @@ const count = (n: number) => n.toLocaleString("ru-RU");
 const pct = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`);
 const tone = (romi: number | null) => (romi === null ? "" : romi >= 130 ? "text-green-400" : romi >= 0 ? "text-yellow-300" : "text-red-400");
 
-export default function CreativeStats({ code, fallback, fallbackLabel }: { code: string; fallback: TileMetrics; fallbackLabel: string }) {
+export default function CreativeStats({ code, fallback, fallbackLabel }: { code: string; fallback?: TileMetrics; fallbackLabel: string }) {
   const [preset, setPreset] = useState<Preset>("30");
   const [range, setRange] = useState({ since: mskDaysAgo(29), until: mskDay() });
   // Ответ помнит, на какой запрос он пришёл: сменили период — старые цифры не выдаём за новые.
@@ -70,11 +70,11 @@ export default function CreativeStats({ code, fallback, fallbackLabel }: { code:
           <p className="text-sm text-amber-200/90 bg-amber-950/30 border border-amber-700/30 rounded-xl px-4 py-3">
             {fresh.notice ?? "За этот период крео не крутилось и депов не давало."}
           </p>
-          <Group title={fallbackLabel} tiles={[
+          {fallback && <Group title={fallbackLabel} tiles={[
             ["Спенд", formatUsd(fallback.spend)], ["Ревенью", formatUsd(fallback.revenue)],
             ["ROMI", formatRomi(fallback.romi), tone(fallback.romi)], ["Цена ПДП", formatUsd(fallback.cpdp)],
             ["Цена ДИА", formatUsd(fallback.cdia)], ["Цена депа", formatUsd(fallback.cdep)], ["Средний депозит", formatUsd(fallback.avgDep)],
-          ]} />
+          ]} />}
         </div>
       )}
 

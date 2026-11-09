@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import Onboarding from "./Onboarding";
+import { CreoModalProvider } from "./CreoModal";
 import { WORK_AREAS } from "@/lib/nav";
 import { Icon } from "./ui";
 
@@ -145,7 +146,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         <button onClick={toggle} className={iconBtn} aria-label="Показать панель">☰</button>
       </div>
 
-      <div className="flex-1 min-w-0"><ProfileContext.Provider value={profile}>{children}</ProfileContext.Provider></div>
+      <div className="flex-1 min-w-0"><ProfileContext.Provider value={profile}><CreoModalProvider>{children}</CreoModalProvider></ProfileContext.Provider></div>
 
       {/* Обучалка — пока в профиле нет отметки, что пройдена (Decision 078). */}
       {profile && profile.status === "active" && !profile.onboarded_at && <Onboarding key={profile.id} profile={profile} />}

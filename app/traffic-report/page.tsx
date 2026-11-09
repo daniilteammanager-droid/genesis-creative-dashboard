@@ -10,6 +10,7 @@ import {
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
 import AiPanel, { VERDICT, type Verdict } from "./AiPanel";
+import { CreoLink } from "@/components/CreoModal";
 import { Busy, chip, seg } from "@/components/ui";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за любой период, из склада.
@@ -330,7 +331,7 @@ export default function TrafficReportPage() {
                                   title={ai.has(aiKey) ? `AI-разбор${verdict ? `: ${VERDICT[verdict].label.toLowerCase()}` : ""}` : "AI-разбор крео"} aria-label="AI-разбор крео"
                                   className={`inline-block w-5 mr-0.5 ${ai.has(aiKey) ? (verdict ? VERDICT[verdict].tone.split(" ")[1] : "text-violet-300") : "text-hint hover:text-violet-300"}`}>✦</button>
                         )}
-                        {n.label}
+                        {creoRow ? <CreoLink name={n.label} /> : n.label}
                         {n.level === 2 && n.children && <span className="text-hint font-normal"> · {n.children.length} крео</span>}
                       </td>
                       <td className={`${bg} px-3 py-1.5 border-b border-line/50 whitespace-nowrap`}>
