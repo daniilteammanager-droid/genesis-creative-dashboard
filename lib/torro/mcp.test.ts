@@ -3,7 +3,7 @@
 // Главное здесь — обход потолка в 100 строк: склеенные части обязаны сойтись
 // с итогом дня, иначе часть цифр потерялась молча.
 import assert from "node:assert/strict";
-import { fetchDay, toCrm, type TorroRow } from "./mcp";
+import { fetchDay, rateLimited, toCrm, type TorroRow } from "./mcp";
 
 type Args = { group_by: string; country?: string[]; campaign_name?: string[] };
 
@@ -44,6 +44,20 @@ function fakeTorro(): typeof fetch {
 
 const base = { token: "t", buyerId: 1, day: "2026-10-22" };
 
+// Итог дня (первый запрос) разошёлся с частями на delta.
+function skewed(field: string, delta: number): typeof fetch {
+  const real = fakeTorro() as unknown as (u: string, i: { body: string }) => Promise<Response>;
+  let first = true;
+  return (async (url: string, init: { body: string }) => {
+    const res = await real(url, init);
+    if (!first) return res;
+    first = false;
+    const p = JSON.parse((await res.json()).result.content[0].text);
+    p.summary[field] = (p.summary[field] ?? 0) + delta;
+    return new Response(JSON.stringify({ result: { content: [{ type: "text", text: JSON.stringify(p) }] } }));
+  }) as unknown as typeof fetch;
+}
+
 async function main() {
 // 150 объявлений не влезают целиком; MX (120) не влезает и в страну — уходит в кампании.
 const rows = await fetchDay(base, "ad_name", fakeTorro());
@@ -68,6 +82,16 @@ assert.equal(crm.dialogs, 0);
 // Ошибка инструмента — честная ошибка, а не пустой день.
 const broken = (async () => new Response(JSON.stringify({ result: { isError: true, content: [{ type: "text", text: "bad buyer" }] } }))) as unknown as typeof fetch;
 await assert.rejects(fetchDay(base, "ad_name", broken), /bad buyer/);
+
+// Новый трафик между запросами — не ошибка; потерянные строки и лишние депы — ошибка.
+assert.equal((await fetchDay(base, "ad_name", skewed("click", -2))).length, 150, "части обогнали итог на 2 клика");
+await assert.rejects(fetchDay(base, "ad_name", skewed("click", -50)), /не сошлись/);
+await assert.rejects(fetchDay(base, "ad_name", skewed("click", 1)), /не сошлись/);
+await assert.rejects(fetchDay(base, "ad_name", skewed("dep_count", -1)), /не сошлись/);
+
+// «Отчёт уже считается» — повторяем, как лимит. Текст — настоящий ответ Torro.
+assert.ok(rateLimited(new Error('Torro: {"error": "Этот отчёт статистики уже считается", "code": "busy", "retry_after": 2}')));
+assert.ok(!rateLimited(new Error("Torro не принял ключ")));
 
 console.log("torro: потолок 100 строк обходится, части сходятся с итогом");
 }

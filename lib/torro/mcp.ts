@@ -40,8 +40,10 @@ interface Query {
 //
 // Torro режет частоту: ручной прогон и крон подряд дали «Torro: rate_limited» и
 // упавший прогон (24.10.2026). На это — пауза и повтор, а не ошибка сразу.
+// То же с code busy — тот же отчёт уже считается: у Артёма запросы по объявлениям и
+// по кампаниям идут параллельно и оба просят разбивку по странам (09.11.2026).
 const RATE_WAITS_MS = [5_000, 15_000, 30_000];
-export const rateLimited = (e: unknown) => e instanceof Error && /rate.?limit|HTTP 429/i.test(e.message);
+export const rateLimited = (e: unknown) => e instanceof Error && /rate.?limit|HTTP 429|"code":\s*"busy"/i.test(e.message);
 
 // patient = false — без повторов на лимите: фоновая работа (связки) уступает
 // основной загрузке и просто ждёт следующего запуска.
@@ -110,6 +112,11 @@ function truncated(p: TorroPayload): boolean {
 // Поля, по которым сверяем склейку частей с общим итогом. Если строки без страны
 // выпадут при разбиении, это всплывёт здесь, а не тихой дырой.
 const CHECKED = ["click", "sub", "chat", "dep_count", "redep_count"] as const;
+// Итог запрошен раньше частей: пока идут запросы, приходит новый трафик, и части обгоняют
+// его на пару штук (1914 против 1913 ронял весь прогон). Части меньше итога — строки
+// потерялись, это ошибка. Депы сходятся точно.
+// ponytail: порог в штуках, хватает при 3000 кликов в день; трафик в разы больше — порог в %.
+const TRAFFIC_DRIFT = 5;
 
 // Все строки дня, сколько бы их ни было.
 //
@@ -166,7 +173,8 @@ export async function fetchDay(
   for (const k of CHECKED) {
     const sum = rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
     const expected = Number(whole.summary[k]) || 0;
-    if (Math.abs(sum - expected) > 1e-6) {
+    const allowed = k === "dep_count" || k === "redep_count" ? 0 : TRAFFIC_DRIFT;
+    if (sum < expected - 1e-6 || sum > expected + allowed + 1e-6) {
       throw new Error(`Torro: за ${base.day} части не сошлись с итогом по ${k} (${sum} против ${expected})`);
     }
   }
