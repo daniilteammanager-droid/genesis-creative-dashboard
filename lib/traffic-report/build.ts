@@ -297,6 +297,14 @@ export function sortCreos(nodes: ReportNode[], by: SortBy): ReportNode[] {
   return nodes.map(deep);
 }
 
+// Всё время строки-склейки — сумма всего времени её крео. Нет ни у одного — null, а не нули.
+export function sumAllTime(list: Sums[]): Sums | null {
+  if (!list.length) return null;
+  const s = { ...ZERO };
+  for (const x of list) for (const k of Object.keys(s) as (keyof Sums)[]) s[k] += x[k];
+  return s;
+}
+
 export function totalOf(nodes: ReportNode[]): { sums: Sums; m: Metrics } {
   const s = { ...ZERO };
   for (const n of nodes) for (const k of Object.keys(s) as (keyof Sums)[]) s[k] += n.sums[k];

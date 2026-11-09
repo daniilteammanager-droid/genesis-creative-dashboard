@@ -5,7 +5,7 @@ import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import {
-  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, metricsOf, romiBand, sortCreos, totalOf, treeOf,
+  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, metricsOf, romiBand, sortCreos, sumAllTime, totalOf, treeOf,
   type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage,
 } from "@/lib/traffic-report/build";
 import type { TrafficReport } from "@/lib/traffic-report/load";
@@ -314,8 +314,11 @@ export default function TrafficReportPage() {
                   const band = romiBand(n.m.romi);
                   const bg = n.level === 0 ? "bg-raised" : "bg-card";
                   const st = STAGES.find((s) => s.id === n.stage);
-                  const all = creoRow ? allTime.get(`${rowBuyer}\u0000${n.label}`) : undefined;
-                  const allM = all ? metricsOf(all.sums) : null;
+                  const allOf = (creo: string) => allTime.get(`${rowBuyer}\u0000${creo}`);
+                  const all = creoRow ? allOf(n.label) : undefined;
+                  const glued = n.level === 2 && Boolean(n.children);   // строка склейки: t11, t11_v8
+                  const allSums = glued ? sumAllTime(n.children!.flatMap((c) => allOf(c.label)?.sums ?? [])) : all?.sums;
+                  const allM = allSums ? metricsOf(allSums) : null;
                   const allBand = allM ? romiBand(allM.romi) : null;
                   return (
                     <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
@@ -352,9 +355,9 @@ export default function TrafficReportPage() {
                         <span className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md ${band ? BAND[band] : "text-hint"}`}>{show(n.m.romi, romiText)}</span>
                       </td>
                       <td className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>
-                        {all && allM && (
-                          <span title={[`Всё время, все страны`, `Спенд: ${usd0(all.sums.spend)}`, `Ревенью: ${usd0(all.sums.rev)}`,
-                            `Цена подп.: ${show(allM.cps, usd2)}`, `Цена диал.: ${show(allM.cpd, usd2)}`, `Депы: ${all.sums.deps}`].join("\n")}
+                        {allSums && allM && (
+                          <span title={[glued ? "Всё время, сумма крео этой строки" : "Всё время, все страны", `Спенд: ${usd0(allSums.spend)}`, `Ревенью: ${usd0(allSums.rev)}`,
+                            `Цена подп.: ${show(allM.cps, usd2)}`, `Цена диал.: ${show(allM.cpd, usd2)}`, `Депы: ${allSums.deps}`].join("\n")}
                                 className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md cursor-help ${allBand ? BAND[allBand] : "text-hint"}`}>{show(allM.romi, romiText)}</span>
                         )}
                       </td>

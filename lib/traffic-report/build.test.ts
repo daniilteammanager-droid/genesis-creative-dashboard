@@ -1,6 +1,6 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
-import { buildReport, cellsOf, creoGeo, filterCells, geoOf, groupCreos, romiBand, sortCreos, stageOf, textKey, totalOf, treeOf, type SpendRow } from "./build";
+import { buildReport, cellsOf, creoGeo, filterCells, geoOf, groupCreos, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
 
 const sp = (r: Omit<SpendRow, "face" | "funnel" | "platform"> & Partial<SpendRow>): SpendRow => ({ face: "ROMAN", funnel: "TG", platform: "fb", ...r });
 
@@ -22,6 +22,10 @@ assert.equal(romiBand(null), null);
 
 // Этап: граница теста — 2,5 × целевая цена депа страны (Испания $750, Латам $500).
 const s = (spend: number, deps = 0) => ({ spend, impr: 0, clicks: 0, subs: 0, dia: 0, deps, rev: 0 });
+
+// Всё время склейки — сумма крео; не пустая строка из нулей, когда данных нет.
+assert.deepEqual(sumAllTime([s(100, 1), s(50, 2)]), s(150, 3));
+assert.equal(sumAllTime([]), null);
 assert.equal(stageOf(s(749), "ES"), "test");
 assert.equal(stageOf(s(750), "ES"), "loser");
 assert.equal(stageOf(s(499), "MX"), "test");
