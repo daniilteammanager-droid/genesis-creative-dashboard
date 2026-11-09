@@ -9,7 +9,8 @@ import { buildDetail, type CreativeDetail, type SpendDay, type TorroDay } from "
 
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-// since === null — «всё время»: с первого дня, когда крео тратило в доступных кабинетах.
+// since === null — «всё время»: с самого раннего дня с цифрами. Torro бывает раньше первого
+// расхода на складе, поэтому его нижней границей расход не режем.
 export async function loadCreativeDetail(me: Profile, code: string, since: string | null, until: string): Promise<CreativeDetail> {
   const db = warehouse();
   const { userIds, accountIds } = await resolveScope(db, me);
@@ -22,12 +23,12 @@ export async function loadCreativeDetail(me: Profile, code: string, since: strin
   const firstQ = db.from("wh_ad_days").select("date").eq("ad_name", code);
   const { data: first } = await (accountIds ? firstQ.in("account_id", accountIds) : firstQ).order("date").limit(1);
   const firstDay = (first?.[0]?.date as string | undefined) ?? null;
-  const from = since ?? firstDay ?? until;
+  const spendFrom = since ?? firstDay ?? until;
 
   type Day = { date: string; ad_id: string; adset_id: string | null; spend: number | string; impressions: number | string; clicks: number | string };
   const rows = await selectAll<Day>((f, t) => {
     const q = db.from("wh_ad_days").select("date, ad_id, adset_id, spend, impressions, clicks").eq("ad_name", code)
-      .gte("date", from).lte("date", until);
+      .gte("date", spendFrom).lte("date", until);
     return (accountIds ? q.in("account_id", accountIds) : q).order("date").order("ad_id").range(f, t);
   });
   // Один день одного объявления могли записать ключи двух человек — цифры в них одинаковые.
@@ -41,14 +42,16 @@ export async function loadCreativeDetail(me: Profile, code: string, since: strin
 
   // Torro — связки «кампания × объявление» по дням, как в Отчётах: депы ложатся в свой день.
   type Pair = { period_start: string; subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
-  const pairs = await selectAll<Pair>((f, t) =>
-    db.from("wh_crm_pairs").select("period_start, subscribers, dialogs, dep_count, dep_sum, redep_sum")
-      .in("user_id", userIds).eq("ad_name", code).gte("period_start", from).lte("period_start", until)
-      .order("period_start").order("campaign_name").range(f, t));
+  const pairs = await selectAll<Pair>((f, t) => {
+    const q = db.from("wh_crm_pairs").select("period_start, subscribers, dialogs, dep_count, dep_sum, redep_sum")
+      .in("user_id", userIds).eq("ad_name", code).lte("period_start", until);
+    return (since ? q.gte("period_start", since) : q).order("period_start").order("campaign_name").range(f, t);
+  });
   const torro: TorroDay[] = pairs.map((p) => ({
     date: p.period_start, subs: p.subscribers ?? 0, dia: p.dialogs ?? 0, deps: p.dep_count ?? 0,
     rev: num(p.dep_sum) + num(p.redep_sum),
   }));
+  const from = since ?? [firstDay, pairs[0]?.period_start].filter((d): d is string => Boolean(d)).sort()[0] ?? until;
 
   const adsetIds = [...new Set(rows.map((r) => r.adset_id).filter((a): a is string => Boolean(a)))];
   const countries = new Set<string>();
