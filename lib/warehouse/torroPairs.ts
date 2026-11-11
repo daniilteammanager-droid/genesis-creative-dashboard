@@ -1,5 +1,5 @@
 import { warehouse, selectAll } from "./read";
-import { callStatistics, fetchDay, rateLimited, type TorroRow } from "@/lib/torro/mcp";
+import { callStatistics, fetchDay, rateLimited, timedOut, type TorroRow } from "@/lib/torro/mcp";
 import { getConnection } from "@/lib/connections/store";
 import { crmColumns, quals } from "./torroIngest";
 import { mskDay, mskDaysAgo } from "@/lib/day";
@@ -87,6 +87,15 @@ async function pairsForDay(userId: string, torro: { token: string; buyerId: numb
       p = await callStatistics({ ...torro, day, groupBy: "campaign_name", adName: [ad] }, fetch, false);
     } catch (e) {
       if (rateLimited(e)) return stop;   // лимит — до следующего запуска, с этого же места
+      // Одно объявление Torro не раскладывает за 25 с никогда: «New Leads Ad» (имя Facebook по
+      // умолчанию) у Артёма 09–10.11.2026 ронял каждый проход, тот начинался заново, и связки
+      // не обновлялись сутки. Пропускаем его: прежние связки оставляем (их не снесёт чистка
+      // в конце дня), его Torro до них — в «не разнесено».
+      if (timedOut(e)) {
+        await db.from("wh_crm_pairs").update({ updated_at: new Date().toISOString() })
+          .eq("user_id", userId).eq("period_start", day).eq("ad_name", ad);
+        continue;
+      }
       throw e;
     }
     if (p.truncated || (p.rows_total ?? p.rows.length) > p.rows.length) throw new Error(`Torro: у объявления «${ad}» за ${day} больше 100 кампаний`);

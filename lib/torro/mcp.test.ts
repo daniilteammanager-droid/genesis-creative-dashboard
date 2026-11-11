@@ -3,7 +3,7 @@
 // Главное здесь — обход потолка в 100 строк: склеенные части обязаны сойтись
 // с итогом дня, иначе часть цифр потерялась молча.
 import assert from "node:assert/strict";
-import { fetchDay, rateLimited, toCrm, type TorroRow } from "./mcp";
+import { fetchDay, rateLimited, timedOut, toCrm, type TorroRow } from "./mcp";
 
 type Args = { group_by: string; country?: string[]; campaign_name?: string[] };
 
@@ -92,6 +92,11 @@ await assert.rejects(fetchDay(base, "ad_name", skewed("dep_count", -1)), /не �
 // «Отчёт уже считается» — повторяем, как лимит. Текст — настоящий ответ Torro.
 assert.ok(rateLimited(new Error('Torro: {"error": "Этот отчёт статистики уже считается", "code": "busy", "retry_after": 2}')));
 assert.ok(!rateLimited(new Error("Torro не принял ключ")));
+
+// Тайм-аут Torro — не лимит: связки пропускают объявление, а не ждут. Текст — настоящий ответ.
+const timeout = new Error('Torro: {"error": "Инструмент не ответил за 25 с, ничего не изменено.", "code": "timeout"}');
+assert.ok(timedOut(timeout) && !rateLimited(timeout));
+assert.ok(!timedOut(new Error("Torro недоступен: The operation was aborted due to timeout")));
 
 console.log("torro: потолок 100 строк обходится, части сходятся с итогом");
 }

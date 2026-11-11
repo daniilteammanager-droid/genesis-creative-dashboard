@@ -44,6 +44,8 @@ interface Query {
 // по кампаниям идут параллельно и оба просят разбивку по странам (09.11.2026).
 const RATE_WAITS_MS = [5_000, 15_000, 30_000];
 export const rateLimited = (e: unknown) => e instanceof Error && /rate.?limit|HTTP 429|"code":\s*"busy"/i.test(e.message);
+// Torro не уложился в свои 25 с — повтор того же запроса упрётся в то же самое.
+export const timedOut = (e: unknown) => e instanceof Error && /"code":\s*"timeout"/.test(e.message);
 
 // patient = false — без повторов на лимите: фоновая работа (связки) уступает
 // основной загрузке и просто ждёт следующего запуска.
