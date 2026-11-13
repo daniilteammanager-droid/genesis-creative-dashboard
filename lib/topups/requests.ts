@@ -2,7 +2,8 @@ import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml, tg, TelegramError } from "@/lib/telegram/api";
 import { mskDay, mskStamp, mskTime } from "@/lib/day";
 import { paymentUri, qrPng } from "./qr";
-import { addressFits, AUTO_SEARCH, DECIMALS, exact, findPayment, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
+import { addressFits, AUTO_SEARCH, DECIMALS, exact, findPayment, PAIRS, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
+import { stage, type Stage } from "./view";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
 // закрыть оплатой, отказом или по сроку. Таблицы закрыты от браузера — всё
@@ -17,13 +18,6 @@ export const CATEGORIES: Record<string, string[]> = {
   "Агенты": ["T2A", "RentAcc", "TSR", "Monika (агенты TikTok)", OTHER],
   "Кабинеты": ["TG Ads кабинеты (TON)", OTHER],
 };
-export const NETWORKS: { network: Network; asset: Asset; label: string }[] = [
-  { network: "TRC20", asset: "USDT", label: "USDT · TRC20" },
-  { network: "TON", asset: "USDT", label: "USDT · TON" },
-  { network: "TON", asset: "GRAM", label: "GRAM · TON" },
-  { network: "BEP20", asset: "USDT", label: "USDT · BEP20" },
-  { network: "ERC20", asset: "USDT", label: "USDT · ERC20" },
-];
 // Автопоиск ищет перевод сутки после «Оплачено», дальше — только хэш руками.
 const SEARCH_FOR_MS = 24 * 3600_000;
 
@@ -31,12 +25,15 @@ export interface Topup {
   id: string; number: number; user_id: string; kind: string; target: string;
   amount: number; fee: number; asset: Asset; network: Network; address: string; comment: string | null;
   expires_at: string | null; status: "pending" | "paid" | "rejected" | "expired";
+  // taken_by — кто в чате нажал «Беру в работу» (платит он, остальные не переводят).
+  taken_by: string | null; taken_at: string | null;
   searching_since: string | null; tx_hash: string | null; paid_amount: number | null; paid_at: string | null;
+  // qr — отдельное фото QR у заявок до 13.11.2026; теперь QR внутри сообщения.
   closed_by: string | null; messages: { chat_id: number; message_id: number; qr?: boolean }[]; created_at: string;
-  author?: string;
+  author?: string; tx_url?: string;
 }
 
-const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at";
+const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, taken_by, taken_at, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at";
 const db = () => warehouse();
 const num = (r: Topup): Topup => ({ ...r, amount: Number(r.amount), fee: Number(r.fee), paid_amount: r.paid_amount === null ? null : Number(r.paid_amount) });
 
@@ -45,7 +42,8 @@ export function topupToken(): string {
   if (!t) throw new Error("Не задан TOPUP_BOT_TOKEN — бот пополнений не подключён");
   return t;
 }
-export const topupTg = <T = unknown>(method: string, body: Record<string, unknown>) => tg<T>(method, body, topupToken());
+export const topupTg = <T = unknown>(method: string, body: Record<string, unknown>, file?: { name: string; png: Uint8Array }) =>
+  tg<T>(method, body, topupToken(), file);
 
 export async function topupChat(): Promise<{ chat_id: number; thread_id: number | null; title: string | null } | null> {
   const { data } = await db().from("topup_chat").select("chat_id, thread_id, title").eq("id", 1).maybeSingle();
@@ -57,14 +55,16 @@ async function authors(ids: string[]): Promise<Map<string, string>> {
   return new Map((data ?? []).map((p) => [p.id as string, (p.name as string) || (p.email as string)]));
 }
 
-export async function listTopups(userId: string | null, limit = 200): Promise<Topup[]> {
+// ponytail: поиск и фильтры страницы идут по этим строкам в браузере — 500 последних (на 13.11 всего 109);
+// упрёмся — поиск на сервер.
+export async function listTopups(userId: string | null, limit = 500): Promise<Topup[]> {
   let q = db().from("topup_requests").select(COLS).order("created_at", { ascending: false }).limit(limit);
   if (userId) q = q.eq("user_id", userId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   const rows = (data ?? []).map((r) => num(r as Topup));
   const names = await authors(rows.map((r) => r.user_id));
-  return rows.map((r) => ({ ...r, author: names.get(r.user_id) ?? "—" }));
+  return rows.map((r) => ({ ...r, author: names.get(r.user_id) ?? "—", tx_url: r.tx_hash ? txUrl(r.network, r.tx_hash) : undefined }));
 }
 
 async function getTopup(id: string): Promise<Topup | null> {
@@ -81,84 +81,115 @@ const when = (iso: string) => {
   return mskDay(d) === mskDay() ? `${mskTime(d)} МСК` : `${mskStamp(d)} МСК`;
 };
 
-// Текст заявки в чате. Адрес виден, только пока заявку можно оплатить.
-// Шапка бросается в глаза, пока заявку надо оплатить, и сменяется итогом, когда закрыта.
-const HEAD: Record<Topup["status"], string> = {
-  pending: "🚨💸 <b>НОВАЯ ЗАЯВКА",
-  paid: "✅ <b>ОПЛАЧЕНО",
-  rejected: "✖️ <b>ОТКЛОНЕНО",
-  expired: "⌛ <b>ВРЕМЯ ВЫШЛО",
+// Сообщение заявки в платёжном чате — компактное (13.11.2026: первый вариант Даниилу показался длинным): строка-
+// заголовок с состоянием, «что сейчас» — только когда что-то происходит, короткая таблица, QR свёрнут под
+// «QR для оплаты», кнопки «Скопировать» и одна строка действий. Rich message (Bot API 10.1+): одно сообщение вместо
+// текста и отдельного фото. Адрес виден, только пока заявку можно оплатить или она оплачена.
+const HEAD: Record<Stage, string> = {
+  pending: "🚨 #{n} · ждёт оплаты", work: "🛠 #{n} · в работе", search: "🔎 #{n} · ищу перевод",
+  paid: "✅ #{n} · оплачено", rejected: "✖️ #{n} · отклонено", expired: "⌛ #{n} · время вышло",
 };
+const e = (s: string | null | undefined) => escapeHtml(s ?? "—");
+const attr = (s: string) => escapeHtml(s).replace(/"/g, "&quot;");
+const head = (r: Topup, st: Stage) => `<b>${HEAD[st].replace("{n}", String(r.number))}</b> · ${e(what(r))} · ${e(r.author)}`;
 
-export function topupText(r: Topup): string {
-  const head = r.status === "pending" && r.searching_since ? "🔎 <b>ИЩУ ПЕРЕВОД" : HEAD[r.status];
-  const lines = [
-    `${head} #${r.number}</b> · ${escapeHtml(what(r))}`,
-    `От: ${escapeHtml(r.author ?? "—")}`,
-    // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
-    // Сумма — точная и копируется нажатием: платёжка узнаёт перевод по ней.
-    `Сумма: <code>${exact(r.amount, r.asset)}</code> <b>${r.asset}</b>${r.fee ? ` · комиссия ${money(r.fee)}` : ""}`,
-    `Сеть: ${r.network}`,
-    r.status === "expired" || r.status === "rejected" ? "Адрес: скрыт" : `Адрес: <code>${escapeHtml(r.address)}</code>`,
-  ];
-  if (r.comment) lines.push(`Комментарий: ${escapeHtml(r.comment)}`);
-  if (r.status === "pending" && r.expires_at) lines.push(`⏳ Оплатить до ${when(r.expires_at)}`);
-  lines.push("");
-  if (r.status === "paid") {
-    lines.push(`✅ Оплачено${r.closed_by ? ` · ${escapeHtml(r.closed_by)}` : ""}${r.paid_amount ? ` · ${money(r.paid_amount)} ${r.asset}` : ""}`);
-    if (r.tx_hash) lines.push(`<a href="${txUrl(r.network, r.tx_hash)}">Транзакция</a> · <code>${r.tx_hash}</code>`);
-  } else if (r.status === "expired") {
-    lines.push(`⌛ Время на оплату истекло${r.expires_at ? ` в ${when(r.expires_at)}` : ""} — нужна новая заявка`);
-  } else if (r.status === "rejected") {
-    lines.push(`✖️ Отклонено${r.closed_by ? ` · ${escapeHtml(r.closed_by)}` : ""}`);
-  } else if (r.searching_since) {
-    lines.push(`🔎 Отмечено оплаченным${r.closed_by ? ` (${escapeHtml(r.closed_by)})` : ""} — ищу перевод в блокчейне. Хэш можно прислать ответом на это сообщение.`);
+// Что сейчас с заявкой. У новой — ничего: кнопки говорят сами.
+function line(r: Topup, st: Stage): string | null {
+  switch (st) {
+    case "pending": return null;
+    case "work": return `Платит ${e(r.taken_by)}${r.taken_at ? ` с ${when(r.taken_at)}` : ""} — остальные не переводите`;
+    case "search": return `${e(r.closed_by)} отметил оплату — ищу перевод. Хэш — ответом на это сообщение`;
+    case "paid": return `Оплатил ${e(r.closed_by)}${r.paid_at ? ` · ${when(r.paid_at)}` : ""}${r.paid_amount ? ` · пришло ${money(r.paid_amount)} ${r.asset}` : ""}`;
+    case "rejected": return `Отклонил ${e(r.closed_by)}`;
+    case "expired": return `Время вышло${r.expires_at ? ` в ${when(r.expires_at)}` : ""} — нужна новая заявка`;
   }
-  return lines.join("\n");
 }
 
+// Поля таблицы: [подпись, значение в HTML]. Сумма и адрес — <code>: в чате копируются нажатием.
+function fields(r: Topup, st: Stage): [string, string][] {
+  const open = st === "pending" || st === "work" || st === "search";
+  const rows: [string, string][] = [
+    ["Сумма", `<code>${exact(r.amount, r.asset)}</code> <b>${r.asset}</b> · ${r.network}`],
+    ["Адрес", open || st === "paid" ? `<code>${e(r.address)}</code>` : "скрыт"],
+  ];
+  // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
+  if (r.fee) rows.push(["Комиссия", `${money(r.fee)} · не в переводе`]);
+  if (open && r.expires_at) rows.push(["Срок", `до ${when(r.expires_at)}`]);
+  if (r.comment) rows.push(["Коммент", e(r.comment)]);
+  return rows;
+}
+
+export function topupHtml(r: Topup, qr: boolean): string {
+  const st = stage(r);
+  const amount = exact(r.amount, r.asset);
+  const now = line(r, st);
+  return [
+    `<p>${head(r, st)}</p>`,
+    now ? `<blockquote>${now}</blockquote>` : "",
+    `<table compact>${fields(r, st).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>`,
+    qr ? `<details><summary>QR для оплаты</summary><figure><img src="tg://photo?id=qr"/><figcaption>${paymentUri(r).withAmount
+      ? "Адрес, сумма и монета подставятся сами" : `Подставится адрес, сумму — точно: ${amount}`}</figcaption></figure></details>` +
+      `<tg-button-row><tg-button type="copy_text" text="${attr(amount)}">Копировать сумму</tg-button>` +
+      `<tg-button type="copy_text" text="${attr(r.address)}">Копировать адрес</tg-button></tg-button-row>` : "",
+  ].join("");
+}
+
+// Запасной вид — прежний текст: если Telegram не примет rich message, заявка всё равно дойдёт до чата.
+export function topupText(r: Topup): string {
+  const st = stage(r);
+  return [head(r, st), line(r, st), ...fields(r, st).map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join("\n");
+}
+
+// Действия — одной строкой. Ссылка на перевод у оплаченной — кнопкой, а не строкой с хэшем.
 function buttons(r: Topup) {
-  if (r.status !== "pending") return { inline_keyboard: [] };
-  const row = r.searching_since ? [] : [{ text: "💸 Оплачено", callback_data: `tp:paid:${r.id}` }];
-  return { inline_keyboard: [[...row, { text: "✖️ Отклонить", callback_data: `tp:no:${r.id}` }]] };
+  const paid = { text: "✅ Оплачено", callback_data: `tp:paid:${r.id}`, style: "success" };
+  const no = { text: "✖ Отклонить", callback_data: `tp:no:${r.id}`, style: "danger" };
+  switch (stage(r)) {
+    case "pending": return { inline_keyboard: [[{ text: "🛠 Беру", callback_data: `tp:take:${r.id}`, style: "primary" }, paid, no]] };
+    case "work": return { inline_keyboard: [[paid, { text: "↩ Снять", callback_data: `tp:free:${r.id}` }, no]] };
+    case "search": return { inline_keyboard: [[no]] };
+    case "paid": return { inline_keyboard: r.tx_hash ? [[{ text: "Транзакция ↗", url: txUrl(r.network, r.tx_hash) }]] : [] };
+    default: return { inline_keyboard: [] };
+  }
 }
 
-// QR ответом на заявку (Decision 088). Фото с адресом нельзя оставлять после закрытия —
-// текст заявки адрес прячет, поэтому QR удаляется, как только заявка не ждёт оплаты.
-async function sendQr(r: Topup, chat: { chat_id: number; thread_id: number | null }, replyTo: number): Promise<number | null> {
+const quiet = (e: unknown) => e instanceof TelegramError && /not modified|message to edit not found/i.test(e.message);
+
+// Отправить (to — чат) или перерисовать (to — сообщение) заявку. QR — пока заявку можно оплатить:
+// картинка грузится заново при каждой правке, правок у заявки — единицы.
+async function show(r: Topup, to: Record<string, unknown>): Promise<number> {
+  const edit = "message_id" in to;
+  const st = stage(r);
+  const qr = st === "pending" || st === "work" || st === "search" ? await qrPng(paymentUri(r).uri).catch(() => null) : null;
   try {
-    const { uri, withAmount } = paymentUri(r);
-    const form = new FormData();
-    form.set("chat_id", String(chat.chat_id));
-    if (chat.thread_id) form.set("message_thread_id", String(chat.thread_id));
-    form.set("reply_parameters", JSON.stringify({ message_id: replyTo }));
-    form.set("caption", `#${r.number} · ${exact(r.amount, r.asset)} ${r.asset} · ${r.network}\n` +
-      (withAmount ? "Сканируй — адрес, сумма и монета подставятся сами." : `Сканируй — подставится адрес. Сумму введи сам, точно до знака: ${exact(r.amount, r.asset)} ${r.asset}.`));
-    form.set("photo", new Blob([new Uint8Array(await qrPng(uri))], { type: "image/png" }), "qr.png");
-    const res = await fetch(`https://api.telegram.org/bot${topupToken()}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(20_000) });
-    const d = (await res.json().catch(() => null)) as { ok: boolean; result?: { message_id: number } } | null;
-    return d?.ok ? d.result!.message_id : null;
-  } catch (e) {
-    console.warn("topups: QR не отправлен", e instanceof Error ? e.message : e);
-    return null; // заявка важнее картинки
+    const res = await topupTg<{ message_id: number } | true>(edit ? "editMessageText" : "sendRichMessage", {
+      ...to, reply_markup: buttons(r),
+      rich_message: { html: topupHtml(r, Boolean(qr)), skip_entity_detection: true,
+        ...(qr ? { media: [{ id: "qr", media: { type: "photo", media: "attach://qr" } }] } : {}) },
+    }, qr ? { name: "qr", png: qr } : undefined);
+    return typeof res === "object" ? res.message_id : Number(to.message_id);
+  } catch (err) {
+    if (quiet(err)) return Number(to.message_id);
+    // Запасной текст — только когда Telegram отверг сам rich message (400/404). Сеть или тайм-аут — ошибка как
+    // раньше: сообщение могло уже дойти, и второе, текстом, задвоило бы заявку в чате.
+    if (!(err instanceof TelegramError && (err.code === 400 || err.code === 404))) throw err;
+    console.warn("topups: rich message не прошёл, шлю текстом", err instanceof Error ? err.message : err);
+    const res = await topupTg<{ message_id: number } | true>(edit ? "editMessageText" : "sendMessage", {
+      ...to, text: topupText(r), parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: buttons(r),
+    }).catch((e2) => { if (quiet(e2)) return true as const; throw e2; });
+    return typeof res === "object" ? res.message_id : Number(to.message_id);
   }
 }
 
 // Перерисовать сообщения заявки в чате по её текущему состоянию.
 async function refresh(r: Topup): Promise<void> {
   for (const m of r.messages) {
+    // Отдельное фото QR старых заявок: с адресом нельзя оставлять после закрытия.
     if (m.qr) {
       if (r.status !== "pending") await topupTg("deleteMessage", { chat_id: m.chat_id, message_id: m.message_id }).catch(() => undefined);
       continue;
     }
-    try {
-      await topupTg("editMessageText", {
-        chat_id: m.chat_id, message_id: m.message_id, text: topupText(r), parse_mode: "HTML",
-        link_preview_options: { is_disabled: true }, reply_markup: buttons(r),
-      });
-    } catch (e) {
-      if (!(e instanceof TelegramError && /not modified|message to edit not found/i.test(e.message))) throw e;
-    }
+    await show(r, { chat_id: m.chat_id, message_id: m.message_id });
   }
 }
 
@@ -172,13 +203,15 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   const comment = (input.comment ?? "").trim();
   const address = (input.address ?? "").trim();
   const amount = Number(input.amount), fee = Number(input.fee ?? 0);
-  const net = NETWORKS.find((n) => n.network === input.network && n.asset === input.asset);
+  const asset = input.asset as Asset, network = input.network as Network;
+  const net = PAIRS[asset]?.includes(network) ? { asset, network } : null;
   // Все поля обязательны: механика для баеров новая, пропуск поля — потерянная оплата.
   if (!CATEGORIES[kind]?.includes(target)) throw new Error("Выбери категорию и куда именно пополняем");
   if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
   if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
   if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
-  if (!net) throw new Error("Выбери сеть");
+  if (!PAIRS[asset]) throw new Error("Выбери монету");
+  if (!net) throw new Error(`${asset} в сети ${network ?? "—"} не переводим — выбери другую сеть`);
   if (Number(exact(amount, net.asset)) !== amount) throw new Error(`У ${net.asset} не больше ${DECIMALS[net.asset]} знаков после точки — такую сумму не перевести точно`);
   if (!addressFits(net.network, address)) throw new Error(`Адрес не похож на адрес сети ${net.network}`);
   if (input.minutes === undefined || input.minutes === null) throw new Error("Выбери время на оплату");
@@ -194,13 +227,8 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   if (error) throw new Error(error.message);
   const r = (await getTopup(data.id as string))!;
 
-  const sent = await topupTg<{ message_id: number }>("sendMessage", {
-    chat_id: chat.chat_id, ...(chat.thread_id ? { message_thread_id: chat.thread_id } : {}),
-    text: topupText(r), parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: buttons(r),
-  });
-  r.messages = [{ chat_id: chat.chat_id, message_id: sent.message_id }];
-  const qr = await sendQr(r, chat, sent.message_id);
-  if (qr) r.messages.push({ chat_id: chat.chat_id, message_id: qr, qr: true });
+  const sent = await show(r, { chat_id: chat.chat_id, ...(chat.thread_id ? { message_thread_id: chat.thread_id } : {}) });
+  r.messages = [{ chat_id: chat.chat_id, message_id: sent }];
   await db().from("topup_requests").update({ messages: r.messages }).eq("id", r.id);
   return r;
 }
@@ -231,6 +259,31 @@ export async function markPaid(id: string, pay: { hash: string; amount?: number 
 // recentMs — для крона: при «Оплачено» окно уже просмотрено целиком, дальше хватит свежих минут.
 async function trySearch(r: Topup, recentMs?: number): Promise<Transfer | null> {
   return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, createdAt: r.created_at }, hashTaken, recentMs);
+}
+
+// «Беру в работу»: заявку платит этот человек. Условие taken_by is null — двое одновременно не возьмут,
+// второму — ответ, кто уже взял.
+export async function take(id: string, by: string | null): Promise<string | null> {
+  const { data } = await db().from("topup_requests").update({ taken_by: by ?? "кто-то", taken_at: new Date().toISOString() })
+    .eq("id", id).eq("status", "pending").is("searching_since", null).is("taken_by", null).select("id");
+  const r = await getTopup(id);
+  if (!data?.length) {
+    return r && stage(r) === "work"
+      ? `Заявку #${r.number} уже взял ${r.taken_by}${r.taken_at ? ` в ${when(r.taken_at)}` : ""}. Не переводи — спроси его.`
+      : "Заявка уже не ждёт оплаты.";
+  }
+  await refresh(r!);
+  return null;
+}
+
+// «Снять с себя» — только тот, кто взял: остальным хватит «Оплачено» и «Отклонить».
+export async function release(id: string, by: string | null): Promise<string | null> {
+  const { data } = await db().from("topup_requests").update({ taken_by: null, taken_at: null })
+    .eq("id", id).eq("status", "pending").is("searching_since", null).eq("taken_by", by ?? "").select("id");
+  const r = await getTopup(id);
+  if (!data?.length) return r && stage(r) === "work" ? `Снять может только ${r.taken_by}.` : "Заявка уже не в работе.";
+  await refresh(r!);
+  return null;
 }
 
 // «Оплачено»: сразу ищем перевод; не нашли — заявка ждёт его в поиске (крон раз в минуту).

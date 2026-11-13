@@ -1,12 +1,12 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml } from "@/lib/telegram/api";
 import { parseHash } from "./chain";
-import { manualPaid, pressPaid, reject, topupByMessage, topupChat, topupTg } from "./requests";
+import { manualPaid, pressPaid, reject, release, take, topupByMessage, topupChat, topupTg } from "./requests";
 
 // Top-Up бот — отдельный от общего (Decision 072). Живёт в одном платёжном чате
 // владельцев:
 //   /start <код>  — сделать этот чат платёжным (код из дашборда, только владелец);
-//   кнопки tp:…   — «Оплачено» / «Отклонить» под заявкой;
+//   кнопки tp:…   — «Беру в работу» / «Снять с себя» / «Оплачено» / «Отклонить» под заявкой;
 //   ответ хэшем на сообщение заявки — закрыть её этим хэшем.
 // Всё, что пришло не из платёжного чата, бот не слушает: жать кнопки могут
 // только те, кого владельцы позвали в чат.
@@ -48,10 +48,17 @@ export async function handleTopupUpdate(u: TopupUpdate): Promise<void> {
 
   const q = u.callback_query;
   if (q) {
-    await topupTg("answerCallbackQuery", { callback_query_id: q.id }).catch(() => undefined);
-    if (!q.message || q.message.chat.id !== chat?.chat_id) return;
     const [, kind, id] = (q.data ?? "").split(":");
-    if (!id) return;
+    const ours = q.message && q.message.chat.id === chat?.chat_id && id;
+    // «Беру» и «Снять» — быстрые, отказ («уже взял @…») всплывает у нажавшего, а не пишется в чат.
+    if (ours && (kind === "take" || kind === "free")) {
+      const err = await (kind === "take" ? take : release)(id, who(q.from))
+        .catch((e) => `Не получилось: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
+      await topupTg("answerCallbackQuery", { callback_query_id: q.id, ...(err ? { text: err.slice(0, 200), show_alert: true } : {}) }).catch(() => undefined);
+      return;
+    }
+    await topupTg("answerCallbackQuery", { callback_query_id: q.id }).catch(() => undefined);
+    if (!ours || !q.message) return;
     try {
       const err = kind === "paid" ? await pressPaid(id, who(q.from)) : kind === "no" ? await reject(id, who(q.from)) : null;
       if (err) await say(q.message, escapeHtml(err));

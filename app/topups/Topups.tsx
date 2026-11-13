@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { chip } from "@/components/ui";
 import type { Topup } from "@/lib/topups/requests";
+import { filterTopups, paidTotals, stage, STAGES, type Stage, type TopupFilter } from "@/lib/topups/view";
 
 // Заявки на пополнение (Decision 072): форма и список. Заявка уходит Top-Up
 // ботом в платёжный чат, статус и хэш возвращаются сюда.
@@ -12,16 +14,15 @@ const TIMES = [
   { minutes: 0, label: "Без срока" }, { minutes: 15, label: "15 минут" }, { minutes: 30, label: "30 минут" },
   { minutes: 60, label: "1 час" }, { minutes: 120, label: "2 часа" }, { minutes: 360, label: "6 часов" }, { minutes: 1440, label: "Сутки" },
 ];
-const STATUS: Record<Topup["status"], { label: string; cls: string }> = {
-  pending: { label: "Ждёт оплаты", cls: "border-amber-700/40 text-amber-300" },
-  paid: { label: "Оплачено", cls: "border-green-700/40 text-green-300" },
-  rejected: { label: "Отклонено", cls: "border-red-800/40 text-red-300" },
-  expired: { label: "Время вышло", cls: "border-zinc-700 text-zinc-400" },
+const BADGE: Record<Stage, string> = {
+  pending: "border-amber-700/40 text-amber-300", work: "border-blue-700/50 text-blue-300", search: "border-violet-700/50 text-violet-300",
+  paid: "border-green-700/40 text-green-300", rejected: "border-red-800/40 text-red-300", expired: "border-zinc-700 text-zinc-400",
 };
-const TX: Record<string, string> = {
-  TRC20: "https://tronscan.org/#/transaction/", TON: "https://tonviewer.com/transaction/",
-  BEP20: "https://bscscan.com/tx/", ERC20: "https://etherscan.io/tx/",
-};
+const LABEL = Object.fromEntries(STAGES.map((s) => [s.key, s.label])) as Record<Stage, string>;
+// Как выглядит адрес сети — подсказка в поле.
+const ADDRESS: Record<string, string> = { TRC20: "T…", ERC20: "0x…", BEP20: "0x…", BTC: "bc1… / 1… / 3…", TON: "UQ… / EQ…" };
+const NO_FILTER: TopupFilter = { q: "", stages: [], authors: [], kinds: [], targets: [] };
+const flip = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 9 });
 const stamp = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
 
@@ -32,18 +33,31 @@ function detail(r: Topup): string {
   if (r.status === "rejected") return `Отклонено${by}`;
   if (r.status === "expired") return `Время на оплату вышло${r.expires_at ? ` ${stamp(r.expires_at)}` : ""}`;
   if (r.searching_since) return `Отмечено оплаченным ${stamp(r.searching_since)}${by} — ищем перевод в блокчейне`;
+  if (r.taken_by) return `В работе · ${r.taken_by}${r.taken_at ? ` с ${stamp(r.taken_at)}` : ""} — платит, остальные не трогают`;
   return r.expires_at ? `Ждёт оплаты до ${stamp(r.expires_at)}` : "Ждёт оплаты, без срока";
 }
 
 interface View { admin: boolean; chat: { title: string | null } | null; topups: Topup[] }
-type Net = { network: string; asset: string; label: string };
 
-export default function Topups({ categories, networks }: { categories: Record<string, string[]>; networks: Net[] }) {
+// Ряд чипов фильтра с подписью слева.
+function Chips({ label, items, on, toggle }: { label: string; items: { key: string; label: string }[]; on: string[]; toggle: (k: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="label w-20 shrink-0">{label}</span>
+      {items.map((i) => <button key={i.key} type="button" {...chip(on.includes(i.key))} onClick={() => toggle(i.key)}>{i.label}</button>)}
+    </div>
+  );
+}
+
+export default function Topups({ categories, pairs, networks }: {
+  categories: Record<string, string[]>; pairs: Record<string, string[]>; networks: Record<string, string>;
+}) {
   const [view, setView] = useState<View | null>(null);
   // Ничего не выбрано заранее: сеть или «куда» по умолчанию — путь к оплате не туда.
   const [kind, setKind] = useState("");
   const [target, setTarget] = useState("");
-  const [net, setNet] = useState(-1);
+  const [coin, setCoin] = useState("");
+  const [net, setNet] = useState("");
   const [amount, setAmount] = useState("");
   const [fee, setFee] = useState("");
   const [address, setAddress] = useState("");
@@ -51,7 +65,7 @@ export default function Topups({ categories, networks }: { categories: Record<st
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [filter, setFilter] = useState<Topup["status"] | "all">("all");
+  const [f, setF] = useState<TopupFilter>(NO_FILTER);
 
   const load = () => fetch("/api/topups").then((r) => r.json()).then((d) => d.topups && setView(d)).catch(() => undefined);
   useEffect(() => {
@@ -66,11 +80,10 @@ export default function Topups({ categories, networks }: { categories: Record<st
     setBusy(true);
     setMsg(null);
     try {
-      const n = networks[net];
       const res = await fetch("/api/topups", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind, target, amount: Number(amount.replace(",", ".")), fee: fee.trim() === "" ? null : Number(fee.replace(",", ".")),
-          network: n?.network, asset: n?.asset, address, minutes: minutes < 0 ? null : minutes, comment }),
+          network: net, asset: coin, address, minutes: minutes < 0 ? null : minutes, comment }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.topups) throw new Error(d?.error ?? "Не получилось — попробуй ещё раз");
@@ -90,12 +103,18 @@ export default function Topups({ categories, networks }: { categories: Record<st
     else setMsg({ ok: false, text: d?.error ?? "Не получилось взять ссылку" });
   }
 
-  const rows = useMemo(() => (view?.topups ?? []).filter((r) => filter === "all" || r.status === filter), [view, filter]);
-  const paidTotal = useMemo(() => {
-    const by = new Map<string, number>();
-    for (const r of rows) if (r.status === "paid") by.set(r.asset, (by.get(r.asset) ?? 0) + r.amount);
-    return [...by].map(([a, s]) => `${money(s)} ${a}`).join(" · ");
-  }, [rows]);
+  const all = useMemo(() => view?.topups ?? [], [view]);
+  const rows = useMemo(() => filterTopups(all, f), [all, f]);
+  const paidTotal = useMemo(() => paidTotals(rows), [rows]);
+  const authors = useMemo(() => [...new Set(all.map((r) => r.author ?? "—"))].sort().map((a) => ({ key: a, label: a })), [all]);
+  const targets = f.kinds.flatMap((k) => (categories[k] ?? []).map((t) => ({ key: t, label: t })));
+  const filtered = f.q.trim() !== "" || f.stages.length + f.authors.length + f.kinds.length + f.targets.length > 0;
+  // Монета задаёт сети: у монеты одна сеть — встаёт сама, иначе выбирать заново.
+  const pickCoin = (c: string) => { setCoin(c); setNet(pairs[c]?.length === 1 ? pairs[c][0] : ""); };
+  const toggleKind = (k: string) => setF((p) => {
+    const kinds = flip(p.kinds, k);
+    return { ...p, kinds, targets: p.targets.filter((t) => kinds.some((x) => categories[x]?.includes(t))) };
+  });
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-5">
@@ -121,20 +140,24 @@ export default function Topups({ categories, networks }: { categories: Record<st
           <option value="" disabled>Куда именно</option>
           {(categories[kind] ?? []).map((t) => <option key={t}>{t}</option>)}
         </select>
-        <select value={net} onChange={(e) => setNet(Number(e.target.value))} className="field w-full">
-          <option value={-1} disabled>Сеть и монета</option>
-          {networks.map((n, i) => <option key={n.label} value={i}>{n.label}</option>)}
+        <select value={coin} onChange={(e) => pickCoin(e.target.value)} className="field w-full" aria-label="Монета">
+          <option value="" disabled>Монета</option>
+          {Object.keys(pairs).map((c) => <option key={c}>{c}</option>)}
         </select>
-        <input inputMode="decimal" placeholder={`Сумма${net >= 0 ? `, ${networks[net].asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className="field w-full" />
+        <select value={net} onChange={(e) => setNet(e.target.value)} disabled={!coin} className="field w-full disabled:opacity-50" aria-label="Сеть">
+          <option value="" disabled>Сеть</option>
+          {Object.entries(networks).map(([n, label]) => <option key={n} value={n} disabled={!pairs[coin]?.includes(n)}>{label}</option>)}
+        </select>
+        <input inputMode="decimal" placeholder={`Сумма${coin ? `, ${coin}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className="field w-full" />
         <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className="field w-full" />
-        <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="field w-full">
+        <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="field w-full sm:col-span-2">
           <option value={-1} disabled>Время на оплату</option>
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
         </select>
-        <input placeholder="Адрес получателя" value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`field w-full sm:col-span-2 font-mono`} />
+        <input placeholder={`Адрес получателя${net ? ` (${ADDRESS[net]})` : ""}`} value={address} onChange={(e) => setAddress(e.target.value.trim())} className={`field w-full sm:col-span-2 font-mono`} />
         <input placeholder="Комментарий (нечего добавить — «-»)" value={comment}
                onChange={(e) => setComment(e.target.value)} className={`field w-full sm:col-span-2`} />
-        <button type="submit" disabled={busy || !target || net < 0 || !amount || fee.trim() === "" || !address || minutes < 0 || !comment.trim()}
+        <button type="submit" disabled={busy || !target || !net || !amount || fee.trim() === "" || !address || minutes < 0 || !comment.trim()}
                 className="btn btn-primary sm:col-span-2">
           {busy ? "Отправляю…" : "Отправить заявку"}
         </button>
@@ -146,17 +169,23 @@ export default function Topups({ categories, networks }: { categories: Record<st
       </form>
 
       <div data-tour="topups-list" className={card}>
-        <div className="flex items-center gap-2 flex-wrap mb-3">
-          {(["all", "pending", "paid", "rejected", "expired"] as const).map((s) => (
-            <button key={s} type="button" onClick={() => setFilter(s)}
-                    className={`btn btn-sm ${filter === s ? "border-violet-500 text-white bg-violet-900/30" : "border-line text-zinc-400"}`}>
-              {s === "all" ? "Все" : STATUS[s].label}
-            </button>
-          ))}
-          {paidTotal && <span className="text-xs text-hint ml-auto">Оплачено: {paidTotal}</span>}
+        <div className="space-y-2.5 mb-3">
+          <input type="search" value={f.q} onChange={(e) => { const q = e.target.value; setF((p) => ({ ...p, q })); }} className="field w-full"
+                 placeholder="Поиск: номер, сумма, адрес, хэш, комментарий, кто создал" aria-label="Поиск заявок" />
+          <Chips label="Статус" items={STAGES} on={f.stages} toggle={(k) => setF((p) => ({ ...p, stages: flip(p.stages, k as Stage) }))} />
+          {view?.admin && authors.length > 1 && (
+            <Chips label="Баер" items={authors} on={f.authors} toggle={(k) => setF((p) => ({ ...p, authors: flip(p.authors, k) }))} />
+          )}
+          <Chips label="Категория" items={Object.keys(categories).map((k) => ({ key: k, label: k }))} on={f.kinds} toggle={toggleKind} />
+          {targets.length > 0 && <Chips label="Куда" items={targets} on={f.targets} toggle={(k) => setF((p) => ({ ...p, targets: flip(p.targets, k) }))} />}
+          <div className="flex items-center gap-3 flex-wrap text-xs">
+            {filtered && <span className="text-hint">Найдено: {rows.length} из {all.length}</span>}
+            {filtered && <button type="button" onClick={() => setF(NO_FILTER)} className="btn btn-sm">Сбросить</button>}
+            {paidTotal && <span className="text-hint ml-auto">Оплачено: {paidTotal}</span>}
+          </div>
         </div>
         {view === null ? <p className="text-sm text-hint">Загружаю…</p> : rows.length === 0 ? (
-          <p className="text-sm text-hint">Заявок нет.</p>
+          <p className="text-sm text-hint">{all.length ? "Ничего не нашлось — поменяй поиск или фильтры." : "Заявок нет."}</p>
         ) : (
           <div className="divide-y divide-line">
             {rows.map((r) => (
@@ -173,14 +202,12 @@ export default function Topups({ categories, networks }: { categories: Record<st
                   <p className="text-[11px] text-zinc-400 mt-1">{detail(r)}</p>
                   {r.tx_hash && (
                     <p className="text-[11px] mt-0.5 break-all">
-                      <a href={TX[r.network] + r.tx_hash} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">Транзакция ↗</a>
+                      <a href={r.tx_url} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">Транзакция ↗</a>
                       <span className="text-hint"> · {r.tx_hash}</span>
                     </p>
                   )}
                 </div>
-                <span className={`btn btn-sm shrink-0 ${STATUS[r.status].cls}`}>
-                  {r.status === "pending" && r.searching_since ? "Ищу перевод" : STATUS[r.status].label}
-                </span>
+                <span className={`btn btn-sm shrink-0 ${BADGE[stage(r)]}`}>{LABEL[stage(r)]}</span>
               </div>
             ))}
           </div>

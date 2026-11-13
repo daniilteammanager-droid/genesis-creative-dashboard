@@ -17,12 +17,21 @@ function token(): string {
 }
 
 // bot — токен другого бота (Top-Up, lib/topups); по умолчанию общий бот команды.
-export async function tg<T = unknown>(method: string, body: Record<string, unknown> = {}, bot = token()): Promise<T> {
+// file — картинка к запросу (attach://<name> в теле): тогда запрос уходит формой, а не JSON.
+export async function tg<T = unknown>(method: string, body: Record<string, unknown> = {}, bot = token(),
+  file?: { name: string; png: Uint8Array }): Promise<T> {
+  let payload: BodyInit = JSON.stringify(body);
+  if (file) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(body)) if (v !== undefined) form.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
+    form.set(file.name, new Blob([new Uint8Array(file.png)], { type: "image/png" }), `${file.name}.png`);
+    payload = form;
+  }
   const res = await fetch(`https://api.telegram.org/bot${bot}/${method}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
+    ...(file ? {} : { headers: { "Content-Type": "application/json" } }),
+    body: payload,
+    signal: AbortSignal.timeout(file ? 20_000 : 15_000),
   });
   const data = (await res.json().catch(() => null)) as
     | { ok: boolean; result?: T; description?: string; error_code?: number; parameters?: { migrate_to_chat_id?: number } }
