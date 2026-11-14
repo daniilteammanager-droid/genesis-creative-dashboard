@@ -37,7 +37,8 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
   // не «не залогинен» (таких сюда не пускает middleware), а «Supabase не ответил».
   // Панель в этом случае обязана остаться: дашборд не теряет навигацию из-за
   // недоступности Supabase (Decision 005).
-  if (pathname === "/login") return <>{children}</>;
+  // Экран согласия AI-доступа (Decision 116) — тоже без панели: человек пришёл из Claude или Codex.
+  if (pathname === "/login" || pathname.startsWith("/oauth/")) return <>{children}</>;
 
   // window трогаем только в обработчике: там рендер уже позади и SSR не мешает.
   const isNarrow = () => window.innerWidth < 768;

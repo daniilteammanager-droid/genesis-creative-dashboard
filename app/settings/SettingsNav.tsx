@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/settings", label: "Профиль" },
   { href: "/settings/integrations", label: "Интеграции" },
+  { href: "/settings/ai", label: "AI-доступ" },
   { href: "/settings/team", label: "Команда", mainOnly: true },
   { href: "/settings/invites", label: "Приглашения", mainOnly: true },
 ];

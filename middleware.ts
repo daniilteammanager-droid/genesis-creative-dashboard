@@ -14,6 +14,13 @@ import { NextResponse, type NextRequest } from "next/server";
 // Именно webhook, а не весь /api/telegram: привязки рядом — под сессией.
 const PUBLIC_PATHS = ["/login", "/api/auth/register", "/api/ingest", "/api/telegram/webhook", "/api/topups/webhook", "/api/uniq"];
 
+// AI-доступ по MCP (Decision 116): сюда ходят Claude и Codex, у них нет cookie — вход по Bearer
+// внутри самих роутов, метаданные OAuth открыты по стандарту. Сессию для них не читаем вовсе:
+// это лишний поход в Supabase на каждый вызов инструмента. /api/oauth/authorize (кнопка
+// согласия) сюда не входит — она под сессией.
+const BEARER_PATHS = ["/api/mcp", "/api/oauth/token", "/api/oauth/register", "/api/oauth/metadata", "/api/oauth/resource", "/.well-known"];
+const under = (pathname: string, p: string) => pathname === p || pathname.startsWith(`${p}/`);
+
 // Статус читается на каждой навигации, и это второй поход в Supabase поверх
 // getUser(). Пара сотен миллисекунд на каждый клик — заметно руками.
 //
@@ -24,6 +31,7 @@ const STATUS_TTL_MS = 30_000;
 const statusCache = new Map<string, { blocked: boolean; at: number }>();
 
 export async function middleware(request: NextRequest) {
+  if (BEARER_PATHS.some((p) => under(request.nextUrl.pathname, p))) return NextResponse.next();
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -48,7 +56,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const isPublic = PUBLIC_PATHS.some((p) => under(pathname, p));
 
   // Отключённый в «Команде» обязан терять доступ, а не только админские вкладки.
   // Проверка стоит здесь, потому что это единственное место, через которое проходят
@@ -91,8 +99,9 @@ export async function middleware(request: NextRequest) {
     // Отключённому — сказать, почему его развернуло. Иначе он видит форму входа,
     // успешно вводит верный пароль и снова оказывается на ней же.
     if (blocked) login.searchParams.set("disabled", "1");
-    // Куда человек шёл — вернём его туда после входа, а не на главную.
-    else login.searchParams.set("next", pathname);
+    // Куда человек шёл — вернём его туда после входа, а не на главную. Вместе с запросом:
+    // экрану согласия AI-доступа (/oauth/authorize) без параметров OAuth делать нечего.
+    else login.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(login);
   }
 
