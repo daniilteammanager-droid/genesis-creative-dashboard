@@ -37,7 +37,7 @@ export default async function Authorize({ searchParams }: { searchParams: Promis
               </p>
               <ul className="text-sm text-zinc-300 space-y-1.5 mb-4 list-disc pl-5">
                 <li>Читать статистику, кампании и кабинеты, цифры и расшифровки крео, AI-разборы и чеки — ровно то, что ты видишь в дашборде.</li>
-                <li>Менять ничего не сможет: ни статусы, ни бюджеты.</li>
+                <li>Ставить на паузу, запускать и менять дневной бюджет кампаний в твоих кабинетах — как в Live Manager. Перед каждым изменением спросит тебя, о каждом напишет в Telegram.</li>
                 <li>Отключить можно в любой момент: Настройки → AI-доступ.</li>
               </ul>
               <p className="text-xs text-hint mb-5">После решения вернёт на <span className="text-zinc-300">{new URL(request.redirectUri).host}</span></p>

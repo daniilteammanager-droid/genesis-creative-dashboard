@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { authorizationServer, hashToken, isCimdClientId, newToken, pkceOk, protectedResource, redirectMatches, redirectUsable } from "./oauth";
 import { handleRpc, ToolError, type ToolDef } from "./protocol";
+import { budgetTarget } from "./manage";
 
 // PKCE S256 — пример из RFC 7636, приложение B.
 assert.ok(pkceOk("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"));
@@ -38,6 +39,16 @@ assert.equal(protectedResource(o).resource, "https://dash.example/api/mcp");
 assert.deepEqual(protectedResource(o).authorization_servers, [o]);
 assert.ok(authorizationServer(o).client_id_metadata_document_supported && authorizationServer(o).token_endpoint_auth_methods_supported.includes("none"));
 assert.deepEqual(authorizationServer(o).code_challenge_methods_supported, ["S256"]);
+
+// Бюджет через AI (Decision 117): не дальше чем вдвое от текущего, проценты от текущего.
+assert.deepEqual(budgetTarget(50, 100, null), { usd: 100 });
+assert.deepEqual(budgetTarget(50, null, 20), { usd: 60 });
+assert.deepEqual(budgetTarget(50, null, -50), { usd: 25 });
+assert.ok("error" in budgetTarget(50, 100.01, null), "больше чем вдвое — нет");
+assert.ok("error" in budgetTarget(50, 24.99, null), "меньше чем вдвое — нет");
+assert.ok("error" in budgetTarget(null, 30, null), "бюджет не на этом уровне");
+assert.ok("error" in budgetTarget(50, null, -100), "ноль — нет");
+assert.deepEqual(budgetTarget(33.33, null, 100), { usd: 66.66 }, "граница вдвое — с округлением до цента");
 
 async function protocol() {
   const info = { name: "t", title: "T", version: "1", instructions: "инструкция" };

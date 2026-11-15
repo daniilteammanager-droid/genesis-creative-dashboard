@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     return json({ jsonrpc: "2.0", id: m.id ?? null, result: { content: [{ type: "text", text: `Слишком много запросов: не больше ${RATE_PER_MIN} в минуту. Подожди минуту.` }], isError: true } });
   }
 
-  const res = await handleRpc(msg, { me: auth.me }, TOOLS, SERVER, (tool, args, ok, error, ms) =>
+  const res = await handleRpc(msg, { me: auth.me, tokenId: auth.tokenId }, TOOLS, SERVER, (tool, args, ok, error, ms) =>
     after(() => logCall(auth.me.id, auth.tokenId, tool, args, ok, error, ms).catch(() => {})));
   return res ? json(res) : new NextResponse(null, { status: 202, headers: CORS });
 }
