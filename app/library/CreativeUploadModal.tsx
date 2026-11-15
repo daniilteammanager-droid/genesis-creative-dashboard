@@ -264,7 +264,7 @@ function CongratsModal({ onClose }: { onClose: () => void }) {
         <p className="text-amber-800 text-sm font-semibold mb-6">Красавчик, знай мы гордимся тобой! 🎉</p>
         <button
           onClick={onClose}
-          className="px-5 py-2 rounded-xl text-sm font-semibold bg-amber-700 text-white hover:bg-amber-800 transition"
+          className="px-5 py-2 rounded-xl text-sm font-semibold bg-amber-700 text-on-brand hover:bg-amber-800 transition"
         >
           Спасибо
         </button>

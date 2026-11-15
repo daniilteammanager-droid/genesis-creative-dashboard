@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Shell from "@/components/Shell";
 import { getProfile } from "@/lib/auth/server";
+import { THEME_SCRIPT, themeOf } from "@/lib/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,12 +29,21 @@ export default async function RootLayout({
   // показывать ли служебные пункты. На странице входа профиля нет, и оболочка
   // тогда просто отдаёт содержимое как есть.
   const profile = await getProfile();
+  // Тема — на сервере, чтобы первый кадр был уже нужного цвета. «Как в системе» сервер
+  // не знает: отдаёт тёмную, а THEME_SCRIPT поправляет её до отрисовки (lib/theme.ts).
+  const theme = themeOf(profile?.theme);
 
   return (
     <html
       lang="ru"
+      data-theme={theme === "light" ? "light" : "dark"}
+      data-theme-pref={theme}
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <Shell profile={profile}>{children}</Shell>
       </body>

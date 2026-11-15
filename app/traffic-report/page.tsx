@@ -38,7 +38,7 @@ const STAGES: { id: Stage; label: string; many: (n: number) => string; chip: str
   { id: "loser", label: "Лузер пока что", many: lusers, chip: "border-red-500/50 text-red-300" },
   { id: "nospend", label: "Без спенда", many: () => "без спенда", chip: "border-zinc-600 text-zinc-400" },
 ];
-const BAND = { red: "bg-red-500/25 text-red-200", orange: "bg-orange-500/25 text-orange-200", yellow: "bg-yellow-400/20 text-yellow-100", green: "bg-green-500/25 text-green-200" };
+const BAND = { red: "bg-red-500/25 text-red-200", orange: "bg-orange-500/25 text-orange-200", yellow: "bg-yellow-500/20 text-yellow-100", green: "bg-green-500/25 text-green-200" };
 
 const usd0 = (v: number) => `$${Math.round(v).toLocaleString("ru-RU")}`;
 const usd2 = (v: number) => `$${v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -285,7 +285,7 @@ export default function TrafficReportPage() {
           </div>
 
           <Busy on={Boolean(data) && loadedKey !== reqKey}>
-          <div className="overflow-auto max-h-[70vh] rounded-xl border border-line [color-scheme:dark]">
+          <div className="overflow-auto max-h-[70vh] rounded-xl border border-line">
             <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
               <thead>
                 <tr className="text-hint">

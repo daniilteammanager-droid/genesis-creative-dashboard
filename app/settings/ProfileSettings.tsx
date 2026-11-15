@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import { WORK_AREAS, startPageOf } from "@/lib/nav";
+import { THEMES, applyTheme, themeOf, type ThemePref } from "@/lib/theme";
+import { seg } from "@/components/ui";
 
 
 const card = "card p-6";
@@ -45,6 +47,16 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
     setStart(href);
     const { error } = await createClient().from("profiles").update({ start_page: href }).eq("id", profile.id);
     setStartMsg(error ? error.message : "Сохранено");
+  }
+
+  // Тема меняется сразу, сохранение — следом: в профиле, чтобы ехала на другие устройства.
+  const [theme, setTheme] = useState<ThemePref>(themeOf(profile.theme));
+  const [themeMsg, setThemeMsg] = useState<string | null>(null);
+  async function saveTheme(t: ThemePref) {
+    setTheme(t);
+    applyTheme(t);
+    const { error } = await createClient().from("profiles").update({ theme: t }).eq("id", profile.id);
+    setThemeMsg(error ? error.message : "Сохранено");
   }
 
   // Сброс отметки — оболочка увидит пустой onboarded_at и откроет обучалку (Decision 078).
@@ -152,6 +164,15 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
           {WORK_AREAS.map((a) => <option key={a.href} value={a.href}>{a.label}</option>)}
         </select>
         {startMsg && <p className="text-xs text-hint mt-2">{startMsg}</p>}
+      </div>
+
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-white mb-2">Тема</h2>
+        <p className="text-sm text-hint mb-4">По умолчанию тёмная. «Как в системе» — светлая или тёмная вслед за телефоном или компьютером.</p>
+        <div className="seg" role="group" aria-label="Тема">
+          {THEMES.map((t) => <button key={t.id} type="button" {...seg(theme === t.id)} onClick={() => void saveTheme(t.id)}>{t.label}</button>)}
+        </div>
+        {themeMsg && <p className="text-xs text-hint mt-2">{themeMsg}</p>}
       </div>
 
       <div className={card}>

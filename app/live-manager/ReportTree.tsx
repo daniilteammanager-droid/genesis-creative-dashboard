@@ -99,7 +99,7 @@ function Row({ node: raw, depth, open, toggle, live, selected, select, flip, set
             {s?.canEdit && (
               <button onClick={() => flip(node)} title={isOn(s) ? "Поставить на паузу" : "Запустить"}
                       className={`w-8 h-4 rounded-full relative transition ${isOn(s) ? "bg-green-600/80" : "bg-zinc-700"}`}>
-                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${isOn(s) ? "left-4" : "left-0.5"}`} />
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-on-brand transition-all ${isOn(s) ? "left-4" : "left-0.5"}`} />
               </button>
             )}
             {s ? pill(s) : node.lastStatus ? (

@@ -95,7 +95,7 @@ export function DateRange({ since, until, onChange, min, max = mskDay(), classNa
     if (off(d)) return "text-zinc-700 cursor-not-allowed rounded-lg";
     const edge = d === a || d === b, inside = d > a && d < b;
     return edge
-      ? `bg-gradient-to-br from-violet-500 to-violet-700 text-white font-semibold shadow-md shadow-violet-900/50 ${d === a && d === b ? "rounded-lg" : d === a ? "rounded-l-lg" : "rounded-r-lg"}`
+      ? `bg-gradient-to-br from-violet-500 to-violet-700 text-on-brand font-semibold shadow-md shadow-violet-900/50 ${d === a && d === b ? "rounded-lg" : d === a ? "rounded-l-lg" : "rounded-r-lg"}`
       : inside ? "bg-violet-600/20 text-violet-100"
       : `rounded-lg text-zinc-200 hover:bg-violet-900/40 ${d === today ? "ring-1 ring-inset ring-violet-500/70" : ""}`;
   };
@@ -139,7 +139,7 @@ export function DatePicker({ value, onChange, min, max, className = "" }: Common
   const today = mskDay();
   const off = (d: string) => Boolean((min && d < min) || (max && d > max));
   const cell = (d: string) => off(d) ? "text-zinc-700 cursor-not-allowed rounded-lg"
-    : d === value ? "rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 text-white font-semibold shadow-md shadow-violet-900/50"
+    : d === value ? "rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 text-on-brand font-semibold shadow-md shadow-violet-900/50"
     : `rounded-lg text-zinc-200 hover:bg-violet-900/40 ${d === today ? "ring-1 ring-inset ring-violet-500/70" : ""}`;
   return (
     <div ref={ref} className={`relative ${className}`}>

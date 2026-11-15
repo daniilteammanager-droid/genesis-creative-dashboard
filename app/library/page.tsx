@@ -605,7 +605,9 @@ function LoadingScreen() {
     <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-50">
       <div className="flex flex-col items-center gap-8 animate-pulse">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-dark.png" alt="Genesis" className="h-28 w-auto object-contain" />
+        <img src="/logo-dark.png" alt="Genesis" className="only-dark h-28 w-auto object-contain" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-white.png" alt="Genesis" className="only-light h-28 w-auto object-contain" />
         <div className="flex flex-col items-center gap-3">
           <div className="w-48 h-0.5 bg-gradient-to-r from-transparent via-violet-600/50 to-transparent rounded-full" />
           <p className="text-violet-300/50 text-sm font-medium tracking-[0.2em] uppercase">

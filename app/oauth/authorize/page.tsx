@@ -26,7 +26,9 @@ export default async function Authorize({ searchParams }: { searchParams: Promis
       <div className="w-full max-w-[440px]">
         <div className="flex justify-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-dark.png" alt="Genesis" className="h-16 w-auto object-contain" />
+          <img src="/logo-dark.png" alt="Genesis" className="only-dark h-16 w-auto object-contain" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-white.png" alt="Genesis" className="only-light h-16 w-auto object-contain" />
         </div>
         <div className="card p-6">
           {request ? (

@@ -27,6 +27,8 @@ export interface Profile {
   onboarded_at: string | null;
   // Куда ведёт «/» после входа; null — Главная (lib/nav.ts).
   start_page: string | null;
+  // "dark" | "light" | "system"; null — тёмная (lib/theme.ts).
+  theme: string | null;
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {

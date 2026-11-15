@@ -209,7 +209,7 @@ export default function CreativeModal({
                     <button
                       onClick={() => saveField("transcription_ru", transcriptionDraft, setTranscriptionStatus, () => setTranscriptionEditing(false))}
                       disabled={!supabaseAvailable || transcriptionStatus === "saving"}
-                      className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-on-brand hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {transcriptionStatus === "saving" ? "Saving..." : "Save"}
                     </button>
@@ -256,7 +256,7 @@ export default function CreativeModal({
                     <button
                       onClick={() => saveField("note", noteDraft, setNoteStatus, () => setNoteEditing(false))}
                       disabled={!supabaseAvailable || noteStatus === "saving"}
-                      className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-on-brand hover:bg-violet-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {noteStatus === "saving" ? "Saving..." : "Save"}
                     </button>

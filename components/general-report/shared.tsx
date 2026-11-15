@@ -160,7 +160,7 @@ export interface ChartPoint {
   depAmount: number;
 }
 
-export const AXIS_TICK = { fontSize: 11, fill: "#71717a" };
+export const AXIS_TICK = { fontSize: 11, fill: "var(--chart-axis)" };
 export const AXIS_LINE = { stroke: "rgba(139,92,246,0.2)" };
 export const GRID_STROKE = "rgba(139,92,246,0.1)";
 
@@ -201,21 +201,21 @@ export const CHART_DEFS: ChartDef<ChartPoint[]>[] = [
         <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="gr3-revenue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#4ade80" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#4ade80" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--chart-green)" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="var(--chart-green)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="gr3-spend" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--chart-violet)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--chart-violet)" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke={GRID_STROKE} vertical={false} />
           <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
           <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
           <Tooltip content={(props) => <ChartTooltip {...props} money={["revenue", "spend"]} />} />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
-          <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#4ade80" strokeWidth={2} fill="url(#gr3-revenue)" />
-          <Area type="monotone" dataKey="spend" name="Spend" stroke="#8b5cf6" strokeWidth={2} fill="url(#gr3-spend)" />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-legend)" }} />
+          <Area type="monotone" dataKey="revenue" name="Revenue" stroke="var(--chart-green)" strokeWidth={2} fill="url(#gr3-revenue)" />
+          <Area type="monotone" dataKey="spend" name="Spend" stroke="var(--chart-violet)" strokeWidth={2} fill="url(#gr3-spend)" />
         </ComposedChart>
       </ResponsiveContainer>
     ),
@@ -232,7 +232,7 @@ export const CHART_DEFS: ChartDef<ChartPoint[]>[] = [
           <Tooltip content={(props) => <ChartTooltip {...props} percent={["romiPct"]} />} />
           <Bar dataKey="romiPct" name="ROMI" radius={[3, 3, 0, 0]}>
             {data.map((d, i) => (
-              <Cell key={i} fill={d.romiPct === null ? "#3f3f46" : d.romiPct >= 0 ? "#4ade80" : "#f87171"} />
+              <Cell key={i} fill={d.romiPct === null ? "var(--chart-muted)" : d.romiPct >= 0 ? "var(--chart-green)" : "var(--chart-red)"} />
             ))}
           </Bar>
         </ComposedChart>
@@ -249,7 +249,7 @@ export const CHART_DEFS: ChartDef<ChartPoint[]>[] = [
           <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
           <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
           <Tooltip content={(props) => <ChartTooltip {...props} money={["cac"]} />} />
-          <Line type="monotone" dataKey="cac" name="CAC" stroke="#facc15" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+          <Line type="monotone" dataKey="cac" name="CAC" stroke="var(--chart-yellow)" strokeWidth={2} dot={{ r: 2 }} connectNulls />
         </ComposedChart>
       </ResponsiveContainer>
     ),
@@ -265,9 +265,9 @@ export const CHART_DEFS: ChartDef<ChartPoint[]>[] = [
           <YAxis yAxisId="count" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
           <YAxis yAxisId="amount" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
           <Tooltip content={(props) => <ChartTooltip {...props} money={["depAmount"]} plain={["depCount"]} />} />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
-          <Bar yAxisId="count" dataKey="depCount" name="Кол-во" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
-          <Line yAxisId="amount" type="monotone" dataKey="depAmount" name="Сумма" stroke="#4ade80" strokeWidth={2} dot={{ r: 2 }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-legend)" }} />
+          <Bar yAxisId="count" dataKey="depCount" name="Кол-во" fill="var(--chart-violet)" radius={[3, 3, 0, 0]} />
+          <Line yAxisId="amount" type="monotone" dataKey="depAmount" name="Сумма" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 2 }} />
         </ComposedChart>
       </ResponsiveContainer>
     ),

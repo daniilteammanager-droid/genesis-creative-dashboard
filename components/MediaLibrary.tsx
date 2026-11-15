@@ -287,7 +287,7 @@ function FileRow({ file, note, onRefresh }: { file: MediaFile; note: CreativeNot
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {editing ? (
           <>
-            <button onClick={saveRename} disabled={busy} className="text-xs px-2.5 py-1 rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition disabled:opacity-50">
+            <button onClick={saveRename} disabled={busy} className="text-xs px-2.5 py-1 rounded-lg bg-violet-600 text-on-brand hover:bg-violet-500 transition disabled:opacity-50">
               Сохранить
             </button>
             <button onClick={() => { setEditing(false); setName(filename); }} className="text-xs px-2.5 py-1 rounded-lg text-zinc-400 hover:text-white transition">
@@ -402,7 +402,7 @@ function SuffixManager({ suffixes, onChanged }: { suffixes: string[]; onChanged:
         <button
           onClick={addSuffix}
           disabled={busy || !newSuffix.trim()}
-          className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition disabled:opacity-50"
+          className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 text-on-brand hover:bg-violet-500 transition disabled:opacity-50"
         >
           Добавить
         </button>

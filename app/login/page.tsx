@@ -84,7 +84,9 @@ function LoginForm() {
       <div className="w-full max-w-[400px]">
         <div className="flex flex-col items-center gap-6 mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-dark.png" alt="Genesis" className="h-20 w-auto object-contain" />
+          <img src="/logo-dark.png" alt="Genesis" className="only-dark h-20 w-auto object-contain" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-white.png" alt="Genesis" className="only-light h-20 w-auto object-contain" />
           <p className="text-violet-300/50 text-xs font-medium tracking-[0.2em] uppercase">
             Creative Dashboard
           </p>

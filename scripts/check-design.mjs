@@ -23,6 +23,12 @@ const RULES = [
   [/<h1\b(?![^>]*page-title)/, "заголовок страницы — <h1 className=\"page-title\">"],
   [/[\u{1F300}-\u{1FAFF}]/u, "иконка — <Icon name=…> из components/ui.tsx, не эмодзи",
     ["app/library/CreativeUploadModal.tsx"]], // грамота за 5+ крео — шутка в своём стиле, с эмодзи нарочно
+  // Светлая тема (15.11.2026): text-white там тёмный, hex и color-scheme не меняются вслед за темой.
+  [/(from-violet-|bg-violet-[5-7]00\b(?!\/)|bg-(?:red|green|emerald|amber|sky|blue)-[5-7]00\b(?!\/))[^"'`]*\btext-white\b(?!\/)|\btext-white\b(?!\/)[^"'`]*(from-violet-|bg-violet-[5-7]00\b(?!\/))/,
+    "текст на фиолетовой или цветной заливке — text-on-brand: text-white в светлой теме тёмный"],
+  [/\bbg-white\b(?!\/)/, "белая заливка — bg-on-brand: bg-white в светлой теме тёмная"],
+  [/["'`]#[0-9a-fA-F]{3,8}["'`]/, "цвет — токен или переменная (var(--chart-…) в графиках): hex не меняется вслед за темой"],
+  [/\[color-scheme:/, "color-scheme ставит тема в globals.css, не класс"],
 ];
 
 const isComment = (line) => /^\s*(\/\/|\/\*|\*|\{\s*\/\*)/.test(line);

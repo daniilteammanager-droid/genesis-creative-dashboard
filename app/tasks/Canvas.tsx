@@ -164,7 +164,7 @@ export default function Canvas(p: CanvasProps) {
   const nodes = useMemo(() => p.list.filter((t) => pos[t.id]).map((t) => {
     const q = pos[t.id], d = q.d, n = kids(p.list, t.id).filter((k) => !(p.hideDone && k.status === "done")).length;
     const isDrop = drop?.id === t.id;
-    const look = d === 0 ? "bg-gradient-to-r from-violet-700 to-violet-500 border-transparent font-semibold text-white cursor-move"
+    const look = d === 0 ? "bg-gradient-to-r from-violet-700 to-violet-500 border-transparent font-semibold text-on-brand cursor-move"
       : d === 1 ? "font-semibold cursor-grab" : "bg-raised border-line-strong hover:border-violet-600 cursor-grab";
     return (
       <div
@@ -193,7 +193,7 @@ export default function Canvas(p: CanvasProps) {
                   className="text-[11px] text-hint hover:text-white px-1 rounded tabular-nums">{p.collapsed.has(t.id) ? `▸ ${n}` : "◂"}</button>
         )}
         <button type="button" title={`${d === 0 ? "Направление" : "Подзадача"} (Tab)`} onClick={(e) => { e.stopPropagation(); p.onAdd(t.id); }}
-                className={`absolute -right-7 top-[7px] w-[22px] h-[22px] rounded-full bg-violet-600 text-white leading-[22px] text-[15px] ${t.id === p.sel ? "" : "opacity-0 group-hover:opacity-100"}`}>+</button>
+                className={`absolute -right-7 top-[7px] w-[22px] h-[22px] rounded-full bg-violet-600 text-on-brand leading-[22px] text-[15px] ${t.id === p.sel ? "" : "opacity-0 group-hover:opacity-100"}`}>+</button>
       </div>
     );
   }), [p, pos, drop, lifted, measure]);
@@ -217,7 +217,7 @@ export default function Canvas(p: CanvasProps) {
         }}
         className={`absolute inset-0 overflow-hidden rounded-2xl border border-line bg-panel touch-none cursor-grab active:cursor-grabbing`}
         style={{
-          backgroundImage: "radial-gradient(circle, var(--line-strong) 1.2px, transparent 1.3px)",
+          backgroundImage: "radial-gradient(circle, var(--canvas-dot) 1.2px, transparent 1.3px)",
           backgroundSize: `${24 * view.z}px ${24 * view.z}px`, backgroundPosition: `${view.px}px ${view.py}px`,
         }}
       >

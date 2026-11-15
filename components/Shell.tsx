@@ -85,7 +85,9 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
       >
         <div className="flex items-center justify-between px-4 py-3 md:py-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-dark.png" alt="Genesis" className="h-8 md:h-9 w-auto object-contain" />
+          <img src="/logo-dark.png" alt="Genesis" className="only-dark h-8 md:h-9 w-auto object-contain" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-white.png" alt="Genesis" className="only-light h-8 md:h-9 w-auto object-contain" />
           <button onClick={toggle} className={iconBtn} aria-label="Свернуть панель">✕</button>
         </div>
 
@@ -102,7 +104,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
                 onClick={closeIfNarrow}
                 className={`${item} ${
                   active
-                    ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-sm"
+                    ? "bg-gradient-to-r from-violet-600 to-violet-500 text-on-brand shadow-sm"
                     : "text-zinc-400 hover:text-violet-300 hover:bg-violet-900/15"
                 }`}
               >
@@ -159,7 +161,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         onClick={toggle}
         aria-label="Показать панель"
         className={`${fabShown} fixed bottom-4 left-4 z-40 h-11 w-11 rounded-full
-                    bg-gradient-to-r from-violet-600 to-violet-500 text-white text-lg
+                    bg-gradient-to-r from-violet-600 to-violet-500 text-on-brand text-lg
                     shadow-lg shadow-violet-900/40 active:scale-95 transition`}
       >
         ☰

@@ -103,8 +103,8 @@ const WA_CHART_DEFS: ChartDef<WaChartData>[] = [
         <ComposedChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="wa-spend" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--chart-violet)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--chart-violet)" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke={GRID_STROKE} vertical={false} />
@@ -112,9 +112,9 @@ const WA_CHART_DEFS: ChartDef<WaChartData>[] = [
           <YAxis yAxisId="money" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
           <YAxis yAxisId="count" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
           <Tooltip content={(props) => <ChartTooltip {...props} money={["spend"]} plain={["registrations"]} />} />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
-          <Area yAxisId="money" type="monotone" dataKey="spend" name="Spend" stroke="#8b5cf6" strokeWidth={2} fill="url(#wa-spend)" />
-          <Line yAxisId="count" type="monotone" dataKey="registrations" name="Регистрации" stroke="#4ade80" strokeWidth={2} dot={{ r: 2 }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-legend)" }} />
+          <Area yAxisId="money" type="monotone" dataKey="spend" name="Spend" stroke="var(--chart-violet)" strokeWidth={2} fill="url(#wa-spend)" />
+          <Line yAxisId="count" type="monotone" dataKey="registrations" name="Регистрации" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 2 }} />
         </ComposedChart>
       </ResponsiveContainer>
     ),
@@ -124,13 +124,13 @@ const WA_CHART_DEFS: ChartDef<WaChartData>[] = [
     label: "Воронка за период",
     render: ({ totals }) => {
       const stages = [
-        { name: "Клики", value: totals.clicks, fill: "#8b5cf6" },
-        { name: "Регистрации", value: totals.registrations, fill: "#a78bfa" },
-        { name: "Написали/бот", value: totals.wroteForBonus + totals.enteredBot, fill: "#c4b5fd" },
-        { name: "Анкета", value: totals.filledForm, fill: "#818cf8" },
-        { name: "Зашли на веб", value: totals.enteredWeb, fill: "#38bdf8" },
-        { name: "Заявка", value: totals.applications, fill: "#facc15" },
-        { name: "Оплата", value: totals.payments, fill: "#4ade80" },
+        { name: "Клики", value: totals.clicks, fill: "var(--chart-violet)" },
+        { name: "Регистрации", value: totals.registrations, fill: "var(--chart-violet-2)" },
+        { name: "Написали/бот", value: totals.wroteForBonus + totals.enteredBot, fill: "var(--chart-violet-3)" },
+        { name: "Анкета", value: totals.filledForm, fill: "var(--chart-indigo)" },
+        { name: "Зашли на веб", value: totals.enteredWeb, fill: "var(--chart-sky)" },
+        { name: "Заявка", value: totals.applications, fill: "var(--chart-yellow)" },
+        { name: "Оплата", value: totals.payments, fill: "var(--chart-green)" },
       ];
       return (
         <ResponsiveContainer width="100%" height={260}>
@@ -157,7 +157,7 @@ const WA_CHART_DEFS: ChartDef<WaChartData>[] = [
           <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
           <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => "$" + fmt(v)} width={64} />
           <Tooltip content={(props) => <ChartTooltip {...props} money={["costPerReg"]} />} />
-          <Line type="monotone" dataKey="costPerReg" name="Цена рег." stroke="#38bdf8" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+          <Line type="monotone" dataKey="costPerReg" name="Цена рег." stroke="var(--chart-sky)" strokeWidth={2} dot={{ r: 2 }} connectNulls />
         </ComposedChart>
       </ResponsiveContainer>
     ),
@@ -172,9 +172,9 @@ const WA_CHART_DEFS: ChartDef<WaChartData>[] = [
           <XAxis dataKey="name" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} minTickGap={24} />
           <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
           <Tooltip content={(props) => <ChartTooltip {...props} plain={["applications", "payments"]} />} />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
-          <Bar dataKey="applications" name="Заявки" fill="#facc15" radius={[3, 3, 0, 0]} />
-          <Bar dataKey="payments" name="Оплаты" fill="#4ade80" radius={[3, 3, 0, 0]} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-legend)" }} />
+          <Bar dataKey="applications" name="Заявки" fill="var(--chart-yellow)" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="payments" name="Оплаты" fill="var(--chart-green)" radius={[3, 3, 0, 0]} />
         </ComposedChart>
       </ResponsiveContainer>
     ),
