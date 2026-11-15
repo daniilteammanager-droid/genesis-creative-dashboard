@@ -133,10 +133,10 @@ export default function Tasks({ me }: { me: string }) {
   // ?board= — ссылка из Telegram на общий холст.
   useEffect(() => { void loadBoards(new URLSearchParams(location.search).get("board")); }, [loadBoards]);
 
-  // Чужие правки на общем холсте: раз в 20 секунд и при возврате на вкладку — если у меня ничего не висит.
-  const shared = boards?.find((b) => b.id === boardId)?.shared ?? false;
+  // Чужие правки — раз в 20 секунд и при возврате на вкладку, если у меня ничего не висит. И на личном холсте:
+  // туда пишет свой Claude или Codex человека (Decision 118).
   useEffect(() => {
-    if (!boardId || !shared) return;
+    if (!boardId) return;
     const pull = async () => {
       const idle = () => !timer.current && !saving.current && !editingRef.current && boardRef.current === boardId;
       if (document.visibilityState !== "visible" || !idle()) return;
@@ -148,7 +148,7 @@ export default function Tasks({ me }: { me: string }) {
     const t = setInterval(pull, 20000);
     addEventListener("focus", pull);
     return () => { clearInterval(t); removeEventListener("focus", pull); };
-  }, [boardId, shared]);
+  }, [boardId]);
 
   const switchBoard = async (id: string) => { if (id === boardRef.current) return; await flush(); openBoard(id); };
 
