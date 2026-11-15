@@ -7,6 +7,8 @@ import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import Onboarding from "./Onboarding";
 import { CreoModalProvider } from "./CreoModal";
 import { WORK_AREAS } from "@/lib/nav";
+import { flipTheme } from "@/lib/theme";
+import { createClient } from "@/lib/auth/client";
 import { Icon } from "./ui";
 
 // Оболочка приложения: рабочие области, аккаунт и содержимое страницы.
@@ -46,6 +48,11 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
   // Перешёл по ссылке на телефоне — панель уезжает. Она занимает весь экран, и
   // оставлять её открытой поверх страницы, куда человек только что шёл, незачем.
   const closeIfNarrow = () => { if (isNarrow()) setOpen(false); };
+  // Тема меняется сразу, в профиль — следом, чтобы ехала на другие устройства (lib/theme.ts).
+  const flip = async () => {
+    const t = flipTheme();
+    if (profile) await createClient().from("profiles").update({ theme: t }).eq("id", profile.id);
+  };
 
   // Чем убранная панель возвращается:
   //   на компе — узким столбцом в раскладке, он виден всегда и ничего не перекрывает;
@@ -119,20 +126,27 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
             живут там, а не в этой панели: сюда они добавлялись бы бесконечно. */}
         <div className="px-2.5 pb-3 pt-2 border-t border-line">
           {profile ? (
-            <Link
-              data-tour="account"
-              href="/settings"
-              onClick={closeIfNarrow}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition ${
-                pathname.startsWith("/settings") ? "bg-violet-900/25" : "hover:bg-violet-900/15"
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-zinc-200 truncate">{profile.name || profile.email}</p>
-                <p className="text-[11px] text-hint">{profile.buyer_code ?? ROLE_LABELS[profile.role]}</p>
-              </div>
-              <span className="text-hint text-xs">›</span>
-            </Link>
+            <div className="flex items-center gap-1">
+              <Link
+                data-tour="account"
+                href="/settings"
+                onClick={closeIfNarrow}
+                className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-xl transition ${
+                  pathname.startsWith("/settings") ? "bg-violet-900/25" : "hover:bg-violet-900/15"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-zinc-200 truncate">{profile.name || profile.email}</p>
+                  <p className="text-[11px] text-hint">{profile.buyer_code ?? ROLE_LABELS[profile.role]}</p>
+                </div>
+                <span className="text-hint text-xs">›</span>
+              </Link>
+              {/* Тема в один клик (16.11.2026, Даниил): в настройках её искать долго. Солнце — в тёмной, луна — в светлой. */}
+              <button type="button" onClick={() => void flip()} className={iconBtn} title="Светлая или тёмная тема" aria-label="Переключить тему">
+                <Icon name="sun" className="only-dark w-4 h-4" />
+                <Icon name="moon" className="only-light w-4 h-4" />
+              </button>
+            </div>
           ) : (
             <p className="px-3 py-2 text-[11px] text-hint leading-relaxed">
               Профиль не прочитался. Настройки недоступны, остальное работает.

@@ -36,9 +36,12 @@ export function Busy({ on, children }: { on: boolean; children: React.ReactNode 
 
 // Иконки вместо эмодзи: эмодзи на каждой системе своего цвета и размера.
 export type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image" | "user" | "users" | "lock"
-  | "home" | "tasks" | "archive" | "check" | "pulse" | "chart" | "table" | "rocket" | "shield" | "layers" | "wallet" | "undo";
+  | "home" | "tasks" | "archive" | "check" | "pulse" | "chart" | "table" | "rocket" | "shield" | "layers" | "wallet" | "undo"
+  | "sun" | "moon";
 const PATHS: Record<IconName, string[]> = {
   undo: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
+  sun: ["M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"],
+  moon: ["M20.4 14.3A8.5 8.5 0 1 1 9.7 3.6a7 7 0 0 0 10.7 10.7z"],
   folder: ["M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   upload: ["M12 15V3", "m7 8 5-5 5 5", "M5 21h14"],
   save: ["M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M7 3v5h8", "M7 21v-7h10v7"],

@@ -19,6 +19,14 @@ export const themeOf = (v: string | null | undefined): ThemePref => (v === "ligh
 // перезагрузки — работает и так.
 export const THEME_SCRIPT = `(function(){var d=document.documentElement,m=matchMedia("(prefers-color-scheme: light)");function f(){if(d.dataset.themePref==="system")d.dataset.theme=m.matches?"light":"dark"}f();m.addEventListener("change",f)})()`;
 
+// Кнопка у аккаунта: тёмная ↔ светлая от того, что на экране сейчас. «Как в системе» после неё
+// становится явным выбором — вернуть его можно в Настройки → Профиль.
+export function flipTheme(): ThemePref {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  applyTheme(next);
+  return next;
+}
+
 // Сразу после выбора в настройках — без перезагрузки.
 export function applyTheme(pref: ThemePref) {
   const d = document.documentElement;
