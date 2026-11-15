@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { dirOf, kids, layout, progress, under, zone, NH, NW, type Task, type Where } from "@/lib/tasks/tree";
 import { StatusDot, Who } from "./parts";
 
-// Холст как в Miro: карты где угодно, фон тянет холст, ⌘/Ctrl + колёсико — масштаб.
+// Холст как в Miro: карты где угодно, фон тянет холст, ⌘/Ctrl + колёсико или два пальца — масштаб.
 // Узел тянется куда угодно, ветка едет с ним: отпустил на другом узле — встаёт рядом
 // или внутрь, на пустом месте — остаётся там (Tasks решает, что с этим делать).
 
@@ -38,6 +38,9 @@ export default function Canvas(p: CanvasProps) {
   const grab = useRef<Grab | null>(null);
   const dropRef = useRef(drop);
   const clickGuard = useRef(false);
+  // Пальцы на холсте. Второй палец — щипок: масштаб и сдвиг, перетаскивание первым пальцем заканчивается.
+  const pts = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d: number; mx: number; my: number; view: { px: number; py: number; z: number } } | null>(null);
   // Высота каждого узла — по факту: длинный текст переносится, и раскладка раздвигает соседей.
   const [heights, setHeights] = useState<Record<string, number>>({});
   const sizes = useRef<ResizeObserver | null>(null);
@@ -93,8 +96,30 @@ export default function Canvas(p: CanvasProps) {
     return () => el.removeEventListener("wheel", wheel);
   }, []);
 
+  // Расстояние между двумя пальцами и середина между ними — от угла холста.
+  const two = () => {
+    const [a, b] = [...pts.current.values()], r = stage.current!.getBoundingClientRect();
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2 - r.left, my: (a.y + b.y) / 2 - r.top };
+  };
+  // Отпустил узел или фон: узел ложится туда, куда показывает подсветка.
+  const finish = () => {
+    const g = grab.current; grab.current = null;
+    if (!g?.moved) return;
+    clickGuard.current = true; setTimeout(() => { clickGuard.current = false; }, 0);
+    setLifted(null);
+    if (g.id) live.current.p.onDrop(g.id, dropRef.current, live.current.heights);
+    dropRef.current = null; setDrop(null);
+  };
+
   useEffect(() => {
     const move = (e: PointerEvent) => {
+      if (pts.current.has(e.pointerId)) pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pz = pinch.current;
+      if (pz) {
+        if (pts.current.size < 2) return;
+        const n = two(), z = clamp(pz.view.z * n.d / pz.d, 0.25, 2);
+        return setView({ z, px: n.mx - (pz.mx - pz.view.px) * z / pz.view.z, py: n.my - (pz.my - pz.view.py) * z / pz.view.z });
+      }
       const g = grab.current; if (!g) return;
       const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
       if (!g.moved && Math.hypot(dx, dy) < 4) return;
@@ -110,20 +135,23 @@ export default function Canvas(p: CanvasProps) {
       const next = t && w ? { id: t, w } : null;
       if (next?.id !== dropRef.current?.id || next?.w !== dropRef.current?.w) { dropRef.current = next; setDrop(next); }
     };
-    const up = () => {
-      const g = grab.current; grab.current = null;
-      if (!g?.moved) return;
-      clickGuard.current = true; setTimeout(() => { clickGuard.current = false; }, 0);
-      setLifted(null);
-      if (g.id) live.current.p.onDrop(g.id, dropRef.current, live.current.heights);
-      dropRef.current = null; setDrop(null);
+    const up = (e: PointerEvent) => {
+      pts.current.delete(e.pointerId);
+      if (!pinch.current) return finish();
+      if (pts.current.size < 2) { pinch.current = null; clickGuard.current = true; setTimeout(() => { clickGuard.current = false; }, 0); }
     };
     addEventListener("pointermove", move);
     addEventListener("pointerup", up);
-    return () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
+    addEventListener("pointercancel", up);
+    return () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); };
   }, []);
 
   const down = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse") pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.current.size >= 2) {
+      if (!pinch.current) { finish(); pinch.current = { ...two(), view: live.current.view }; }
+      return;
+    }
     if (e.button !== 0 || (e.target as HTMLElement).closest("button, input")) return;
     const id = (e.target as HTMLElement).closest<HTMLElement>("[data-node]")?.dataset.node ?? null;
     const t = id ? p.list.find((x) => x.id === id) : undefined;

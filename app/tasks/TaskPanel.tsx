@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { DatePicker } from "@/components/DatePicker";
 import { branchTasks, COLORS, depth, dirOf, kids, mapOf, STATUS, type Task } from "@/lib/tasks/tree";
 import { seg } from "@/components/ui";
@@ -23,7 +22,6 @@ export interface PanelProps {
 }
 
 export default function TaskPanel({ list, task: t, members, onChange, onCycle, onGo, onAddSub, onDelete, onClose }: PanelProps) {
-  const [arm, setArm] = useState(false);
   const d = depth(list, t), sub = kids(list, t.id), inBranch = branchTasks(list, t.id).length;
   const where = d === 0 ? "Карта" : d === 1 ? `Направление · ${mapOf(list, t).title}` : `${mapOf(list, t).title} › ${dirOf(list, t).title}`;
   return (
@@ -93,13 +91,14 @@ export default function TaskPanel({ list, task: t, members, onChange, onCycle, o
 
       <p className="text-xs text-hint leading-relaxed">
         На холсте: <b className="text-zinc-300">Tab</b> — подзадача, <b className="text-zinc-300">Enter</b> — задача рядом,
-        <b className="text-zinc-300"> F2</b> или двойной клик — переименовать, <b className="text-zinc-300">Esc</b> — закрыть.
+        <b className="text-zinc-300"> F2</b> или двойной клик — переименовать, <b className="text-zinc-300">Backspace</b> — удалить,
+        <b className="text-zinc-300"> ⌘Z</b> — назад, <b className="text-zinc-300">Esc</b> — закрыть.
         Задачу тащи куда угодно: на верх или низ другой — рядом, в середину — внутрь.
       </p>
 
-      <button type="button" onClick={() => (arm ? onDelete() : setArm(true))}
-              className="btn mt-auto !border-red-400/40 !text-red-400">
-        {arm ? `Точно удалить${inBranch ? ` вместе с ${inBranch} задачами` : ""}?` : d === 0 ? "Удалить карту" : "Удалить"}
+      {/* Без «Точно удалить?»: случайное удаление возвращает «Назад» (⌘Z). */}
+      <button type="button" onClick={onDelete} className="btn mt-auto !border-red-400/40 !text-red-400">
+        {d === 0 ? "Удалить карту" : "Удалить"}{inBranch ? ` вместе с ${inBranch} задачами` : ""}
       </button>
     </aside>
   );

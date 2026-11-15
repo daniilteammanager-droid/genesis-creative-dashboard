@@ -15,7 +15,8 @@ import { TitleInput } from "./parts";
 
 // Задачи: холсты с майнд-картами и доска над теми же задачами. Каждый видит свой личный
 // холст и общие, куда его добавили (lib/tasks/store.ts). Правки уходят в базу пачкой
-// через полсекунды тишины; общий холст подтягивает чужие правки раз в 20 секунд.
+// через полсекунды тишины; холст подтягивает чужие правки раз в 20 секунд. «Назад» (⌘Z) — история
+// своих правок на этом холсте, пока в него не пришли чужие.
 
 const LAST_BOARD = "tasks:board";
 
@@ -33,6 +34,9 @@ export default function Tasks({ me }: { me: string }) {
   const boardRef = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saving = useRef(false);
+  const past = useRef<Task[][]>([]);
+  const group = useRef<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
 
   const [sel, setSel] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -74,13 +78,31 @@ export default function Tasks({ me }: { me: string }) {
     }
   }, []);
 
-  const change = useCallback((fn: (l: Task[]) => Task[]) => {
+  // g — шаг истории: правки с одним g подряд (перетаскивание, новая задача с названием) — один шаг «Назад».
+  const change = useCallback((fn: (l: Task[]) => Task[], g?: string) => {
     const next = fn(listRef.current);
     if (next === listRef.current) return;
+    if (!g || g !== group.current) {
+      past.current.push(listRef.current);
+      if (past.current.length > 100) past.current.shift();
+      setCanUndo(true);
+    }
+    group.current = g ?? null;
     listRef.current = next; setList(next);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flush, 500);
   }, [flush]);
+
+  // Назад — прежнее дерево целиком; в базу уходит разница, как у любой правки (удалённое вернётся теми же id).
+  const undo = useCallback(() => {
+    const prev = past.current.pop();
+    group.current = null; setCanUndo(past.current.length > 0);
+    if (!prev) return;
+    listRef.current = prev; setList(prev);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(flush, 500);
+  }, [flush]);
+  const forget = () => { past.current = []; group.current = null; setCanUndo(false); };
 
   // Ушёл со вкладки — дописать сразу, не дожидаясь таймера.
   useEffect(() => {
@@ -100,12 +122,13 @@ export default function Tasks({ me }: { me: string }) {
     const l = fromRows(rs);
     listRef.current = l; setList(l);
     saved.current = new Map(rows(l).map((r) => [r.id, JSON.stringify(r)]));
+    forget(); // пришло чужое — «Назад» откатил бы и его
   };
 
   // Открыть холст: всё выделенное и свёрнутое — от прошлого холста, сбрасываем.
   const openBoard = useCallback((id: string | null) => {
     boardRef.current = id; setBoardId(id);
-    setSel(null); setPanel(false); setEditing(null); editingRef.current = null; setCollapsed(new Set());
+    setSel(null); setPanel(false); setEditing(null); editingRef.current = null; setCollapsed(new Set()); forget();
     if (!id) return;
     try { localStorage.setItem(LAST_BOARD, id); } catch {}
     setLoading(true);
@@ -143,7 +166,10 @@ export default function Tasks({ me }: { me: string }) {
       const dirty = () => { const d = diff(saved.current, listRef.current); return d.changed.length + d.remove.length > 0; };
       if (dirty()) return;
       const rs = await fetchRows(boardId).catch(() => null);
-      if (rs && idle() && !dirty()) accept(rs);
+      if (!rs || !idle() || dirty()) return;
+      const next = rows(fromRows(rs));
+      if (next.length === saved.current.size && next.every((r) => saved.current.get(r.id) === JSON.stringify(r))) return; // ничего нового — история цела
+      accept(rs);
     };
     const t = setInterval(pull, 20000);
     addEventListener("focus", pull);
@@ -156,7 +182,7 @@ export default function Tasks({ me }: { me: string }) {
   const create = (parent: string | null, after?: string | null, at?: { x: number; y: number }) => {
     const l = listRef.current, p = byId(l, parent);
     const t = blank(l, crypto.randomUUID(), parent, at);
-    change((x) => insert(x, t, after));
+    change((x) => insert(x, t, after), `new:${t.id}`);
     if (parent) setCollapsed((c) => { if (!c.has(parent)) return c; const n = new Set(c); n.delete(parent); return n; });
     const d = p ? depth(l, p) + 1 : 0;
     if (d === 0) setView("map");
@@ -170,15 +196,16 @@ export default function Tasks({ me }: { me: string }) {
     editingRef.current = null; setEditing(null);
     const l = listRef.current, t = byId(l, id);
     if (!t) return null;
-    const v = value.trim();
-    if (!v && fresh.current === id && !kids(l, id).length) {
-      fresh.current = null;
-      change((x) => x.filter((y) => y.id !== id));
+    const v = value.trim(), g = fresh.current === id ? `new:${id}` : undefined;
+    fresh.current = null;
+    if (!v && g && !kids(l, id).length) {
+      change((x) => x.filter((y) => y.id !== id), g);
+      // Пустая новая задача — как не было, и шага «Назад» под неё тоже нет.
+      if (group.current === g) { past.current.pop(); group.current = null; setCanUndo(past.current.length > 0); }
       setSel(t.parent);
       return null;
     }
-    fresh.current = null;
-    if (v && v !== t.title) change((x) => patch(x, id, { title: v }));
+    if (v && v !== t.title) change((x) => patch(x, id, { title: v }), g);
     return t;
   };
   const onEditKey = (id: string, key: "Enter" | "Tab" | "Escape", value: string) => {
@@ -188,6 +215,8 @@ export default function Tasks({ me }: { me: string }) {
     else if (key === "Tab" && view === "map") create(t.id);
   };
   const rename = (id: string) => { fresh.current = null; editingRef.current = id; setEditing(id); setSel(id); };
+  // Удалить с подзадачами, без «Точно?»: вернуть — «Назад».
+  const remove = (id: string) => { change((l) => removeBranch(l, id)); setSel(null); setPanel(false); };
 
   const title = (t: Task) => t.id === editing
     ? <TitleInput key={t.id} value={t.title} placeholder={["Карта", "Направление"][depth(list, t)] ?? "Задача"}
@@ -200,8 +229,11 @@ export default function Tasks({ me }: { me: string }) {
     keys.current = (e) => {
       const el = e.target as HTMLElement;
       if (dialog || e.isComposing || el.closest("input, textarea, [contenteditable]")) return;
+      // По коду клавиши, а не букве: на русской раскладке ⌘Z — это ⌘Я.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.code === "KeyZ") { e.preventDefault(); undo(); return; }
       if (e.key === "Escape") { if (panel) setPanel(false); else setSel(null); return; }
       const t = byId(listRef.current, sel);
+      if (t && (e.key === "Backspace" || e.key === "Delete")) { e.preventDefault(); remove(t.id); return; }
       if (!t || view !== "map") return;
       if (e.key === "F2") { e.preventDefault(); rename(t.id); }
       else if (e.key === "Tab") { e.preventDefault(); create(t.id); }
@@ -270,12 +302,15 @@ export default function Tasks({ me }: { me: string }) {
         )}
         <button type="button" {...chip(hideDone)} onClick={() => setHideDone((v) => !v)}>Скрыть сделанные</button>
         {view === "board" && board?.shared && <button type="button" {...chip(onlyMine)} onClick={() => setOnlyMine((v) => !v)}>Только мои</button>}
+        <button type="button" className="btn btn-sm" onClick={undo} disabled={!canUndo} title="Отменить последнее действие (⌘Z)">
+          <Icon name="undo" className="w-3.5 h-3.5" />Назад
+        </button>
         <button type="button" className="btn btn-primary btn-sm" onClick={newMap}>+ Карта</button>
       </div>
       {/* Подсказка и «Сохраняю…» в одной строке: отдельной строкой статус дёргал раскладку под пальцем. */}
       <p className="text-xs text-hint -mt-1 flex gap-3">
         <span className="flex-1">{view === "map"
-          ? "Выдели задачу: Tab — подзадача, Enter — следующая. Тащи задачу куда угодно, на другую — вложить. ⋯ — настройки. Двойной клик по пустому месту — новая карта."
+          ? "Выдели задачу: Tab — подзадача, Enter — следующая, Backspace — удалить, ⌘Z — назад. Тащи задачу куда угодно, на другую — вложить. ⋯ — настройки. Двойной клик по пустому месту — новая карта, два пальца — масштаб."
           : by === "dir" ? "Enter в новой карточке — сразу следующая. Тащи карточку в другую колонку или выше — она важнее."
           : "Задачи всех карт холста. Тащи карточку в другой статус, порядок — с холста."}</span>
         <span className={`flex-none ${saveState === "ok" || saveState === "saving" ? "" : "text-red-400"}`}>
@@ -294,10 +329,11 @@ export default function Tasks({ me }: { me: string }) {
           onAdd={(id) => create(id)}
           onRename={rename}
           onCreateMap={(at) => create(null, null, at)}
-          onShift={(id, x, y) => change((l) => (byId(l, id)?.parent ? patch(l, id, { dx: x, dy: y }) : patch(l, id, { x, y })))}
+          onShift={(id, x, y) => change((l) => (byId(l, id)?.parent ? patch(l, id, { dx: x, dy: y }) : patch(l, id, { x, y })), `drag:${id}`)}
           onDrop={(id, target, heights) => {
-            if (target) change((l) => move(l, id, target.id, target.w));
-            else if (byId(listRef.current, id)?.parent) change((l) => placeFree(l, id, { ...opts, heights }));
+            if (target) change((l) => move(l, id, target.id, target.w), `drag:${id}`);
+            else if (byId(listRef.current, id)?.parent) change((l) => placeFree(l, id, { ...opts, heights }), `drag:${id}`);
+            group.current = null; // перетаскивание кончилось: следующее — уже новый шаг
           }}
           onTidy={() => change((l) => l.map((t) => (t.dx || t.dy ? { ...t, dx: null, dy: null } : t)))}
         />
@@ -324,7 +360,7 @@ export default function Tasks({ me }: { me: string }) {
             change((l) => [...l, t]);
             setCollapsed((c) => { const n = new Set(c); n.delete(selected.id); return n; });
           }}
-          onDelete={() => { change((l) => removeBranch(l, selected.id)); setSel(null); setPanel(false); }}
+          onDelete={() => remove(selected.id)}
           onClose={() => setPanel(false)}
         />
       )}

@@ -36,8 +36,9 @@ export function Busy({ on, children }: { on: boolean; children: React.ReactNode 
 
 // Иконки вместо эмодзи: эмодзи на каждой системе своего цвета и размера.
 export type IconName = "folder" | "upload" | "save" | "link" | "file" | "repeat" | "film" | "image" | "user" | "users" | "lock"
-  | "home" | "tasks" | "archive" | "check" | "pulse" | "chart" | "table" | "rocket" | "shield" | "layers" | "wallet";
+  | "home" | "tasks" | "archive" | "check" | "pulse" | "chart" | "table" | "rocket" | "shield" | "layers" | "wallet" | "undo";
 const PATHS: Record<IconName, string[]> = {
+  undo: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
   folder: ["M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   upload: ["M12 15V3", "m7 8 5-5 5 5", "M5 21h14"],
   save: ["M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M7 3v5h8", "M7 21v-7h10v7"],
