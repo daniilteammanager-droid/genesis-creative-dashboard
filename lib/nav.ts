@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/ui";
+import { canSeeLegacy } from "@/lib/auth/types";
 
 // Рабочие области левой панели. Отдельно от Shell (он клиентский): тот же список
 // проверяет стартовую страницу на сервере — в профиль можно записать что угодно.
@@ -23,5 +24,10 @@ export const WORK_AREAS: { href: string; label: string; icon: IconName }[] = [
 
 export const DEFAULT_START = "/home";
 
-export const startPageOf = (v: string | null | undefined) =>
-  WORK_AREAS.some((a) => a.href === v) ? (v as string) : DEFAULT_START;
+// Области, которые человек видит: «Легаси крео» закрыты новому баеру (Decision 119).
+// Это только панель — сам /library проверяет доступ в app/library/layout.tsx.
+export const areasFor = (p: Parameters<typeof canSeeLegacy>[0]) =>
+  canSeeLegacy(p) ? WORK_AREAS : WORK_AREAS.filter((a) => a.href !== "/library");
+
+export const startPageOf = (v: string | null | undefined, areas = WORK_AREAS) =>
+  areas.some((a) => a.href === v) ? (v as string) : DEFAULT_START;

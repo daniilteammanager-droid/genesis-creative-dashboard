@@ -1,4 +1,4 @@
-import type { UserRole } from "@/lib/auth/types";
+import { canSeeLegacy, type Profile, type UserRole } from "@/lib/auth/types";
 
 // Обучалка по дашборду (Decision 078): тур с подсветкой. Шаг подсвечивает блок
 // с data-tour="…" на своей странице и показывает рядом подсказку.
@@ -93,4 +93,6 @@ export const STEPS: Step[] = [
   { title: "🚀 Готово", text: "Начни с подключений — остальное заполнится само. Пройти обучение ещё раз: Настройки → Профиль." },
 ];
 
-export const stepsFor = (role: UserRole) => STEPS.filter((s) => !s.roles || s.roles.includes(role));
+// Шаги «Легаси крео» — только тем, кому раздел открыт (Decision 119).
+export const stepsFor = (p: Pick<Profile, "role" | "legacy_access">) =>
+  STEPS.filter((s) => (!s.roles || s.roles.includes(p.role)) && (s.route !== "/library" || canSeeLegacy(p)));

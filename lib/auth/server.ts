@@ -44,7 +44,7 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
 
   const { data } = await supabase
     .from("profiles")
-    .select("id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at, start_page, theme")
+    .select("id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at, start_page, theme, legacy_access")
     .eq("id", user.id)
     .maybeSingle();
 

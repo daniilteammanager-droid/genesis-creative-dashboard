@@ -25,7 +25,7 @@ function visibleRect(el: HTMLElement | null): Rect | null {
 export default function Onboarding({ profile }: { profile: Profile }) {
   const router = useRouter();
   const pathname = usePathname();
-  const steps = stepsFor(profile.role);
+  const steps = stepsFor(profile);
   const [i, setI] = useState(0);
   const [open, setOpen] = useState(true);
   const [found, setFound] = useState<{ target: string; rect: Rect | null; searching: boolean } | null>(null);

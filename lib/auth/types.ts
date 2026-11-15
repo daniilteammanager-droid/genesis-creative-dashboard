@@ -29,7 +29,14 @@ export interface Profile {
   start_page: string | null;
   // "dark" | "light" | "system"; null — тёмная (lib/theme.ts).
   theme: string | null;
+  // «Легаси крео» открыты баеру (Decision 119): новому закрыты, пока не покажет свои. Владелец — на «Команде».
+  legacy_access: boolean;
 }
+
+// Владелец и тимлид видят легаси всегда, баер — если открыл владелец.
+// ponytail: нет профиля (Supabase моргнул) — пускаем, как middleware со статусом (Decision 005).
+export const canSeeLegacy = (p: Pick<Profile, "role" | "legacy_access"> | null | undefined) =>
+  !p || p.role !== "buyer" || p.legacy_access !== false;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   main: "Владелец",

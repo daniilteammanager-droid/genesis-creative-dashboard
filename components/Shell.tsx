@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
 import Onboarding from "./Onboarding";
 import { CreoModalProvider } from "./CreoModal";
-import { WORK_AREAS } from "@/lib/nav";
+import { areasFor } from "@/lib/nav";
 import { flipTheme } from "@/lib/theme";
 import { createClient } from "@/lib/auth/client";
 import { Icon } from "./ui";
@@ -99,7 +99,7 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
         </div>
 
         <nav className="px-2.5 pb-2 md:pb-0 space-y-0.5 flex-1 md:overflow-y-auto">
-          {WORK_AREAS.map((a) => {
+          {areasFor(profile).map((a) => {
             // По границе сегмента: иначе «/general-report» подсвечивался бы и на «/general-report-4».
             const active = pathname === a.href || pathname.startsWith(`${a.href}/`);
             return (

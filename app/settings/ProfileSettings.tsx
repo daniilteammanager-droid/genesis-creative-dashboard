@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
-import { WORK_AREAS, startPageOf } from "@/lib/nav";
+import { areasFor, startPageOf } from "@/lib/nav";
 import { THEMES, applyTheme, themeOf, type ThemePref } from "@/lib/theme";
 import { seg } from "@/components/ui";
 
@@ -41,7 +41,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
     if (!error) router.refresh();
   }
 
-  const [start, setStart] = useState(startPageOf(profile.start_page));
+  const [start, setStart] = useState(startPageOf(profile.start_page, areasFor(profile)));
   const [startMsg, setStartMsg] = useState<string | null>(null);
   async function saveStart(href: string) {
     setStart(href);
@@ -161,7 +161,7 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
         <h2 className="text-lg font-semibold text-white mb-2">Стартовая страница</h2>
         <p className="text-sm text-hint mb-4">Что открывается при входе в дашборд.</p>
         <select value={start} onChange={(e) => saveStart(e.target.value)} className="field w-full">
-          {WORK_AREAS.map((a) => <option key={a.href} value={a.href}>{a.label}</option>)}
+          {areasFor(profile).map((a) => <option key={a.href} value={a.href}>{a.label}</option>)}
         </select>
         {startMsg && <p className="text-xs text-hint mt-2">{startMsg}</p>}
       </div>

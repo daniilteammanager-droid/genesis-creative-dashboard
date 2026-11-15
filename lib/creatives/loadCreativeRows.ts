@@ -1,15 +1,12 @@
 import Papa from "papaparse";
 import type { CreativeRow } from "./types";
 
-const CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr4-3RDwlc7vXIbnBBkZVO9UY8QOxzqSYLceOCU-aHAHM3ETMQP9g7LMtDZORuyafkvAvm4TmCEawl/pub?gid=1832093387&single=true&output=csv";
-
 // Fetches and parses the main analytics CSV — the one true source for "Creative Code"
-// + its all-time Spend/Revenue/Deposits/ROMI. Shared by the Creative Library page and
-// Reports (Ads mode opens this same data for a clicked creative's all-time view).
+// + its all-time Spend/Revenue/Deposits/ROMI. Used by the legacy Creative Library.
+// Идёт через /api/legacy: он проверяет доступ к легаси (Decision 119) и прячет адрес таблицы.
 export async function loadCreativeRows(): Promise<CreativeRow[]> {
-  const res = await fetch(CSV_URL);
-  if (!res.ok) throw new Error(`CSV: ошибка сети ${res.status}`);
+  const res = await fetch("/api/legacy", { cache: "no-store" });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `CSV: ошибка сети ${res.status}`);
   const text = await res.text();
 
   const result = Papa.parse<string[]>(text, { header: false, skipEmptyLines: true });

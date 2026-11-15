@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, normalizeBuyerCode, type Profile, type UserRole } from "@/lib/auth/types";
+import { seg } from "@/components/ui";
 
 // Две таблицы баера: General 3.0 (старый формат) и 4.0 (новый). Каждая — своё
 // поле профиля и своя пара аргументов admin_update_profile.
@@ -192,6 +193,20 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                   />
                 </div>
               ))}
+              {/* Новому баеру легаси закрыты, пока не покажет 10–15 своих крео (Decision 119). */}
+              {p.role === "buyer" && (
+                <div className="w-full flex items-center gap-2">
+                  <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">Легаси крео</span>
+                  <div className="seg">
+                    {([true, false] as const).map((on) => (
+                      <button key={String(on)} {...seg(p.legacy_access === on)} disabled={busy === p.id}
+                        onClick={() => p.legacy_access !== on && update(p.id, { p_legacy: on })}>
+                        {on ? "Открыты" : "Закрыты"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {p.role === "buyer" && budgets[p.id] && (
                 <div className="w-full flex items-center gap-2">
                   <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">AI-лимит</span>
@@ -219,6 +234,8 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
         Таблицы General 3.0 и 4.0 проверяются при сохранении: если она не открыта на чтение сервисному аккаунту,
         сохранить её не получится. AI-лимит — сколько долларов в месяц баер может потратить на AI-разборы своих крео
         (кнопка в «Отчётах» и автоматические разборы в Telegram); разборы, которые запускаешь ты, в него не идут.
+        «Легаси крео» новому баеру закрыты: раздел пропадает из панели и не открывается по адресу. Открой, когда
+        он покажет 10–15 своих крео.
       </p>
     </div>
   );
