@@ -1,6 +1,6 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { resolveScope } from "@/lib/warehouse/accounts";
-import { loadTrafficReport } from "@/lib/traffic-report/load";
+import { loadTrafficReport, oldTextsOf, textKey } from "@/lib/traffic-report/load";
 import { dimValue, metricsOf, type Cell, type Sums } from "@/lib/traffic-report/build";
 import { loadReportTree, type TreeNode } from "@/lib/warehouse/reportTree";
 import { loadCreativeDetail } from "@/lib/warehouse/creativeDetail";
@@ -112,6 +112,7 @@ const getStats: Tool = {
       face: { type: "string", description: "Фильтр лица: ROMAN или RICKY." },
       platform: { type: "string", enum: ["fb", "tg"], description: "Фильтр площадки: fb — Facebook, tg — Telegram Ads." },
       search: { type: "string", description: "Часть имени крео, без учёта регистра." },
+      new_only: { type: "boolean", description: "Только новые запуски: крео, у которых первый день расхода за всё время попал в период. С group_by=creative у строки new_text: true — новый текст (ни одна версия bN + tN не крутилась раньше), false — перемонтаж старого текста, null — имя без кода." },
       sort: { type: "string", enum: ["spend", "revenue", "romi", "deposits"], description: "Сортировка строк по убыванию. По умолчанию spend." },
       limit: { type: "integer", description: "Сколько строк вернуть, 1–200. По умолчанию 30." },
     },
@@ -125,24 +126,36 @@ const getStats: Tool = {
     const report = await loadTrafficReport(me, since, until, buyer.id);
     const countries = Array.isArray(a.country) ? a.country.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : [];
     const face = str(a.face).toUpperCase(), platform = str(a.platform), search = str(a.search).toLowerCase();
+    // Первый день расхода крео за всё время (у всех баеров) — новый запуск, если он внутри периода.
+    const first = new Map<string, string>();
+    for (const x of report.creos) if (x.first && (!first.has(x.creo) || x.first < first.get(x.creo)!)) first.set(x.creo, x.first);
+    const fresh = a.new_only === true;
     const cells = report.cells.filter((c) =>
       (!countries.length || countries.includes(c.geo.toLowerCase()) || countries.includes(dimValue(c, "geo").toLowerCase())) &&
       (!face || c.face === face) && (!platform || c.platform === platform) &&
-      (!search || c.creo.toLowerCase().includes(search)));
-    const total = zero(), groups = new Map<string, Sums>();
+      (!search || c.creo.toLowerCase().includes(search)) && (!fresh || (first.get(c.creo) ?? "") >= since));
+    const total = zero(), groups = new Map<string, Sums>(), who = new Map<string, Set<string>>();
     for (const c of cells) {
       add(total, c.sums);
       const k = keyOf(c, group);
       if (!groups.has(k)) groups.set(k, zero());
       add(groups.get(k)!, c.sums);
+      if (group === "creative") (who.get(k) ?? who.set(k, new Set()).get(k)!).add(c.buyer);
     }
+    // Новые запуски: новый ли это текст (ни одна версия bN + tN не крутилась до периода) или перемонтаж старого.
+    const keys = fresh && group === "creative" ? [...new Set([...groups.keys()].map(textKey).filter((k): k is string => !!k))] : [];
+    const old = keys.length ? await oldTextsOf(keys, since) : new Set<string>();
+    const extra = (name: string) => group !== "creative" ? {} : {
+      buyer: [...(who.get(name) ?? [])].join(", "), first_spend_day: first.get(name) ?? null,
+      ...(fresh ? { new_text: textKey(name) ? !old.has(textKey(name)!) : null } : {}),
+    };
     const sort = str(a.sort) || "spend";
     const val = (s: Sums) => (sort === "revenue" ? s.rev : sort === "deposits" ? s.deps : sort === "romi" ? (metricsOf(s).romi ?? -Infinity) : s.spend);
     const all = [...groups].sort((x, y) => val(y[1]) - val(x[1]));
     const limit = limitOf(a.limit, 30, 200);
     return {
       period: { since, until }, scope: buyer.label, group_by: group, totals: metrics(total),
-      rows: group === "total" ? [] : all.slice(0, limit).map(([name, s]) => ({ name, ...metrics(s) })),
+      rows: group === "total" ? [] : all.slice(0, limit).map(([name, s]) => ({ name, ...extra(name), ...metrics(s) })),
       more_rows: Math.max(0, all.length - limit) || undefined, notice: report.notice,
     };
   },

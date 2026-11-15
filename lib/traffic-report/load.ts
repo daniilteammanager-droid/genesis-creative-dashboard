@@ -2,7 +2,7 @@ import { warehouse, selectAll } from "@/lib/warehouse/read";
 import { NO_CABINETS, resolveScope } from "@/lib/warehouse/accounts";
 import type { Profile } from "@/lib/auth/types";
 import { faceInName } from "@/lib/warehouse/check";
-import { parseName } from "@/lib/creatives/code";
+import { buyerCodeIn, parseName, textNoOf } from "@/lib/creatives/code";
 import { cellsOf, geoOf, REST, type Cell, type Sums, type SpendRow, type TorroRow } from "./build";
 import { creativeOfTitle } from "@/lib/tgads/names";
 
@@ -22,7 +22,7 @@ export interface TrafficReport {
   creos: CreoAllTime[];
   notice?: string;
 }
-export interface CreoAllTime { buyer: string; creo: string; sums: Sums; active: boolean | null }
+export interface CreoAllTime { buyer: string; creo: string; sums: Sums; active: boolean | null; first?: string }
 
 type Crm = { subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
 const torroOf = (r: Crm) => ({
@@ -117,6 +117,26 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
   return { ...empty, cells, creos: await allTimeOf(db, cells, userIds, [...owner.keys()], label) };
 }
 
+// Новый текст или перемонтаж: текст «bN + tN» новый, если ни одна его версия не крутилась до `before`.
+// Возвращает ключи «bN|tN», у которых расход до `before` был. Имена без кода текста — не сюда.
+// ponytail: по запросу с limit 1 на текст, по 10 разом; текстов за неделю десятки.
+export const textKey = (name: string) => {
+  const b = buyerCodeIn(name), t = textNoOf(name);
+  return b && t ? `${b}|${t}` : null;
+};
+export async function oldTextsOf(keys: string[], before: string): Promise<Set<string>> {
+  const db = warehouse(), old = new Set<string>();
+  for (let i = 0; i < keys.length; i += 10) {
+    await Promise.all(keys.slice(i, i + 10).map(async (k) => {
+      const [b, t] = k.split("|");
+      const { data } = await db.from("wh_ad_days").select("ad_name").lt("date", before).gt("spend", 0)
+        .or(`ad_name.ilike.*-${t}-v*-${b}-*,ad_name.ilike.*-${t}-v*-${b}`).limit(20);
+      if ((data ?? []).some((r) => textKey(r.ad_name as string) === k)) old.add(k);
+    }));
+  }
+  return old;
+}
+
 // Всё время крео: спенд по объявлениям с тем же именем в кабинетах баера, Torro — по связкам
 // с тем же объявлением, статус — последнее состояние объявлений (wh_entities, раз в час).
 // ponytail: читает все дни этих крео; станет медленно — копить итоги крео в отдельной таблице.
@@ -133,16 +153,18 @@ async function allTimeOf(db: ReturnType<typeof warehouse>, cells: Cell[], userId
   for (let i = 0; i < names.length; i += 200) {
     const part = names.slice(i, i + 200);
     const [days, pairs] = await Promise.all([
-      selectAll<{ account_id: string; ad_name: string; spend: number | string; impressions: number; clicks: number }>((from, to) =>
-        db.from("wh_ad_days").select("account_id, ad_name, spend, impressions, clicks").in("ad_name", part).in("account_id", accounts)
+      selectAll<{ account_id: string; ad_name: string; date: string; spend: number | string; impressions: number; clicks: number }>((from, to) =>
+        db.from("wh_ad_days").select("account_id, ad_name, date, spend, impressions, clicks").in("ad_name", part).in("account_id", accounts)
           .order("date").order("ad_id").range(from, to)),
       selectAll<{ user_id: string; ad_name: string } & Crm>((from, to) =>
         db.from("wh_crm_pairs").select("user_id, ad_name, subscribers, dialogs, dep_count, dep_sum, redep_sum").in("user_id", userIds).in("ad_name", part)
           .order("period_start").order("campaign_name").order("ad_name").range(from, to)),
     ]);
     for (const d of days) {
-      const s = slot(owner.get(d.account_id) ?? "", d.ad_name.trim()).sums;
+      const c = slot(owner.get(d.account_id) ?? "", d.ad_name.trim()), s = c.sums;
       s.spend += Number(d.spend) || 0; s.impr += d.impressions || 0; s.clicks += d.clicks || 0;
+      // Первый день с расходом за всё время — по нему штаб и MCP видят новые запуски.
+      if ((Number(d.spend) || 0) > 0 && (!c.first || d.date < c.first)) c.first = d.date;
     }
     for (const p of pairs) {
       const s = slot(label.get(p.user_id) ?? p.user_id, p.ad_name.trim()).sums, t = torroOf(p);
