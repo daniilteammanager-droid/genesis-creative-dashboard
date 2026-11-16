@@ -149,7 +149,7 @@ export function applyChanges(l: Task[], cs: Change[]): Task[] {
 
 // ── База ─────────────────────────────────────────────────────────────────────
 
-async function team(): Promise<Who[]> {
+export async function team(): Promise<Who[]> {
   const { data, error } = await warehouse().from("profiles").select("id, name, buyer_code, email, status");
   if (error) throw new Error(error.message);
   return (data ?? []).map((p) => ({
