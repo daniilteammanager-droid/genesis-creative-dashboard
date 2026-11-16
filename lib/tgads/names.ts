@@ -12,14 +12,31 @@ const GEO_CODES: Record<string, string> = { ES: "ES", AR: "AR", MX: "MX", CL: "C
 
 // Кампании на каналы (Павел, 06.11.2026): «Channels» в имени — не страна, а гео «Без гео»,
 // как в таблицах; тип канала — Invest / Crypto / Parsing. Страна в имени при этом не считается.
+// «Static 6 Spain Crypto» без слова Channels — тоже каналы, крипто (Даниил, 16.11.2026).
 export const NO_GEO = "🌐 Без гео";
-const CHANNELS = /\bchannels?\b/i;
+const CHANNELS = /\b(channels?|crypto?)\b/i;
 
-export function geoOfTitle(title: string): string | null {
-  if (CHANNELS.test(title)) return NO_GEO;
+// Регион кабинета — из его названия в TG («TG ADS | ЛАТАМ genacademy»). Им делятся каналы и мульти-гео:
+// страны в их имени нет, а кабинеты у Павла по регионам (16.11.2026: «…-es-multi» Латама уходил в Испанию).
+export type TgRegion = "ES" | "LATAM";
+export const regionOfCabinet = (title: string): TgRegion | null =>
+  (/латам|latam/i.test(title) ? "LATAM" : /испан|spain/i.test(title) ? "ES" : null);
+export const CHANNELS_GEO: Record<TgRegion, string> = { ES: "📡 Каналы · Испания", LATAM: "📡 Каналы · Латам" };
+
+export function geoOfTitle(title: string, region: TgRegion | null = null): string | null {
+  if (CHANNELS.test(title)) {
+    // Кабинета не знаем (Torro без расхода с тем же именем) — регион по слову страны в имени
+    // («Static 6 Spain Channels Invest»). Только словом: «es» в коде крео — язык.
+    const t = title.toLowerCase();
+    const word = region ? null : GEO_WORDS.find(([w]) => t.includes(w))?.[1];
+    const r = region ?? (word ? (word === "ES" ? "ES" : "LATAM") : null);
+    return r ? CHANNELS_GEO[r] : NO_GEO;
+  }
   // Код крео v2 (stat-balance-t4-v1-b9-es-ar): страна — последняя позиция, а не язык.
   const v2 = parseCreativeCode(title.trim().split(/\s+/)[0]);
   if (v2.scheme === "v2" && v2.geo.toUpperCase() in GEO_CODES) return GEO_CODES[v2.geo.toUpperCase()];
+  // «…-es-multi» — несколько стран региона кабинета; «es» перед ним — язык, не Испания.
+  if (/-multi$/i.test(title.trim().split(/\s+/)[0])) return region ?? "MULTI";
   const t = title.toLowerCase();
   const word = GEO_WORDS.find(([w]) => t.includes(w));
   if (word) return word[1];

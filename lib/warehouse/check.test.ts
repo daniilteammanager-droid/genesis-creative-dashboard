@@ -3,7 +3,7 @@
 // Формат задан владельцем и уходит в телегу как есть, поэтому накрыт проверкой:
 // молчаливое изменение разделителя или порядка чисел заметят уже в чате.
 import assert from "node:assert/strict";
-import { buildCheckText, faceInName, faceTotals, platformTotals, NO_FACE, MANY_FACES, type CheckRow } from "./check";
+import { buildCheckText, buildFacesText, faceInName, faceTotals, platformTotals, NO_FACE, MANY_FACES, type CheckRow } from "./check";
 
 const row = (over: Partial<CheckRow>): CheckRow => ({
   key: "k", label: "L", platform: "fb", face: "ROMAN", dailyBudget: null, spend: 0,
@@ -107,3 +107,21 @@ assert.deepEqual(reg.map((r) => [r.label, r.spend, r.dailyBudget]), [["🇪🇸 
 const regText = buildCheckText([mk("ES", 100)], faceTotals([mk("ES", 100)]), null, new Date(), undefined, [], reg);
 assert.ok(regText.includes("📊 FB — общие резы\n\n🇪🇸 Испания — общие резы - [10$]\n100,00 / 50,00 / 100,00 / 0,00 / -100%"));
 console.log("check regions: ok");
+
+// Отчёт менеджмента: лицо → площадка → страны, лица по расходу; строки без денег не печатаются,
+// но их подписки — в итогах; доход без расхода (депы со старого трафика) печатается
+const fr = (label: string, face: string, platform: "fb" | "tg", spend: number, revenue: number | null, subscribers: number | null = null) =>
+  ({ ...row({ label, face, platform, spend, revenue, subscribers }), romi: null });
+const faces = buildFacesText([
+  fr("MX", "RICKY", "fb", 50, 0), fr("ES", "ROMAN", "fb", 100, 300), fr("AR", "ROMAN", "fb", 200, 0),
+  fr("🌐 Без гео", "ROMAN", "tg", 40, 100), fr("страна не определена", NO_FACE, "tg", 0, null, 7),
+  fr("IT", "RICKY", "fb", 0, null), fr("PE", "ROMAN", "fb", 0, 200),
+]).split("\n");
+assert.equal(faces[0], "спенд / цена подп. / цена диал. / доход / ROMI");
+assert.deepEqual(faces.filter((l) => /^(👤|📘|✈️|🇪🇸|🇦🇷|🇲🇽|🇵🇪|🌐|Итого|страна)/.test(l)),
+  ["👤 Роман", "📘 FACEBOOK", "🇦🇷 Аргентина", "🇪🇸 Испания", "🇵🇪 Перу", "✈️ TG ADS", "🌐 Без гео", "👤 Рикардо", "📘 FACEBOOK", "🇲🇽 Мексика", "Итого"]);
+assert.equal(faces[faces.indexOf("👤 Роман") + 1], "340,00 / — / — / 600,00 / 76%", "итог лица — по обеим площадкам");
+assert.equal(faces[faces.indexOf("Итого") + 1], "390,00 / 55,71 / — / 600,00 / 54%", "подписки строки без денег — в итоге");
+assert.ok(!faces.some((l) => l.includes("Италия")));
+assert.equal(buildFacesText([]), "Расхода не было.");
+console.log("check faces: ok");

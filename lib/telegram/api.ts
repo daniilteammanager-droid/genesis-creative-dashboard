@@ -93,3 +93,13 @@ export async function sendMessage(chatId: number, text: string, threadId?: numbe
     });
   }
 }
+
+// Rich message (Bot API 10.1+): таблицы и свёрнутые блоки одним сообщением, до 32 768 символов — не режем.
+export async function sendRich(chatId: number, html: string, threadId?: number | null, extra: Record<string, unknown> = {}) {
+  await tg("sendRichMessage", {
+    chat_id: chatId,
+    ...(threadId ? { message_thread_id: threadId } : {}),
+    rich_message: { html, skip_entity_detection: true },
+    ...extra,
+  });
+}

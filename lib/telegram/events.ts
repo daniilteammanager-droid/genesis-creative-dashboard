@@ -17,7 +17,7 @@ export const EVENTS: TelegramEvent[] = [
   { key: "cabinet_balance", label: "Баланс и оплата", hint: "баланс кабинета и ссылка на оплату в Meta", ready: false },
   { key: "ad_rejected", label: "Отклонённые объявления", hint: "причина отклонения и ссылка на объявление", ready: true },
   { key: "autocheck", label: "Чек по расписанию", hint: "живой чек за сегодня в выбранное время", ready: true },
-  { key: "daily_summary", label: "Сводка за вчера", hint: "в 10:00 МСК: расход, доход и ROMI по баерам, блокировки и отклонения — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
+  { key: "daily_summary", label: "Сводка за вчера", hint: "по будням в 09:00 МСК: вчера по лицам, площадкам и странам, по баерам, блокировки и отклонения; в понедельник — пятница, суббота, воскресенье и неделя — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
   { key: "autoupload", label: "Автозалив", hint: "ход и итог заливки", ready: false },
   { key: "connection_broken", label: "Слетевшие подключения", hint: "аккаунт FB Tool разлогинился или снова в строю, ключ Meta перестал работать", ready: true },
   { key: "test_limit", label: "Крео за границей теста", hint: "крео без депов потратило 2,5 × целевой цены депа страны и ещё крутится", ready: true },

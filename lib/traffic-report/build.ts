@@ -1,5 +1,5 @@
 import { parseCreativeCode, parseName } from "@/lib/creatives/code";
-import { NO_GEO as NO_GEO_CHANNELS, geoOfTitle } from "@/lib/tgads/names";
+import { CHANNELS_GEO, NO_GEO as NO_GEO_CHANNELS, geoOfTitle } from "@/lib/tgads/names";
 
 // Отчёт по трафику (Decision 098): Баер → страна → крео за период. Чистая сборка —
 // без базы, её проверяет build.test.ts. Читает склад load.ts.
@@ -33,7 +33,7 @@ const GEO_NAMES: Record<string, string> = {
   ES: "Испания", AR: "Аргентина", MX: "Мексика", CO: "Колумбия", CL: "Чили", PE: "Перу", PY: "Парагвай", UY: "Уругвай",
   EC: "Эквадор", PA: "Панама", BO: "Боливия", VE: "Венесуэла", CR: "Коста-Рика", GT: "Гватемала", DO: "Доминикана",
   IT: "Италия", PT: "Португалия", DE: "Германия", FR: "Франция", US: "США", PL: "Польша", BY: "Беларусь", VN: "Вьетнам",
-  LATAM: "Латам, страна не указана", [MULTI]: "Несколько стран", [NO_GEO]: "Страна не определена", [REST]: "Не разнесено по крео",
+  LATAM: "Латам · несколько стран", [MULTI]: "Несколько стран", [NO_GEO]: "Страна не определена", [REST]: "Не разнесено по крео",
 };
 export const geoName = (geo: string) => GEO_NAMES[geo] ?? geo;
 export const testLimit = (geo: string) => TEST_MULT * (geo === "ES" ? TARGET_DEP.ES : LATAM.has(geo) ? TARGET_DEP.LATAM : TARGET_DEP.OTHER);
@@ -70,7 +70,8 @@ export type Dim = (typeof DIMS)[number];
 export const DIM_LABELS: Record<Dim, string> = { face: "Лицо", region: "Регион", geo: "Гео", platform: "Площадка", funnel: "Воронка" };
 export type Filters = Partial<Record<Dim, string[]>>;
 const FACE_LABELS: Record<string, string> = { ROMAN: "Роман", RICKY: "Рики" };
-export const regionName = (geo: string) => (geo === "ES" ? "Испания" : LATAM.has(geo) ? "Латам" : geo === REST ? "Не разнесено" : geo === NO_GEO_CHANNELS ? "Без гео" : "Другие");
+export const regionName = (geo: string) => (geo === "ES" || geo === CHANNELS_GEO.ES ? "Испания" : LATAM.has(geo) || geo === CHANNELS_GEO.LATAM ? "Латам"
+  : geo === REST ? "Не разнесено" : geo === NO_GEO_CHANNELS ? "Без гео" : "Другие");
 export function dimValue(c: Cell, d: Dim): string {
   switch (d) {
     case "face": return FACE_LABELS[c.face] ?? "Без лица";

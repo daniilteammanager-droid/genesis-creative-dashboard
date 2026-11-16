@@ -2,15 +2,19 @@ import { warehouse } from "@/lib/warehouse/read";
 import { buildCheckText, loadCheck, unmatchedLine, type CheckGroup, type CheckResult } from "@/lib/warehouse/check";
 import { buildArtemText } from "@/lib/warehouse/checkArtem";
 import { escapeHtml, sendToLinks } from "@/lib/telegram/links";
-import { mskDay, mskTime } from "@/lib/day";
+import { facesMessage, loadFaces, reportButton, type Rich } from "./faces";
+import { mskDay, mskStamp, mskTime } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
 
 // Авточек: живой чек за сегодня в привязанный чат по расписанию привязки.
 // Шлёт прогон склада «сегодня», а он идёт раз в 15 минут — отсюда и шаг времени.
 
 // «artem» — кампании в формате Артёма (Decision 090): полный чек с разделами, без обрезки до верха.
-export type ScheduleGroup = CheckGroup | "artem";
-export const CHECK_GROUPS: ScheduleGroup[] = ["campaign", "creative", "country", "artem"];
+// «faces» — лица → площадки → страны, целиком, из склада как «Отчёты» (faces.ts, чат менеджмента 15.11.2026).
+export type ScheduleGroup = CheckGroup | "artem" | "faces";
+export const CHECK_GROUPS: ScheduleGroup[] = ["campaign", "creative", "country", "artem", "faces"];
+// Из какого разреза чека собирается расписанный чек.
+export const baseGroup = (g: Exclude<ScheduleGroup, "faces">): CheckGroup => (g === "artem" ? "campaign" : g);
 // Слот, пропущенный дольше получаса (VPS лежал), не догоняем: вечерний чек,
 // пришедший ночью, уже никому не нужен.
 const LATE_LIMIT_MIN = 30;
@@ -79,10 +83,10 @@ export function dashboardUrl(): string | null {
   return (raw.startsWith("http") ? raw : `https://${raw}`).replace(/\/$/, "");
 }
 
-export function openCheckButton(day: string, group: CheckGroup, format?: "artem"): Record<string, unknown> {
+export function openCheckButton(day: string, group: CheckGroup, format?: "artem", until = day): Record<string, unknown> {
   const base = dashboardUrl();
   if (!base) return {};
-  const q = new URLSearchParams({ since: day, until: day, group, ...(format ? { format } : {}) });
+  const q = new URLSearchParams({ since: day, until, group, ...(format ? { format } : {}) });
   return { reply_markup: { inline_keyboard: [[{ text: "Открыть в дашборде", url: `${base}/check?${q}` }]] } };
 }
 
@@ -109,20 +113,29 @@ export async function runAutocheck(at: Date = new Date()): Promise<{ due: number
 
   // Один человек, один разрез — один сбор чека, сколько бы чатов его ни ждали.
   const checks = new Map<string, Promise<CheckResult>>();
+  const faces = new Map<string, ReturnType<typeof loadFaces>>();
   let sent = 0, failed = 0;
   for (const { link, slot } of due) {
     const me = profileOf.get(link.user_id);
     // Отключённому — ничего, но слот отмечаем, чтобы не перебирать его каждый прогон.
     if (me?.status === "active") {
-      const group: CheckGroup = link.check_group === "artem" ? "campaign" : link.check_group;
-      const key = `${me.id}|${group}`;
-      if (!checks.has(key)) checks.set(key, loadCheck(me, day, day, group));
       try {
-        const r = await checks.get(key)!;
-        const text = link.check_group === "artem" ? artemMessage(r) : checkMessage(r);
-        const n = await sendToLinks([link], text, openCheckButton(day, group, link.check_group === "artem" ? "artem" : undefined));
+        let text: string | Rich, button: Record<string, unknown>;
+        if (link.check_group === "faces") {
+          if (!faces.has(me.id)) faces.set(me.id, loadFaces(me, day, day));
+          text = facesMessage((await faces.get(me.id)!).rows, `📊 Трафик за сегодня / ${mskStamp(at)}`);
+          button = reportButton(dashboardUrl());
+        } else {
+          const group = baseGroup(link.check_group);
+          const key = `${me.id}|${group}`;
+          if (!checks.has(key)) checks.set(key, loadCheck(me, day, day, group));
+          const r = await checks.get(key)!;
+          text = link.check_group === "artem" ? artemMessage(r) : checkMessage(r);
+          button = openCheckButton(day, group, link.check_group === "artem" ? "artem" : undefined);
+        }
+        const n = await sendToLinks([link], text, button);
         sent += n;
-        await db.from("check_log").insert({ user_id: me.id, kind: "schedule", text, sent: n });
+        await db.from("check_log").insert({ user_id: me.id, kind: "schedule", text: typeof text === "string" ? text : text.text, sent: n });
       } catch (e) {
         // Слот не отмечаем: следующий прогон в пределах получаса попробует снова.
         failed++;

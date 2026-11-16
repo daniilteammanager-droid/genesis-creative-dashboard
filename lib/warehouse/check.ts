@@ -181,6 +181,65 @@ export function buildCheckText(rows: CheckRow[], faces: FaceTotal[], totalBudget
   return lines.join("\n").trimEnd();
 }
 
+// Отчёт для чата менеджмента (15.11.2026, попросил Даниил): лицо с итогом, под ним каждая
+// площадка с итогом и её страны, в конце общий итог. Дерево одно на два вида: текст
+// (buildFacesText) и rich message (lib/alerts/faces.ts).
+const FACE_NAME: Record<string, string> = { ROMAN: "Роман", RICKY: "Рикардо" };
+const regionNames = new Intl.DisplayNames("ru", { type: "region" });
+// «ES» → «🇪🇸 Испания»; «🌐 Без гео», «несколько стран» — как есть.
+export const placeName = (label: string) => /^[A-Z]{2}$/.test(label)
+  ? `${String.fromCodePoint(...[...label].map((c) => 0x1f1a5 + c.charCodeAt(0)))} ${regionNames.of(label) ?? label}`
+  : label;
+
+export interface FacesTree {
+  faces: { label: string; total: CheckRow; platforms: { platform: Platform; label: string; total: CheckRow; rows: CheckRow[] }[] }[];
+  total: CheckRow;
+}
+
+// null — денег в периоде не было. Строки и итоги — с производными, подпись страны — placeName.
+export function facesTree(rows: CheckRow[]): FacesTree | null {
+  // Строка без денег — ни расхода, ни дохода, только поздние подписки и диалоги Torro — не
+  // печатается, а то лица «Без лица» и «Несколько лиц» засыпают отчёт нулями. Её подписки
+  // и диалоги остаются в итогах лица, площадки и общем.
+  const money = (r: CheckRow) => r.spend > 0 || (r.revenue ?? 0) > 0;
+  if (!rows.some(money)) return null;
+  const byFace = new Map<string, CheckRow[]>();
+  for (const r of rows) byFace.set(r.face, [...(byFace.get(r.face) ?? []), r]);
+  const unknown = (face: string) => Number(face === NO_FACE || face === MANY_FACES);
+  const faces = [...byFace].filter(([, list]) => list.some(money))
+    .map(([face, list]) => ({ face, list, total: sum(list, face, face, "fb", face) }))
+    .sort((a, b) => unknown(a.face) - unknown(b.face) || b.total.spend - a.total.spend);
+  return {
+    faces: faces.map((f) => ({
+      label: FACE_NAME[f.face] ?? f.face, total: f.total,
+      platforms: PLATFORMS.flatMap((p) => {
+        const mine = f.list.filter((r) => r.platform === p.id).sort((a, b) => b.spend - a.spend);
+        return mine.some(money) ? [{
+          platform: p.id, label: p.label, total: sum(mine, p.id, p.label, p.id, f.face),
+          rows: mine.filter(money).map((r) => derive({ ...r, label: placeName(r.label) })),
+        }] : [];
+      }),
+    })),
+    total: sum(rows, "all", "Итого", "fb", ""),
+  };
+}
+
+// Текст без разметки, экранирует вызывающий, как и у buildCheckText. Запасной вид rich message.
+export function buildFacesText(rows: CheckRow[]): string {
+  const t = facesTree(rows);
+  if (!t) return "Расхода не было.";
+  const lines = ["спенд / цена подп. / цена диал. / доход / ROMI", ""];
+  for (const f of t.faces) {
+    lines.push(`👤 ${f.label}`, numbers(f.total), "");
+    for (const p of f.platforms) {
+      lines.push(p.label, numbers(p.total), "");
+      for (const r of p.rows) lines.push(r.label, numbers(r), "");
+    }
+  }
+  lines.push("Итого", numbers(t.total));
+  return lines.join("\n");
+}
+
 // Регион строки Facebook — по стране разреза или по гео в имени кампании / креатива.
 const LATAM = new Set(["AR", "MX", "CO", "CL", "PE", "PY", "UY", "EC", "PA", "BO", "VE", "CR", "GT", "DO", "HN", "SV", "NI", "LATAM"]);
 export function regionOf(r: Pick<CheckRow, "label">, groupBy: CheckGroup): "es" | "latam" | null {

@@ -4,7 +4,7 @@ import type { Profile } from "@/lib/auth/types";
 import { faceInName } from "@/lib/warehouse/check";
 import { buyerCodeIn, parseName, textNoOf } from "@/lib/creatives/code";
 import { cellsOf, geoOf, REST, type Cell, type Sums, type SpendRow, type TorroRow } from "./build";
-import { creativeOfTitle } from "@/lib/tgads/names";
+import { creativeOfTitle, geoOfTitle, regionOfCabinet } from "@/lib/tgads/names";
 
 // Отчёт по трафику из склада (Decision 098). Баеру — свои подключения, владельцу и
 // тимлиду — вся команда или один баер (resolveScope, как у Live Manager).
@@ -30,7 +30,8 @@ const torroOf = (r: Crm) => ({
   rev: Number(r.dep_sum ?? 0) + Number(r.redep_sum ?? 0),
 });
 
-export async function loadTrafficReport(me: Profile, since: string, until: string, buyerFilter?: string): Promise<TrafficReport> {
+// allTime: false — без «ROMI всё время» у крео (creos пустой): отчёту в Telegram он не нужен, а это лишний обход склада.
+export async function loadTrafficReport(me: Profile, since: string, until: string, buyerFilter?: string, opts: { allTime?: boolean } = {}): Promise<TrafficReport> {
   const db = warehouse();
   const { buyers, userIds, accountIds } = await resolveScope(db, me, buyerFilter);
   const empty: TrafficReport = { since, until, buyers, isBuyer: me.role === "buyer", cells: [], creos: [] };
@@ -42,9 +43,11 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
   // Расход — баеру, за кем закреплён кабинет; без закрепления — кто записал строку.
   const { data: own } = await db.from("wh_account_owners").select("account_id, owner_user_id").in("owner_user_id", userIds);
   const owner = new Map((own ?? []).map((o) => [o.account_id as string, o.owner_user_id as string]));
-  // Лицо TG Ads — из названия кабинета, как в чеке (в именах TG Ads лица нет).
-  const { data: tgKeys } = await db.from("tgads_keys").select("account_id, name").in("user_id", userIds);
+  // Лицо TG Ads — из названия кабинета, как в чеке (в именах TG Ads лица нет). Регион кабинета — им делятся
+  // каналы и «…-es-multi» (16.11.2026); гео TG считается здесь, а не берётся из склада, — так верна и вся история.
+  const { data: tgKeys } = await db.from("tgads_keys").select("account_id, name, account_title").in("user_id", userIds);
   const tgFace = new Map((tgKeys ?? []).map((k) => [k.account_id as string, faceInName(k.name as string) ?? ""]));
+  const tgRegion = new Map((tgKeys ?? []).map((k) => [k.account_id as string, regionOfCabinet(`${k.account_title ?? ""} ${k.name}`)]));
   const torroRange = <T>(table: string, cols: string, order: string[]) => selectAll<T>((from, to) => {
     let q = db.from(table).select(cols).in("user_id", userIds).gte("period_start", since).lte("period_start", until);
     for (const o of order) q = q.order(o);
@@ -90,7 +93,8 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
     const tg = d.source === "tgads";
     spend.push({
       buyer: label.get(who) ?? who, campaign: d.campaign_name ?? "", ad: d.ad_name ?? "",
-      geo: geoOf(countries.get(d.adset_id ?? "") ?? [], d.campaign_name ?? "", d.ad_name ?? ""),
+      geo: (tg ? geoOfTitle(d.campaign_name ?? "", tgRegion.get(d.account_id ?? "") ?? null) : null)
+        ?? geoOf(countries.get(d.adset_id ?? "") ?? [], d.campaign_name ?? "", d.ad_name ?? ""),
       face: (tg ? tgFace.get(d.account_id ?? "") : null) || name.face || "", funnel: name.funnel ?? (tg ? "TG" : ""), platform: tg ? "tg" : "fb",
       spend: hint ? 0 : Number(d.spend) || 0, impr: hint ? 0 : Number(d.impressions) || 0, clicks: hint ? 0 : Number(d.clicks) || 0,
     });
@@ -114,7 +118,7 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
   }
 
   const cells = cellsOf(spend, torro, rest);
-  return { ...empty, cells, creos: await allTimeOf(db, cells, userIds, [...owner.keys()], label) };
+  return { ...empty, cells, creos: opts.allTime === false ? [] : await allTimeOf(db, cells, userIds, [...owner.keys()], label) };
 }
 
 // Новый текст или перемонтаж: текст «bN + tN» новый, если ни одна его версия не крутилась до `before`.

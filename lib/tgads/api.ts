@@ -1,8 +1,8 @@
 import { mskDay } from "@/lib/day";
 import { usdRate } from "@/lib/fx";
 import type { DolphinAdDay } from "@/lib/dolphin/api";
-import { creativeOfTitle, geoOfTitle, nameKey, torroSpelling } from "./names";
-export { NO_GEO, geoOfTitle, creativeOfTitle, torroSpelling } from "./names";
+import { creativeOfTitle, geoOfTitle, nameKey, regionOfCabinet, torroSpelling } from "./names";
+export { NO_GEO, geoOfTitle, creativeOfTitle, regionOfCabinet, torroSpelling } from "./names";
 
 // Telegram Ads как источник расхода (Decision 068).
 //
@@ -124,7 +124,7 @@ export async function tgadsAdDays(key: { token: string; accountId: string; accou
   const out: DolphinAdDay[] = [];
   for (const [i, a] of ads.entries()) {
     const id = tgId(key.accountId, a.ad_id);
-    const geo = geoOfTitle(a.title);
+    const geo = geoOfTitle(a.title, regionOfCabinet(key.accountTitle));
     const live = a.status === "active" && !a.is_paused;
     for (const [day, d] of perAd[i]) {
       const rate = await tonUsd(day);

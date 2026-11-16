@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { warehouse } from "@/lib/warehouse/read";
 import { DEFAULT_EVENTS } from "./events";
-import { escapeHtml, sendMessage, TelegramError } from "./api";
+import { escapeHtml, sendMessage, sendRich, TelegramError } from "./api";
 
 // Привязки чатов к профилям. Таблицы закрыты от браузера (017_telegram.sql),
 // поэтому всё здесь идёт сервисным ключом.
@@ -15,7 +15,7 @@ export interface TelegramLink {
   threadId: number | null;
   events: string[];
   checkTimes: string[];
-  checkGroup: "campaign" | "creative" | "country" | "artem";
+  checkGroup: "campaign" | "creative" | "country" | "artem" | "faces";
   createdAt: string;
 }
 
@@ -147,17 +147,31 @@ export async function sendTest(userId: string, id: string): Promise<void> {
   if (sent === 0) throw new Error("Telegram не доставил сообщение: бота убрали из чата, привязка снята");
 }
 
-export async function sendToLinks(links: { id: string; chat_id: number; thread_id: number | null }[], text: string, extra: Record<string, unknown> = {}) {
+// Rich message с запасным текстом: Telegram его не принял (разметка, старый клиент API) — уходит text.
+// Мёртвый чат или тема — не повод для запасного: такая ошибка идёт дальше, привязку снимет sendToLinks.
+type Message = string | { rich: string; text: string };
+async function deliver(chatId: number, m: Message, threadId: number | null, extra: Record<string, unknown>) {
+  if (typeof m === "string") return sendMessage(chatId, m, threadId, extra);
+  try {
+    await sendRich(chatId, m.rich, threadId, extra);
+  } catch (e) {
+    if (!(e instanceof TelegramError) || e.migrateTo || !(e.code === 400 || e.code === 404) || /chat not found|thread not found/i.test(e.message)) throw e;
+    console.warn("rich message не прошёл, шлю текстом:", e.message);
+    await sendMessage(chatId, m.text, threadId, extra);
+  }
+}
+
+export async function sendToLinks(links: { id: string; chat_id: number; thread_id: number | null }[], text: Message, extra: Record<string, unknown> = {}) {
   let sent = 0;
   for (const l of links) {
     try {
-      await sendMessage(l.chat_id, text, l.thread_id, extra);
+      await deliver(l.chat_id, text, l.thread_id, extra);
       sent++;
     } catch (e) {
       if (!(e instanceof TelegramError)) throw e;
       if (e.migrateTo) {
         await moveChat(l.chat_id, e.migrateTo);
-        await sendMessage(e.migrateTo, text, l.thread_id, extra);
+        await deliver(e.migrateTo, text, l.thread_id, extra);
         sent++;
       } else if (e.code === 403 || /chat not found|thread not found/i.test(e.message)) {
         // Мёртвая привязка: бота выгнали, заблокировали или тему удалили.
