@@ -54,6 +54,8 @@ assert.equal(layout(L, { collapsed: new Set(), hideDone: true }).pos[id(5)], und
 const tall = layout(L, { collapsed: new Set(), hideDone: false, heights: { [id(4)]: 80 } }).pos;
 assert.equal(tall[id(5)].cy - tall[id(5)].h / 2 - (tall[id(4)].cy + 40), pos[id(5)].cy - NH / 2 - (pos[id(4)].cy + NH / 2));
 assert.equal(tall[id(4)].h, 80);
+// Не померенный узел — высота по длине текста: 50 знаков у задачи — три строки.
+assert.equal(layout(L.map((x) => (x.id === id(4) ? { ...x, title: "з".repeat(50) } : x)), { collapsed: new Set(), hideDone: false }).pos[id(4)].h, NH + 36);
 
 // Бросили задачу на пустом месте ниже соседа — встала после него и осталась там, где бросили.
 const opts = { collapsed: new Set<string>(), hideDone: false };

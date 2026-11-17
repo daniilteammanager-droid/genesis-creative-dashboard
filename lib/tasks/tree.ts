@@ -29,6 +29,10 @@ export const NEXT: Record<Status, Status> = { todo: "doing", doing: "done", done
 // Размеры узла и раскладки на холсте, px. NH — высота в одну строку: длинный текст переносится,
 // и узел выше (его высоту меряет холст и отдаёт в раскладку).
 export const NW = 236, NH = 36, GAP = 10, COLW = 276;
+// Высота узла, пока холст его не померил (и на сервере): строка — 18 px, в строку влезает около
+// 26 знаков у карты, 17 у направления (рядом счётчик и ◂), 22 у задачи (рядом статус).
+const CPL = [26, 17, 22];
+export const guessH = (title: string, d: number) => NH + 18 * (Math.max(1, Math.ceil(title.length / CPL[Math.min(d, 2)])) - 1);
 
 const find = (l: Task[], id: string | null) => (id ? l.find((t) => t.id === id) : undefined);
 export const byId = find;
@@ -118,7 +122,7 @@ export function layout(l: Task[], { collapsed, hideDone, heights }: LayoutOpts) 
     let y = r.y ?? 0;
     const lay = (t: Task, d: number): number => {
       const k = (children.get(t.id) ?? []).filter(shown);
-      const h = heights?.[t.id] ?? NH, top = y;
+      const h = heights?.[t.id] ?? guessH(t.title, d), top = y;
       let cy: number;
       if (!k.length || collapsed.has(t.id)) { cy = y + h / 2; y += h + GAP; }
       else {

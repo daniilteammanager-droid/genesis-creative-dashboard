@@ -1,6 +1,6 @@
 // Самопроверка задач через AI (Decision 118). Запуск: npx tsx lib/mcp/tasks.test.ts
 import assert from "node:assert/strict";
-import { addItems, applyChanges, boardOf, findPerson, mapSpot, outline, type Who } from "./tasks";
+import { addItems, applyChanges, boardOf, findPerson, mapFrames, mapSpot, outline, unclash, MAPGAP, type Who } from "./tasks";
 import { diff, kids, rows, type Task } from "@/lib/tasks/tree";
 import type { Board } from "@/lib/tasks/store";
 
@@ -51,10 +51,32 @@ const d = diff(new Map(rows(base).map((r) => [r.id, JSON.stringify(r)])), l1);
 assert.deepEqual(d.insert.map((r) => `${r.title}:${r.sort}`).sort(), ["A.1:0", "A:0", "B:1"]);
 assert.deepEqual(d.patch.map((p) => [p.id, p.sort]), [["T1", 2], ["T2", 3]], "соседи сдвинуты только полем sort");
 assert.deepEqual(d.remove, []);
-// Новая карта — под остальными; направлению статус и срок нельзя.
+// Новая карта — рядом с прежними и ни на какую не наезжает: мелкая — под, высокая — в ряд справа.
+const at = (l: Task[], cid: string) => l.find((t) => t.id === cid)!;
+const apart = (l: Task[]) => {
+  const fs = [...mapFrames(l).values()];
+  return fs.every((a, i) => fs.slice(i + 1).every((b) => a.x1 + MAPGAP <= b.x0 || b.x1 + MAPGAP <= a.x0 || a.y1 + MAPGAP <= b.y0 || b.y1 + MAPGAP <= a.y0));
+};
 const { list: l2, created: c2 } = addItems(base, null, [{ title: "Новая", items: [{ title: "Направление" }] }], false, id);
-assert.ok(c2[0].y! > 0 && c2[0].parent === null && c2[1].status === null && c2[1].color);
-assert.ok(mapSpot(l2).y > c2[0].y!);
+assert.ok(c2[0].parent === null && c2[1].status === null && c2[1].color);
+assert.ok(at(l2, c2[0].id).x === 0 && at(l2, c2[0].id).y! > 0, "мелкая — под прежней");
+const tall = (title: string) => ({ title, items: [{ title: "Направление", items: Array.from({ length: 30 }, (_, i) => ({ title: `Задача ${i} с длинным названием в две строки` })) }] });
+const { list: l4, created: c4 } = addItems(base, null, [tall("Высокая"), tall("Ещё высокая"), { title: "Мелкая" }], false, id);
+assert.deepEqual([at(l4, c4[0].id).x, at(l4, c4[0].id).y], [mapFrames(base).get("M")!.x1 + MAPGAP, 0], "высокая — справа, верхом вровень");
+assert.ok(apart(l4) && apart(l2), "карты не наезжают друг на друга");
+assert.deepEqual(mapSpot([{ ...base[0], x: 5, y: 7 }], "M"), { x: 5, y: 7 }, "одна карта — на своём месте");
+// Карта выросла и наехала на ту, что под ней: нижняя переезжает, выросшая остаётся, без наложений — никто не двигается.
+const grown = addItems(l2, "D2", Array.from({ length: 20 }, (_, i) => ({ title: `Ещё ${i}` })), false, id).list;
+assert.ok(!apart(grown));
+const fixed = unclash(grown);
+assert.ok(apart(fixed) && at(fixed, "M").y === 0, "выросшая на месте, карты не наезжают");
+assert.ok(at(fixed, c2[0].id).x === 0 && at(fixed, c2[0].id).y! > at(l2, c2[0].id).y!, "нижняя ушла вниз, а не куда попало");
+assert.equal(unclash(l4), l4);
+// Выросла вширь (подзадачи) и задела соседа справа — тот отходит, куда ближе (тут вниз на 248, а не вправо на 552).
+const wide = addItems(l4, "T2", [{ title: "Подзадача", items: [{ title: "Под-подзадача" }] }], false, id).list;
+const w2 = unclash(wide);
+assert.ok(!apart(wide) && apart(w2));
+assert.deepEqual([at(w2, c4[0].id).x, at(w2, c4[0].id).y], [at(l4, c4[0].id).x, 248]);
 assert.throws(() => addItems(base, "M", [{ title: "Н", due: "2026-11-20" }], false, id), /только у задач/);
 
 // Правки: статус, срок, перенос, приоритет.

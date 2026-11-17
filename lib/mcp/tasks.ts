@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { warehouse } from "@/lib/warehouse/read";
 import type { Profile } from "@/lib/auth/types";
 import { boards, createBoard, loadTasks, saveTasks, updateBoard, type Board } from "@/lib/tasks/store";
-import { blank, byId, depth, diff, fromRows, isId, kids, layout, move, patch, progress, removeBranch, roots, rows, under, STATUS, type Status, type Task } from "@/lib/tasks/tree";
+import { blank, byId, depth, diff, fromRows, isId, kids, layout, mapOf, move, patch, progress, removeBranch, roots, rows, under, NW, STATUS, type Status, type Task } from "@/lib/tasks/tree";
 import { mskDay } from "@/lib/day";
 import { ToolError, type ToolDef } from "./protocol";
 
@@ -78,13 +78,69 @@ export function outline(l: Task[], f: { open: boolean; mine: string | null; dueB
   return out;
 }
 
-// Новая карта — под всеми остальными.
-export function mapSpot(l: Task[]): { x: number; y: number } {
-  const rs = roots(l);
-  if (!rs.length) return { x: 0, y: 0 };
-  const { pos } = layout(l, { collapsed: new Set(), hideDone: false });
-  const bottom = Math.max(...Object.values(pos).map((p) => p.cy + p.h / 2));
-  return { x: Math.min(...rs.map((r) => r.x ?? 0)), y: Math.round(bottom + 80) };
+interface Box { x0: number; y0: number; x1: number; y1: number }
+const union = (bs: Box[]): Box => ({
+  x0: Math.min(...bs.map((b) => b.x0)), y0: Math.min(...bs.map((b) => b.y0)),
+  x1: Math.max(...bs.map((b) => b.x1)), y1: Math.max(...bs.map((b) => b.y1)),
+});
+export const MAPGAP = 120;
+
+// Рамка каждой карты со всей веткой (и сдвигами узлов): id карты → левый верх и правый низ.
+export function mapFrames(l: Task[], heights?: Record<string, number>): Map<string, Box> {
+  const { pos } = layout(l, { collapsed: new Set(), hideDone: false, heights });
+  const out = new Map<string, Box>();
+  for (const t of l) {
+    const p = pos[t.id], m = mapOf(l, t).id, f = out.get(m);
+    const b = { x0: p.x, y0: p.cy - p.h / 2, x1: p.x + NW, y1: p.cy + p.h / 2 };
+    out.set(m, f ? union([f, b]) : b);
+  }
+  return out;
+}
+
+// Место карты id (она уже в списке, со своей веткой) — как положил бы человек: справа или снизу от одной
+// из карт, ни на какую не наезжая. Из таких мест — то, где весь холст ближе по форме к экрану (16:10:
+// «Все карты» покажут его крупнее), при равенстве — компактнее. Так высокие карты встают в ряд, мелкие —
+// сеткой. Высоты узлов сервер не знает — оценка по длине текста (guessH в layout).
+// ponytail: перебор 2 мест у каждой карты, O(карт²) — на холсте их десятки, не тысячи.
+export function mapSpot(l: Task[], id: string, heights?: Record<string, number>): { x: number; y: number } {
+  const frames = mapFrames(l, heights);
+  const me = frames.get(id)!, t = byId(l, id)!;
+  frames.delete(id);
+  const others = [...frames.values()];
+  if (!others.length) return { x: t.x ?? 0, y: t.y ?? 0 };
+  const w = me.x1 - me.x0, h = me.y1 - me.y0;
+  const at = (x0: number, y0: number): Box => ({ x0, y0, x1: x0 + w, y1: y0 + h });
+  const free = (s: Box) => others.every((f) => !(s.x0 < f.x1 + MAPGAP && f.x0 < s.x1 + MAPGAP && s.y0 < f.y1 + MAPGAP && f.y0 < s.y1 + MAPGAP));
+  const cost = (s: Box) => {
+    const u = union([...others, s]), W = u.x1 - u.x0, H = u.y1 - u.y0;
+    return [Math.max(W / 16, H / 10), W * H];
+  };
+  let best: Box | null = null, bc = [Infinity, Infinity];
+  for (const f of others) for (const s of [at(f.x1 + MAPGAP, f.y0), at(f.x0, f.y1 + MAPGAP)]) {
+    const c = cost(s);
+    if (free(s) && (c[0] < bc[0] || (c[0] === bc[0] && c[1] < bc[1]))) { best = s; bc = c; }
+  }
+  // Снизу от самой нижней карты место есть всегда, поэтому best найдётся.
+  return { x: Math.round((t.x ?? 0) + best!.x0 - me.x0), y: Math.round((t.y ?? 0) + best!.y0 - me.y0) };
+}
+
+// Карта выросла (AI добавил задач) и наехала на соседку — соседку отодвигают, как человек: вправо или вниз,
+// куда ближе, а та по цепочке — следующую. Двигается та, что позже среди карт; карты без наложений остаются там,
+// где их положили (даже вплотную).
+export function unclash(l: Task[]): Task[] {
+  const fr = mapFrames(l), done: Box[] = [];
+  const near = (a: Box, b: Box, g: number) => a.x0 < b.x1 + g && b.x0 < a.x1 + g && a.y0 < b.y1 + g && b.y0 < a.y1 + g;
+  for (const r of roots(l)) {
+    const was = fr.get(r.id)!;
+    let f = was, g = 0;
+    for (let hit; (hit = done.find((d) => near(f, d, g))); g = MAPGAP) {
+      const dx = hit.x1 + MAPGAP - f.x0, dy = hit.y1 + MAPGAP - f.y0;   // каждый шаг — только вправо или вниз, цикл конечен
+      f = dx <= dy ? { ...f, x0: f.x0 + dx, x1: f.x1 + dx } : { ...f, y0: f.y0 + dy, y1: f.y1 + dy };
+    }
+    if (f !== was) l = patch(l, r.id, { x: Math.round((r.x ?? 0) + f.x0 - was.x0), y: Math.round((r.y ?? 0) + f.y0 - was.y0) });
+    done.push(f);
+  }
+  return l;
 }
 
 export interface Item { title: string; status?: Status; due?: string | null; assignee?: string | null; items?: Item[] }
@@ -97,12 +153,13 @@ export function addItems(l: Task[], parent: string | null, items: Item[], top: b
     const first = top && p ? kids(l, p.id)[0]?.id : undefined;
     for (const it of items) {
       if (d < 2 && (it.status || it.due || it.assignee)) throw new ToolError(`«${it.title}» — ${d ? "направление" : "карта"}: статус, срок и ответственный бывают только у задач`);
-      const t: Task = { ...blank(l, newId(), p ? p.id : null, p ? undefined : mapSpot(l)), title: it.title };
+      const t: Task = { ...blank(l, newId(), p ? p.id : null), title: it.title };
       if (d >= 2) Object.assign(t, { status: it.status ?? "todo", due: it.due ?? null, assignee: it.assignee ?? null });
       const i = first ? l.findIndex((x) => x.id === first) : -1;
       l = i < 0 ? [...l, t] : [...l.slice(0, i), t, ...l.slice(i)];
       created.push(t);
       if (it.items?.length) l = add(l, t.id, it.items, false);
+      if (!p) l = patch(l, t.id, mapSpot(l, t.id)); // место карте — когда известен её размер
     }
     return l;
   };
@@ -159,9 +216,10 @@ export async function team(): Promise<Who[]> {
 }
 const namer = (t: Who[]) => (id: string) => t.find((p) => p.id === id)?.name ?? "—";
 
-// Сохранить как страница: разница между тем, что прочитали, и новым деревом.
+// Сохранить как страница: разница между тем, что прочитали, и новым деревом. Выросшая карта не остаётся
+// лежать на соседней (unclash).
 async function save(me: Profile, board: string, before: Task[], after: Task[]) {
-  const d = diff(new Map(rows(before).map((r) => [r.id, JSON.stringify(r)])), after);
+  const d = diff(new Map(rows(before).map((r) => [r.id, JSON.stringify(r)])), unclash(after));
   await saveTasks(me, board, d.insert, d.patch, d.remove);
 }
 
