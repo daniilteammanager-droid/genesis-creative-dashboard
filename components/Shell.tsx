@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROLE_LABELS, type Profile } from "@/lib/auth/types";
@@ -34,6 +34,25 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
   // на сервере не узнать, а значение из useState приехало бы в разметку и первым
   // кадром показало не то.
   const [open, setOpen] = useState<boolean | null>(null);
+
+  // Сколько заявок на пополнение ждут оплаты — числом у «Пополнения», только владельцам (Decision 126).
+  // Раз в минуту и при возврате на вкладку; скрытая вкладка не спрашивает.
+  const [topups, setTopups] = useState(0);
+  const owner = profile?.role === "main";
+  useEffect(() => {
+    if (!owner) return;
+    const load = () => {
+      if (document.visibilityState !== "visible") return;
+      fetch("/api/topups?count=1").then((r) => r.json()).then((d) => setTopups(Number(d.open) || 0)).catch(() => undefined);
+    };
+    // Страница «Пополнения» знает число сразу после каждого обновления — не ждём минуту.
+    const fromPage = (e: Event) => setTopups(Number((e as CustomEvent<number>).detail) || 0);
+    load();
+    const t = setInterval(load, 60_000);
+    document.addEventListener("visibilitychange", load);
+    window.addEventListener("topups:open", fromPage);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", load); window.removeEventListener("topups:open", fromPage); };
+  }, [owner]);
 
   // На входе оболочка не нужна. А вот отсутствие профиля на рабочей странице — это
   // не «не залогинен» (таких сюда не пускает middleware), а «Supabase не ответил».
@@ -117,6 +136,12 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
               >
                 <Icon name={a.icon} />
                 {a.label}
+                {a.href === "/topups" && topups > 0 && (
+                  <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-on-brand text-[11px] font-semibold flex items-center justify-center"
+                        aria-label={`Ждут оплаты: ${topups}`}>
+                    {topups}
+                  </span>
+                )}
               </Link>
             );
           })}

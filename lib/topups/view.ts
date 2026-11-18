@@ -15,6 +15,17 @@ export function stage(r: Pick<Topup, "status" | "searching_since" | "taken_by">)
   return r.searching_since ? "search" : r.taken_by ? "work" : "pending";
 }
 
+// Кнопки владельца у открытой заявки на странице (Decision 126) — те же, что в чате. Это только вид: условия
+// проверяют take / release / pressPaid / reject в requests.ts, чей бы клик ни пришёл. me — имя профиля.
+export function openActions(r: Pick<Topup, "status" | "searching_since" | "taken_by">, me: string) {
+  const st = stage(r);
+  const mine = st === "work" && r.taken_by === me;
+  return {
+    take: st === "pending", paid: st === "pending" || st === "work", release: mine, mine,
+    reject: st === "pending" || st === "work" || st === "search", hash: st === "search",
+  };
+}
+
 export interface TopupFilter { q: string; stages: Stage[]; authors: string[]; kinds: string[]; targets: string[] }
 
 // Пустой фильтр пропускает всё. Поиск — подстрока в номере, сумме, адресе, хэше, комментарии,

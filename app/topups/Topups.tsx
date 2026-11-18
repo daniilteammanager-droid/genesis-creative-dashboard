@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { chip } from "@/components/ui";
+import { useProfile } from "@/components/Shell";
 import type { Topup } from "@/lib/topups/requests";
 import { filterTopups, paidTotals, stage, STAGES, type Stage, type TopupFilter } from "@/lib/topups/view";
+import OpenTopup, { BADGE, LABEL, money, stamp, type Op } from "./OpenTopup";
 
 // Заявки на пополнение (Decision 072): форма и список. Заявка уходит Top-Up
-// ботом в платёжный чат, статус и хэш возвращаются сюда.
+// ботом в платёжный чат, статус и хэш возвращаются сюда. Владелец работает с открытыми
+// заявками прямо здесь — те же кнопки, что в чате (Decision 126).
 
 const card = "card p-5 sm:p-6";
 
@@ -14,22 +17,15 @@ const TIMES = [
   { minutes: 0, label: "Без срока" }, { minutes: 15, label: "15 минут" }, { minutes: 30, label: "30 минут" },
   { minutes: 60, label: "1 час" }, { minutes: 120, label: "2 часа" }, { minutes: 360, label: "6 часов" }, { minutes: 1440, label: "Сутки" },
 ];
-const BADGE: Record<Stage, string> = {
-  pending: "border-amber-700/40 text-amber-300", work: "border-blue-700/50 text-blue-300", search: "border-violet-700/50 text-violet-300",
-  paid: "border-green-700/40 text-green-300", rejected: "border-red-800/40 text-red-300", expired: "border-zinc-700 text-zinc-400",
-};
-const LABEL = Object.fromEntries(STAGES.map((s) => [s.key, s.label])) as Record<Stage, string>;
 // Как выглядит адрес сети — подсказка в поле.
 const ADDRESS: Record<string, string> = { TRC20: "T…", ERC20: "0x…", BEP20: "0x…", BTC: "bc1… / 1… / 3…", TON: "UQ… / EQ…" };
 const NO_FILTER: TopupFilter = { q: "", stages: [], authors: [], kinds: [], targets: [] };
 const flip = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-const money = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 9 });
-const stamp = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
 
 // Что с заявкой сейчас — словами, со временем и тем, кто закрыл.
 function detail(r: Topup): string {
   const by = r.closed_by ? ` · ${r.closed_by}` : "";
-  if (r.status === "paid") return `Оплачено ${r.paid_at ? stamp(r.paid_at) : ""}${by}${r.paid_amount ? ` · пришло ${money(r.paid_amount)} ${r.asset}` : ""}`;
+  if (r.status === "paid") return `Оплачено ${r.paid_at ? stamp(r.paid_at) : ""}${by || " · перевод найден сам"}${r.paid_amount ? ` · пришло ${money(r.paid_amount)} ${r.asset}` : ""}`;
   if (r.status === "rejected") return `Отклонено${by}`;
   if (r.status === "expired") return `Время на оплату вышло${r.expires_at ? ` ${stamp(r.expires_at)}` : ""}`;
   if (r.searching_since) return `Отмечено оплаченным ${stamp(r.searching_since)}${by} — ищем перевод в блокчейне`;
@@ -37,7 +33,12 @@ function detail(r: Topup): string {
   return r.expires_at ? `Ждёт оплаты до ${stamp(r.expires_at)}` : "Ждёт оплаты, без срока";
 }
 
-interface View { admin: boolean; chat: { title: string | null } | null; topups: Topup[] }
+interface View { admin: boolean; me?: string; chat: { title: string | null } | null; topups: Topup[] }
+// Что сказать после своего нажатия: чат меняется тем же вызовом.
+const DONE: Record<Op, string> = {
+  take: "Заявка твоя — в чате уже «Платит …», остальные не переведут.", release: "Снова ждёт оплаты — и здесь, и в чате.",
+  paid: "Ищем перевод в блокчейне — в чате тоже «ищу перевод».", reject: "Отклонена. В чате кнопки ушли.", hash: "Закрыта хэшем.",
+};
 
 // Ряд чипов фильтра с подписью слева.
 function Chips({ label, items, on, toggle }: { label: string; items: { key: string; label: string }[]; on: string[]; toggle: (k: string) => void }) {
@@ -66,14 +67,44 @@ export default function Topups({ categories, pairs, networks }: {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [f, setF] = useState<TopupFilter>(NO_FILTER);
+  const [acting, setActing] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const say = (text: string) => {
+    clearTimeout(toastTimer.current);
+    setToast(text);
+    toastTimer.current = setTimeout(() => setToast(null), 6000);
+  };
+  const owner = useProfile()?.role === "main";
 
   const load = () => fetch("/api/topups").then((r) => r.json()).then((d) => d.topups && setView(d)).catch(() => undefined);
   useEffect(() => {
     load();
-    // Статус меняется в боте — подтягиваем, пока страница открыта.
-    const t = setInterval(load, 30_000);
-    return () => clearInterval(t);
-  }, []);
+    // Статус меняется в боте и сам (автопоиск) — подтягиваем, пока вкладка на виду, и сразу при возврате на неё.
+    // Владельцу чаще: он платит. Скрытая вкладка не ходит — CPU на Vercel деньги.
+    const tick = () => { if (document.visibilityState === "visible") load(); };
+    const t = setInterval(tick, owner ? 15_000 : 30_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); };
+  }, [owner]);
+
+  // Действие владельца с заявкой — POST с op, сервер проверяет роль и состояние заявки.
+  async function act(id: string, op: Op, hash?: string) {
+    setActing(id);
+    try {
+      const res = await fetch("/api/topups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op, id, hash }) });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.topups) throw new Error(d?.error ?? "Не получилось — попробуй ещё раз");
+      setView(d);
+      const r = (d.topups as Topup[]).find((x) => x.id === id);
+      say(d.note ?? (op === "paid" && r?.status === "paid" ? `Перевод найден — #${r.number} оплачена.` : DONE[op]));
+    } catch (e) {
+      say(e instanceof Error ? e.message : "Сеть не ответила");
+      load();
+    } finally {
+      setActing(null);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -104,6 +135,16 @@ export default function Topups({ categories, pairs, networks }: {
   }
 
   const all = useMemo(() => view?.topups ?? [], [view]);
+  const open = useMemo(() => all.filter((r) => r.status === "pending"), [all]);
+  // Новая заявка, пока страница открыта, — строкой внизу, чтобы не проглядеть.
+  const seen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!view?.admin) return;
+    const fresh = seen.current ? open.filter((r) => !seen.current!.has(r.id)) : [];
+    if (fresh.length) say(fresh.map((r) => `Новая заявка #${r.number} · ${r.author} · ${money(r.amount)} ${r.asset}`).join("\n"));
+    seen.current = new Set(open.map((r) => r.id));
+    window.dispatchEvent(new CustomEvent("topups:open", { detail: open.length }));   // счётчик в панели (Shell)
+  }, [open, view?.admin]);
   const rows = useMemo(() => filterTopups(all, f), [all, f]);
   const paidTotal = useMemo(() => paidTotals(rows), [rows]);
   const authors = useMemo(() => [...new Set(all.map((r) => r.author ?? "—"))].sort().map((a) => ({ key: a, label: a })), [all]);
@@ -129,6 +170,20 @@ export default function Topups({ categories, pairs, networks }: {
             {view.chat ? "Привязать другой чат" : "Привязать чат"}
           </button>
         </div>
+      )}
+
+      {view?.admin && (
+        <section className={card} aria-label="Открытые заявки">
+          <h2 className="text-base font-semibold">Открытые заявки · {open.length}</h2>
+          <p className="text-xs text-hint mt-1">
+            То же, что в платёжном чате: нажал здесь — сообщение в чате поменялось, нажали в чате — видно здесь. Переводы ищутся
+            сами каждую минуту: пришла на адрес точная сумма — заявка закроется без «Оплачено».
+          </p>
+          <div className="space-y-3 mt-4">
+            {open.length === 0 ? <p className="text-sm text-hint">Открытых заявок нет.</p>
+              : open.map((r) => <OpenTopup key={r.id} r={r} me={view.me ?? ""} busy={acting === r.id} onAct={(op, hash) => act(r.id, op, hash)} />)}
+          </div>
+        </section>
       )}
 
       <form data-tour="topups-form" onSubmit={submit} className={`${card} grid gap-2.5 sm:grid-cols-2`}>
@@ -213,6 +268,12 @@ export default function Topups({ categories, pairs, networks }: {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div role="status" className="fixed right-4 bottom-4 z-40 max-w-sm whitespace-pre-line rounded-2xl border border-violet-600 bg-raised px-4 py-3 text-sm shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

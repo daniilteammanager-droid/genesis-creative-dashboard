@@ -1,7 +1,7 @@
 // Самопроверка поиска и фильтров заявок. Запуск: npx tsx lib/topups/view.test.ts
 import assert from "node:assert/strict";
 import type { Topup } from "./requests";
-import { filterTopups, paidTotals, stage, type TopupFilter } from "./view";
+import { filterTopups, openActions, paidTotals, stage, type TopupFilter } from "./view";
 
 const row = (p: Partial<Topup>): Topup => ({
   id: "x", number: 1, user_id: "u", kind: "Карты", target: "Brocard", amount: 100, fee: 0, asset: "USDT", network: "TRC20",
@@ -29,4 +29,12 @@ assert.deepEqual(nums({ stages: ["work", "pending"] }), [118, 117]);
 assert.deepEqual(nums({ authors: ["Влад"] }), [117]);
 assert.deepEqual(nums({ kinds: ["Карты"], targets: ["Brocard"], stages: ["paid"] }), [116, 115]);
 assert.equal(paidTotals(rows).replace(/\s/g, " "), "0,0154 BTC · 2 400 USDT");   // ru-RU ставит неразрывный пробел
+// Кнопки владельца на странице — как в чате: «Снять» только у того, кто взял; в поиске — хэш и «Отклонить».
+const acts = (p: Partial<Topup>, me = "Daniil") => Object.entries(openActions(row(p), me)).filter(([, v]) => v).map(([k]) => k).sort().join(" ");
+assert.equal(acts({}), "paid reject take");
+assert.equal(acts({ taken_by: "Daniil" }), "mine paid reject release");
+assert.equal(acts({ taken_by: "@viktoria_gtm" }), "paid reject");
+assert.equal(acts({ taken_by: "Daniil", searching_since: "t" }), "hash reject");
+assert.equal(acts({ status: "paid" }), "");
+assert.equal(acts({ status: "expired" }), "");
 console.log("topups view: ok");

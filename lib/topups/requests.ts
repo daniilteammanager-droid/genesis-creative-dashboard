@@ -2,7 +2,7 @@ import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml, tg, TelegramError } from "@/lib/telegram/api";
 import { mskDay, mskStamp, mskTime } from "@/lib/day";
 import { paymentUri, qrPng } from "./qr";
-import { addressFits, DECIMALS, exact, findPayment, PAIRS, transferByHash, txUrl, type Asset, type Network, type SearchRule, type Transfer } from "./chain";
+import { addressFits, DECIMALS, exact, findPayment, PAIRS, parseHash, transferByHash, txUrl, type Asset, type Network, type SearchRule, type Transfer } from "./chain";
 import { stage, type Stage } from "./view";
 import { dueSearches } from "./auto";
 
@@ -66,11 +66,18 @@ export async function listTopups(userId: string | null, limit = 500): Promise<To
   return rows.map((r) => ({ ...r, author: names.get(r.user_id) ?? "—", tx_url: r.tx_hash ? txUrl(r.network, r.tx_hash) : undefined }));
 }
 
-async function getTopup(id: string): Promise<Topup | null> {
+export async function getTopup(id: string): Promise<Topup | null> {
   const { data } = await db().from("topup_requests").select(COLS).eq("id", id).maybeSingle();
   if (!data) return null;
   const r = num(data as Topup);
   return { ...r, author: (await authors([r.user_id])).get(r.user_id) ?? "—" };
+}
+
+// Счётчик у «Пополнения» в панели (Decision 126): сколько заявок ждут оплаты, без самих строк.
+export async function openCount(): Promise<number> {
+  const { count, error } = await db().from("topup_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 export const what = (r: Pick<Topup, "kind" | "target">) => (r.target ? `${r.kind} · ${r.target}` : r.kind);
@@ -313,6 +320,17 @@ export async function reject(id: string, by: string | null): Promise<string | nu
 export async function manualPaid(r: Topup, hash: string, by: string | null): Promise<{ result: Topup | string; seen: boolean }> {
   const t = await transferByHash(r.network, r.asset, r.address, hash, Date.parse(r.created_at)).catch(() => null);
   return { result: await markPaid(r.id, { hash: t?.hash ?? hash, amount: t?.amount }, by), seen: Boolean(t) };
+}
+
+// Хэш со страницы (Decision 126) — то же, что ответ хэшем в чате. warn — закрыто, но перевода на адрес заявки не видно.
+export async function hashPaid(id: string, text: string, by: string | null): Promise<{ error?: string; warn?: string }> {
+  const hash = parseHash(text);
+  if (!hash) return { error: "Не вижу хэша — вставь хэш транзакции или ссылку на неё." };
+  const r = await getTopup(id);
+  if (!r) return { error: "Заявки нет." };
+  const { result, seen } = await manualPaid(r, hash, by);
+  if (typeof result === "string") return { error: result };
+  return seen ? {} : { warn: `#${r.number} закрыта этим хэшем, но перевода на адрес заявки в блокчейне не видно — проверь хэш.` };
 }
 
 // Ответ хэшем на сообщение заявки в чате.
