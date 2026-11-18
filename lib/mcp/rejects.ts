@@ -4,7 +4,7 @@ import { textKey } from "@/lib/traffic-report/load";
 import { parseCreativeCode, parseName } from "@/lib/creatives/code";
 import { mskDay, mskTime } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
-import { pickBuyer } from "./scope";
+import { accountMatches, pickBuyer } from "./scope";
 import { ToolError, type ToolDef } from "./protocol";
 
 // Отклонённые объявления Meta через AI: какие крео реджектят чаще и за что — чтобы сравнить с теми, что проходят
@@ -94,11 +94,11 @@ export interface Hit { ad: Ad; times: string[] }
 // accounts — область видимости из resolveScope: null — все кабинеты, [] — ничего.
 export function pickAds(ads: Ad[], f: Query): Hit[] {
   const scope = f.accounts && new Set(f.accounts);
-  const acc = f.account.toLowerCase().replace(/^act_/, ""), q = f.search.toLowerCase();
+  const q = f.search.toLowerCase();
   const out: Hit[] = [];
   for (const ad of ads) {
     if (scope && !scope.has(ad.accountId)) continue;
-    if (acc && ad.accountId !== acc && !(/^cab\d{4}$/.test(acc) && ad.accountId.endsWith(acc.slice(3)))) continue;
+    if (!accountMatches(ad.accountId, f.account)) continue;
     if (q && !ad.name.toLowerCase().includes(q) && !(ad.campaign ?? "").toLowerCase().includes(q)) continue;
     const times = ad.times.filter((t) => { const d = mskDay(new Date(t)); return (!f.since || d >= f.since) && (!f.until || d <= f.until); });
     if (times.length) out.push({ ad, times });

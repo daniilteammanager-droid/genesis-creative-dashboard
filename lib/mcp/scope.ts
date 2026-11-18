@@ -19,3 +19,15 @@ export async function pickBuyer(me: Profile, v: unknown): Promise<{ id?: string;
   if (!hit) throw new ToolError(`Баер «${str(v)}» не найден. Есть: ${buyers.map((b) => b.label).join(", ")}`);
   return { id: hit.id as string, label: buyers.find((b) => b.id === hit.id)?.label ?? want };
 }
+
+// Кабинет по запросу человека: id, act_<id> или CAB и последние 4 цифры, как в имени кампании (CAB0956). Пусто — любой.
+export function accountMatches(id: string, q: string): boolean {
+  const v = q.trim().toLowerCase().replace(/^act_/, "");
+  return !v || id === v || (/^cab\d{4}$/.test(v) && id.endsWith(v.slice(3)));
+}
+
+// BM по запросу: id или часть имени без учёта регистра. Пусто — любой; BM не знаем — не подходит.
+export function bmMatches(bm: { id: string | null; name: string | null }, q: string): boolean {
+  const v = q.trim().toLowerCase();
+  return !v || bm.id === v || (!!bm.name && bm.name.toLowerCase().includes(v));
+}

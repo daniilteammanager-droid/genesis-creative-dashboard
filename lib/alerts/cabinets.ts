@@ -51,7 +51,11 @@ export interface CabinetState {
   balance: number | null;
   prepay: boolean | null;
   timezone?: string | null;   // только у Meta; у Dolphin и FB Tool — прежний
+  bm?: Bm | null;             // только у Meta; у Dolphin и FB Tool — прежний
 }
+
+// Business Manager кабинета (18.11.2026: Даниил ведёт вериф кабинетов и ищет, на каком BM кабинет).
+export interface Bm { id: string; name: string | null }
 
 export interface CabinetAlert {
   accountId: string;
@@ -68,6 +72,8 @@ interface MetaAccount {
   balance?: string;
   is_prepay_account?: boolean;
   timezone_name?: string;
+  business?: { id?: string; name?: string };   // BM-владелец; у личного кабинета нет
+  bm?: Bm | null;                              // итог bmOf, проставляет accountsOf
 }
 
 // Meta отдаёт баланс в минимальных единицах валюты: центах, но у иены их нет.
@@ -93,7 +99,27 @@ export function toState(a: MetaAccount): CabinetState {
     balance: fromMinor(a.balance, a.currency),
     prepay: a.is_prepay_account ?? null,
     timezone: a.timezone_name ?? null,
+    bm: a.bm ?? null,
   };
+}
+
+// BM кабинета по всем местам, где его видит ключ: владелец по Graph (business), иначе BM, через который
+// ключ его видит (owned_/client_ad_accounts — так лежат и личные кабинеты, добавленные в BM). Видим только
+// напрямую и без business — null.
+export function bmOf(sightings: { a: MetaAccount; via: Bm | null }[]): Bm | null {
+  const own = sightings.find((s) => s.a.business?.id)?.a.business;
+  if (own?.id) return { id: own.id, name: own.name ?? null };
+  return sightings.find((s) => s.via)?.via ?? null;
+}
+
+// Проставить bm каждой строке: строки одного кабинета (напрямую и через BM) получают общий итог.
+export function withBm(got: { a: MetaAccount; via: Bm | null }[]): MetaAccount[] {
+  const by = new Map<string, { a: MetaAccount; via: Bm | null }[]>();
+  for (const g of got) {
+    const id = g.a.id.replace(/^act_/, "");
+    (by.get(id) ?? by.set(id, []).get(id)!).push(g);
+  }
+  return got.map(({ a }) => ({ ...a, bm: bmOf(by.get(a.id.replace(/^act_/, ""))!) }));
 }
 
 const label = (s: { accountId: string; name: string | null }) =>
@@ -170,22 +196,34 @@ export function diffCabinets(
 
 const FIELDS = "id,name,account_status,disable_reason,currency,balance,is_prepay_account,timezone_name";
 
+// С BM-владельцем. Не отдала Meta поле business (права ключа) — тот же запрос без него: из-за BM
+// проверка кабинетов не должна падать, от неё живут алерты и антиотклон.
+async function edge(token: string, node: string, name: string): Promise<MetaAccount[]> {
+  try {
+    return await fetchEdgePaged<MetaAccount>(token, node, name, `${FIELDS},business{id,name}`);
+  } catch (e) {
+    // Только отказ по правам или полю (#100, #200, #10); лимит (#4, #17) и мёртвый ключ (#190) — как раньше.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/\((#|code )(100|200|10)\)|permission/i.test(msg)) throw e;
+    console.warn(`cabinets: ${name} без BM:`, msg);
+    return fetchEdgePaged<MetaAccount>(token, node, name, FIELDS);
+  }
+}
+
 // Все кабинеты, которые видит ключ: напрямую и через Business Manager. Статусы
 // любые — в отличие от отчётов, тут нужны именно неактивные.
 export async function accountsOf(token: string, withBusinesses: boolean): Promise<MetaAccount[]> {
-  const direct = await fetchEdgePaged<MetaAccount>(token, "me", "adaccounts", FIELDS);
-  if (!withBusinesses) return direct;
+  const got: { a: MetaAccount; via: Bm | null }[] = (await edge(token, "me", "adaccounts")).map((a) => ({ a, via: null }));
+  if (!withBusinesses) return withBm(got);
   // Ключ без business_management на /me/businesses отвечает «Missing Permission» —
   // это не сбой ключа: его прямые кабинеты живы и читаются.
-  const businesses = await fetchEdgePaged<{ id: string }>(token, "me", "businesses", "id").catch((e: unknown) => {
+  const businesses = await fetchEdgePaged<{ id: string; name?: string }>(token, "me", "businesses", "id,name").catch((e: unknown) => {
     if (/Missing Permission|\(#100\)/i.test(e instanceof Error ? e.message : String(e))) return [];
     throw e;
   });
-  const nested = await Promise.all(businesses.flatMap((b) => [
-    fetchEdgePaged<MetaAccount>(token, b.id, "owned_ad_accounts", FIELDS),
-    fetchEdgePaged<MetaAccount>(token, b.id, "client_ad_accounts", FIELDS),
-  ]));
-  return [...direct, ...nested.flat()];
+  const nested = await Promise.all(businesses.flatMap((b) => ["owned_ad_accounts", "client_ad_accounts"].map(async (e) =>
+    (await edge(token, b.id, e)).map((a) => ({ a, via: { id: b.id, name: b.name ?? null } })))));
+  return withBm([...got, ...nested.flat()]);
 }
 
 export interface CabinetCheckResult {
@@ -225,7 +263,8 @@ export async function checkCabinets(buyerTokens: Keyed[], dolphinTokens: Keyed[]
         const was = seen.get(s.accountId);
         // Один кабинет через два ключа: живой статус важнее, чем то, что видит
         // второй ключ с урезанными правами.
-        if (!was || s.status === "ACTIVE") seen.set(s.accountId, s);
+        if (!was || s.status === "ACTIVE") seen.set(s.accountId, { ...s, bm: s.bm ?? was?.bm ?? null });
+        else if (!was.bm && s.bm) was.bm = s.bm;
         if (s.status === "ACTIVE" && !tokenFor.has(s.accountId)) tokenFor.set(s.accountId, t.token);
       }
     } catch (e) {
@@ -243,7 +282,7 @@ export async function checkCabinets(buyerTokens: Keyed[], dolphinTokens: Keyed[]
           balance: c.balance, prepay: null,
         };
         const was = seen.get(s.accountId);
-        if (!was || (s.status === "ACTIVE" && was.status !== "ACTIVE")) seen.set(s.accountId, s);
+        if (!was || (s.status === "ACTIVE" && was.status !== "ACTIVE")) seen.set(s.accountId, { ...s, bm: was?.bm ?? null });
         if (s.status === "ACTIVE" && !tokenFor.has(s.accountId) && !dolphinFor.has(s.accountId)) dolphinFor.set(s.accountId, token);
       }
     } catch (e) {
@@ -268,7 +307,7 @@ export async function checkCabinets(buyerTokens: Keyed[], dolphinTokens: Keyed[]
             balance: null, prepay: null,
           };
           const was = seen.get(s.accountId);
-          if (!was || (s.status === "ACTIVE" && was.status !== "ACTIVE")) seen.set(s.accountId, s);
+          if (!was || (s.status === "ACTIVE" && was.status !== "ACTIVE")) seen.set(s.accountId, { ...s, bm: was?.bm ?? null });
           if (s.status === "ACTIVE" && !tokenFor.has(s.accountId) && !dolphinFor.has(s.accountId) && !fbtoolFor.has(s.accountId)) {
             fbtoolFor.set(s.accountId, { key, account: a.id });
           }
@@ -307,7 +346,7 @@ export async function checkCabinets(buyerTokens: Keyed[], dolphinTokens: Keyed[]
 
   // Прошлые отметки времени передаются явно: в пакетном upsert пропущенное поле
   // становится значением по умолчанию, и changed_at сбрасывался бы каждый прогон.
-  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at, alerted: r.alerted_at, last: r.last_status as string | null, tz: r.timezone as string | null }]));
+  const stamps = new Map((prevRows ?? []).map((r) => [r.account_id as string, { seen: r.seen_at, changed: r.changed_at, alerted: r.alerted_at, last: r.last_status as string | null, tz: r.timezone as string | null, bm: r.bm_id ? { id: r.bm_id as string, name: r.bm_name as string | null } : null }]));
   // Алерт о проблеме — отметка для утренней сводки (Decision 066).
   const statusOf = new Map(states.map((s) => [s.accountId, s.status]));
   const problemAlert = new Set(alerts.filter((a) => (statusOf.get(a.accountId) ?? "") in PROBLEM).map((a) => a.accountId));
@@ -320,6 +359,8 @@ export async function checkCabinets(buyerTokens: Keyed[], dolphinTokens: Keyed[]
       // Пропал — статус MISSING, а каким он был до этого, остаётся в last_status (Decision 089).
       last_status: s.status === "MISSING" ? (was?.last ?? (p && p.status !== "MISSING" ? p.status : null)) : s.status,
       timezone: s.timezone ?? was?.tz ?? null,
+      // BM — только из Meta; не увидела (пропал, Dolphin, FB Tool, урезанные права) — прежний (миграция 058).
+      bm_id: (s.bm ?? was?.bm)?.id ?? null, bm_name: (s.bm ?? was?.bm)?.name ?? null,
       // seen_at двигается, только если кабинет правда видели.
       seen_at: seen.has(s.accountId) || !was ? now.toISOString() : was.seen,
       changed_at: !p || p.status !== s.status || !was ? now.toISOString() : was.changed,

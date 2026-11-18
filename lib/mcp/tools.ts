@@ -17,7 +17,7 @@ import { MANAGE_TOOLS } from "./manage";
 import { TASK_TOOLS } from "./tasks";
 import { TOPUP_TOOLS } from "./topups";
 import { REJECT_TOOLS } from "./rejects";
-import { pickBuyer } from "./scope";
+import { accountMatches, bmMatches, pickBuyer } from "./scope";
 
 // Инструменты AI-доступа (Decision 116): чтение; пауза, запуск и бюджет — manage.ts (Decision 117); задачи — tasks.ts (Decision 118); пополнения — topups.ts (Decision 121); отклонённые объявления — rejects.ts (Decision 123). Каждый зовёт тот же загрузчик,
 // что и страница, с правами вошедшего: баер — свои подключения, владелец и тимлид — команда или
@@ -328,8 +328,16 @@ const getCheck: Tool = {
 const getCabinets: Tool = {
   name: "get_cabinets",
   title: "Рекламные кабинеты",
-  description: "Кабинеты Facebook и Telegram Ads: статус (ACTIVE, DISABLED, UNSETTLED…, MISSING — пропал из всех ключей), причина блокировки, валюта, баланс, часовой пояс, когда последний раз видели, чей кабинет. Обновляется раз в 15 минут.",
-  inputSchema: { type: "object", properties: { ...BUYER_PROP }, additionalProperties: false },
+  description: "Кабинеты Facebook и Telegram Ads: статус (ACTIVE, DISABLED, UNSETTLED…, MISSING — пропал из всех ключей), причина блокировки, валюта, баланс, часовой пояс, когда последний раз видели, чей кабинет и на каком Business Manager лежит (bm_id, bm_name). Обновляется раз в 15 минут. Один кабинет — account, кабинеты одного BM — bm.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ...BUYER_PROP,
+      account: { type: "string", description: "Один кабинет: id, act_<id> или CAB и последние 4 цифры, как в имени кампании (CAB4892)." },
+      bm: { type: "string", description: "Кабинеты одного Business Manager: id BM или часть его названия." },
+    },
+    additionalProperties: false,
+  },
   annotations: { ...READ, title: "Рекламные кабинеты" },
   async run({ me }, a) {
     const db = warehouse();
@@ -337,28 +345,36 @@ const getCabinets: Tool = {
     const { buyers, accountIds } = await resolveScope(db, me, buyer.id);
     const cols = "account_id, account_name, owner_user_id";
     const { data: owners } = await (accountIds ? db.from("wh_account_owners").select(cols).in("account_id", accountIds) : db.from("wh_account_owners").select(cols));
-    const ids = (owners ?? []).map((o) => o.account_id as string);
-    if (!ids.length) return { scope: buyer.label, cabinets: [], note: "Кабинетов пока нет: они закрепляются сами после подключения ключа." };
+    const want = str(a.account), bmq = str(a.bm);
+    const owned = (owners ?? []).filter((o) => accountMatches(o.account_id as string, want));
+    const ids = owned.map((o) => o.account_id as string);
+    if (!ids.length) return { scope: buyer.label, cabinets: [], note: want ? `Кабинета «${want}» нет среди твоих кабинетов.` : "Кабинетов пока нет: они закрепляются сами после подключения ключа." };
     const label = new Map(buyers.map((b) => [b.id, b.label]));
     const state = new Map<string, Record<string, unknown>>();
     for (let i = 0; i < ids.length; i += 300) {
       const { data } = await db.from("wh_cabinet_states")
-        .select("account_id, name, status, last_status, disable_reason, currency, balance, prepay, timezone, seen_at").in("account_id", ids.slice(i, i + 300));
+        .select("account_id, name, status, last_status, disable_reason, currency, balance, prepay, timezone, seen_at, bm_id, bm_name").in("account_id", ids.slice(i, i + 300));
       for (const s of data ?? []) state.set(s.account_id as string, s);
     }
     // Список — от закреплённых кабинетов: у Telegram Ads состояния в складе нет, но кабинет есть.
+    const cabinets = owned.map((o) => {
+      const s = state.get(o.account_id as string);
+      return {
+        account_id: o.account_id, name: (s?.name as string | null) ?? o.account_name, owner: me.role === "buyer" ? undefined : label.get(o.owner_user_id as string) ?? null,
+        status: (s?.status as string | undefined) ?? null, last_real_status: s?.status === "MISSING" ? s.last_status : undefined,
+        disable_reason: s?.disable_reason ?? null, currency: s?.currency ?? null, balance: s?.balance == null ? null : Number(s.balance),
+        prepay: s?.prepay ?? null, timezone: s?.timezone ?? null, last_seen: s?.seen_at ?? null,
+        bm_id: (s?.bm_id as string | null) ?? null, bm_name: (s?.bm_name as string | null) ?? null,
+      };
+    }).filter((c) => bmMatches({ id: c.bm_id, name: c.bm_name }, bmq))
+    .sort((x, y) => String(x.status).localeCompare(String(y.status)) || String(x.name).localeCompare(String(y.name)));
     return {
-      scope: buyer.label,
-      cabinets: (owners ?? []).map((o) => {
-        const s = state.get(o.account_id as string);
-        return {
-          account_id: o.account_id, name: (s?.name as string | null) ?? o.account_name, owner: me.role === "buyer" ? undefined : label.get(o.owner_user_id as string) ?? null,
-          status: (s?.status as string | undefined) ?? null, last_real_status: s?.status === "MISSING" ? s.last_status : undefined,
-          disable_reason: s?.disable_reason ?? null, currency: s?.currency ?? null, balance: s?.balance == null ? null : Number(s.balance),
-          prepay: s?.prepay ?? null, timezone: s?.timezone ?? null, last_seen: s?.seen_at ?? null,
-        };
-      }).sort((x, y) => String(x.status).localeCompare(String(y.status)) || String(x.name).localeCompare(String(y.name))),
-      note: [...state.keys()].length < ids.length ? "status null — статуса в складе нет (так у кабинетов Telegram Ads)." : undefined,
+      scope: buyer.label, cabinets,
+      note: [
+        cabinets.some((c) => c.status === null) ? "status null — статуса в складе нет (так у кабинетов Telegram Ads)." : "",
+        cabinets.some((c) => !c.bm_id) ? "bm_id null — BM не знаем: кабинет на Dolphin, FB Tool или Telegram Ads, Meta не отдала BM или ещё не прочитала (раз в 15 минут)." : "",
+        bmq && !cabinets.length ? `Кабинетов на BM «${bmq}» нет.` : "",
+      ].filter(Boolean).join(" ") || undefined,
     };
   },
 };

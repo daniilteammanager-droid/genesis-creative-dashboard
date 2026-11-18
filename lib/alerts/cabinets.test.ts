@@ -1,6 +1,6 @@
 // Самопроверка алертов кабинетов. Запуск: npx tsx lib/alerts/cabinets.test.ts
 import assert from "node:assert/strict";
-import { diffCabinets, fromMinor, toState, type CabinetState } from "./cabinets";
+import { bmOf, diffCabinets, fromMinor, toState, withBm, type CabinetState } from "./cabinets";
 
 const cab = (id: string, status: string, extra: Partial<CabinetState> = {}): CabinetState => ({
   accountId: id, name: `Cab ${id}`, status, disableReason: null, currency: "USD", balance: null, prepay: false, ...extra,
@@ -62,4 +62,19 @@ assert.equal(fromMinor(undefined, "USD"), null);
 assert.deepEqual(toState({ id: "act_77", account_status: 9, currency: "EUR", balance: "500" }).status, "IN_GRACE_PERIOD");
 assert.equal(toState({ id: "act_77", account_status: 9 }).accountId, "77");
 
-console.log("cabinets: смены статусов, пропажи и балансы разбираются верно");
+// BM кабинета: владелец по Graph важнее BM, через который ключ его видит; видим только напрямую без business — null.
+const viaY = { id: "222", name: "BM Y" };
+assert.deepEqual(bmOf([{ a: { id: "act_1", account_status: 1, business: { id: "111", name: "BM X" } }, via: viaY }]), { id: "111", name: "BM X" });
+assert.deepEqual(bmOf([{ a: { id: "act_1", account_status: 1 }, via: null }, { a: { id: "act_1", account_status: 1 }, via: viaY }]), viaY, "личный кабинет в BM — BM, через который видим");
+assert.equal(bmOf([{ a: { id: "act_1", account_status: 1 }, via: null }]), null);
+assert.deepEqual(bmOf([{ a: { id: "act_1", account_status: 1, business: { id: "111" } }, via: null }]), { id: "111", name: null }, "имени BM нет — только id");
+const both = withBm([
+  { a: { id: "act_5", account_status: 1 }, via: null },                       // напрямую, без business
+  { a: { id: "5", account_status: 1 }, via: viaY },                           // он же через BM Y
+  { a: { id: "act_6", account_status: 2 }, via: null },
+]);
+assert.deepEqual(both.map((a) => a.bm), [viaY, viaY, null], "строки одного кабинета получают общий BM");
+assert.deepEqual(toState(both[0]).bm, viaY);
+assert.equal(toState({ id: "act_7", account_status: 1 }).bm, null, "Dolphin и FB Tool — без BM");
+
+console.log("cabinets: смены статусов, пропажи, балансы и BM разбираются верно");
