@@ -1,7 +1,7 @@
 // Самопроверка поиска оплаты. Запуск: npx tsx lib/topups/chain.test.ts
 // С LIVE=1 ещё и живой поиск в TronGrid / toncenter по известным переводам.
 import assert from "node:assert/strict";
-import { addressFits, exact, findPayment, matches, PAIRS, parseHash, tronHex } from "./chain";
+import { addressFits, bscRpc, exact, findPayment, matches, PAIRS, parseHash, tronHex } from "./chain";
 
 // Точная сумма заявки: не округляется до копеек, без хвостовых нулей, лишний знак виден.
 assert.equal(exact(1000.4531, "USDT"), "1000.4531");
@@ -20,6 +20,11 @@ assert.ok(matches(0.0154, 0.0154, "BTC"));
 assert.ok(!matches(0.0254, 0.0154, "BTC"));
 assert.equal(exact(0.01540000, "BTC"), "0.0154");
 assert.equal(exact(0.123456789, "BTC"), "0.12345679");   // 9-й знак BTC не перевести
+
+// BSC_RPC_URL — ссылкой или голым токеном (так он лежит в Vercel).
+assert.equal(bscRpc(""), "https://bsc-rpc.publicnode.com");
+assert.equal(bscRpc(" 6b71ab "), "https://bsc-rpc.publicnode.com/6b71ab");
+assert.equal(bscRpc("https://bsc-rpc.publicnode.com/6b71ab"), "https://bsc-rpc.publicnode.com/6b71ab");
 
 // Монета → сети: TRX только в Tron, USDC не в TON.
 assert.deepEqual(PAIRS.TRX, ["TRC20"]);

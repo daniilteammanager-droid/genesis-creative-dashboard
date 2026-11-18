@@ -48,8 +48,11 @@ const fromUnits = (v: bigint, digits: number) => Number(v / BigInt(10) ** BigInt
 // Адрес Tron (base58) в hex, как его отдаёт TronGrid в to_address: 0x41 + 20 байт, без 4 байт контрольной суммы.
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 export const tronHex = (a: string) => [...a].reduce((n, c) => n * BigInt(58) + BigInt(B58.indexOf(c)), BigInt(0)).toString(16).padStart(50, "0").slice(0, 42);
-// Логи Transfer по адресу. BSC_RPC_URL — ссылка publicnode с личным токеном.
-const BSC_RPC = process.env.BSC_RPC_URL || "https://bsc-rpc.publicnode.com";
+// Логи Transfer по адресу. BSC_RPC_URL — ссылка publicnode с личным токеном или сам токен: в Vercel лежит голый
+// токен, и поиск BEP20 падал «Failed to parse URL» (нашлось 19.11.2026 по #137).
+const PUBLICNODE = "https://bsc-rpc.publicnode.com";
+export const bscRpc = (v = "") => (!v.trim() ? PUBLICNODE : /^https?:\/\//.test(v.trim()) ? v.trim() : `${PUBLICNODE}/${v.trim()}`);
+const BSC_RPC = bscRpc(process.env.BSC_RPC_URL);
 const BSC_RECEIPTS = "https://bsc-dataseed.bnbchain.org"; // квитанции по хэшу, любой давности
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 // BSC: блок ~0,45 с. Без токена publicnode отдаёт логи только за последние ~10 000
