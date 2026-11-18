@@ -167,18 +167,33 @@ export function matches(paid: number, amount: number, asset: Asset): boolean {
   return Math.abs(paid - amount) <= Math.max(asset === "BTC" ? 1e-6 : 0.02, amount * 0.001);
 }
 
+// Ровно сумма заявки, до последнего знака монеты. Так автопоиск закрывает заявку, которую никто не отметил
+// оплаченной (18.11.2026): на общий адрес платёжки сыплются чужие переводы, и допуск `matches` принял бы
+// чужие 100,52 за наши 100,5.
+export const same = (paid: number, amount: number, asset: Asset) => exact(paid, asset) === exact(amount, asset);
+
+export interface SearchRule {
+  recentMs?: number;   // крон: только последние N мс — на BSC полное окно это десятки запросов
+  strict?: boolean;    // сумма — до знака (автопоиск), иначе с допуском (после «Оплачено»)
+  until?: number;      // перевод не позже (ms) — у заявки, у которой вышел срок
+}
+
 // Самый ранний подходящий перевод, ещё не записанный за другой заявкой.
 export async function findPayment(
   req: { network: Network; asset: Asset; address: string; amount: number; createdAt: string },
   taken: (hash: string) => Promise<boolean>,
-  recentMs?: number,   // крон: только последние N мс — на BSC полное окно это десятки запросов
+  rule: SearchRule = {},
 ): Promise<Transfer | null> {
   if (!AUTO_SEARCH.includes(req.network)) return null;
   // Минуты до заявки — запас на расхождение часов и «заплатил, потом оформил».
   let since = Date.parse(req.createdAt) - 10 * 60_000;
-  if (recentMs && req.network === "BEP20") since = Math.max(since, Date.now() - recentMs);
+  if (rule.recentMs && req.network === "BEP20") since = Math.max(since, Date.now() - rule.recentMs);
   const list = await incoming(req.network, req.asset, req.address, since);
-  for (const t of list.filter((t) => matches(t.amount, req.amount, req.asset)).sort((a, b) => a.at - b.at)) {
+  const fits = (t: Transfer) => (rule.strict ? same : matches)(t.amount, req.amount, req.asset) && !(rule.until && t.at > rule.until);
+  // С допуском — но точная сумма первой: #20, #49, #86 «Оплачено» записало чужими 1000,29 к нашим 1000,17,
+  // пришедшими на общий адрес платёжки за минуты до нашего перевода.
+  const off = (t: Transfer) => (same(t.amount, req.amount, req.asset) ? 0 : 1);
+  for (const t of list.filter(fits).sort((a, b) => off(a) - off(b) || a.at - b.at)) {
     if (!(await taken(t.hash))) return t;
   }
   return null;

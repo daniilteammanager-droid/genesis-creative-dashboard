@@ -2,8 +2,9 @@ import { warehouse } from "@/lib/warehouse/read";
 import { escapeHtml, tg, TelegramError } from "@/lib/telegram/api";
 import { mskDay, mskStamp, mskTime } from "@/lib/day";
 import { paymentUri, qrPng } from "./qr";
-import { addressFits, AUTO_SEARCH, DECIMALS, exact, findPayment, PAIRS, transferByHash, txUrl, type Asset, type Network, type Transfer } from "./chain";
+import { addressFits, DECIMALS, exact, findPayment, PAIRS, transferByHash, txUrl, type Asset, type Network, type SearchRule, type Transfer } from "./chain";
 import { stage, type Stage } from "./view";
+import { dueSearches } from "./auto";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
 // закрыть оплатой, отказом или по сроку. Таблицы закрыты от браузера — всё
@@ -18,8 +19,6 @@ export const CATEGORIES: Record<string, string[]> = {
   "Агенты": ["T2A", "RentAcc", "TSR", "Monika (агенты TikTok)", OTHER],
   "Кабинеты": ["TG Ads кабинеты (TON)", OTHER],
 };
-// Автопоиск ищет перевод сутки после «Оплачено», дальше — только хэш руками.
-const SEARCH_FOR_MS = 24 * 3600_000;
 
 export interface Topup {
   id: string; number: number; user_id: string; kind: string; target: string;
@@ -99,7 +98,7 @@ function line(r: Topup, st: Stage): string | null {
     case "pending": return null;
     case "work": return `Платит ${e(r.taken_by)}${r.taken_at ? ` с ${when(r.taken_at)}` : ""} — остальные не переводите`;
     case "search": return `${e(r.closed_by)} отметил оплату — ищу перевод. Хэш — ответом на это сообщение`;
-    case "paid": return `Оплатил ${e(r.closed_by)}${r.paid_at ? ` · ${when(r.paid_at)}` : ""}${r.paid_amount ? ` · пришло ${money(r.paid_amount)} ${r.asset}` : ""}`;
+    case "paid": return `${r.closed_by ? `Оплатил ${e(r.closed_by)}` : "Перевод найден сам"}${r.paid_at ? ` · ${when(r.paid_at)}` : ""}${r.paid_amount ? ` · пришло ${money(r.paid_amount)} ${r.asset}` : ""}`;
     case "rejected": return `Отклонил ${e(r.closed_by)}`;
     case "expired": return `Время вышло${r.expires_at ? ` в ${when(r.expires_at)}` : ""} — нужна новая заявка`;
   }
@@ -238,11 +237,12 @@ const hashTaken = async (hash: string) =>
 
 // Закрыть оплатой. Условие status = pending — двойной клик и параллельный крон
 // не закроют дважды; занятый хэш не запишется за вторую заявку (unique).
-export async function markPaid(id: string, pay: { hash: string; amount?: number }, by: string | null): Promise<Topup | string> {
+// expired — автопоиск закрывает и заявку, у которой вышел срок (перевод пришёл в срок или чуть позже).
+export async function markPaid(id: string, pay: { hash: string; amount?: number }, by: string | null, expired = false): Promise<Topup | string> {
   const { data, error } = await db().from("topup_requests").update({
     status: "paid", tx_hash: pay.hash, paid_amount: pay.amount ?? null, paid_at: new Date().toISOString(),
     closed_by: by, searching_since: null,
-  }).eq("id", id).eq("status", "pending").select("id");
+  }).eq("id", id).in("status", expired ? ["pending", "expired"] : ["pending"]).select("id");
   if (error) {
     if (/duplicate|unique/i.test(error.message)) {
       const { data: other } = await db().from("topup_requests").select("number").eq("tx_hash", pay.hash).maybeSingle();
@@ -256,9 +256,8 @@ export async function markPaid(id: string, pay: { hash: string; amount?: number 
   return r;
 }
 
-// recentMs — для крона: при «Оплачено» окно уже просмотрено целиком, дальше хватит свежих минут.
-async function trySearch(r: Topup, recentMs?: number): Promise<Transfer | null> {
-  return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, createdAt: r.created_at }, hashTaken, recentMs);
+async function trySearch(r: Topup, rule?: SearchRule): Promise<Transfer | null> {
+  return findPayment({ network: r.network, asset: r.asset, address: r.address, amount: r.amount, createdAt: r.created_at }, hashTaken, rule);
 }
 
 // «Беру в работу»: заявку платит этот человек. Условие taken_by is null — двое одновременно не возьмут,
@@ -324,34 +323,40 @@ export async function topupByMessage(chatId: number, messageId: number): Promise
   return data ? getTopup(data.id as string) : null;
 }
 
-// Крон раз в минуту: истёкшие закрыть (адрес из сообщения убрать), по нажатым
-// «Оплачено» — поискать перевод.
-export async function tickTopups(): Promise<{ expired: number; found: number; errors: string[] }> {
-  const now = new Date().toISOString();
-  const out = { expired: 0, found: 0, errors: [] as string[] };
+// Крон раз в минуту: поискать переводы по всем открытым заявкам и недавно истёкшим (кого и как — dueSearches),
+// потом истёкшие закрыть (адрес из сообщения убрать). Поиск первым: перевод в последнюю минуту закрывает
+// заявку оплатой, а не уводит в «время вышло».
+export async function tickTopups(): Promise<{ searched: number; found: number; expired: number; errors: string[] }> {
+  const now = Date.now();
+  const out = { searched: 0, found: 0, expired: 0, errors: [] as string[] };
+  const fail = (e: unknown) => out.errors.push(e instanceof Error ? e.message : String(e));
 
-  const { data: gone } = await db().from("topup_requests").update({ status: "expired" })
-    .eq("status", "pending").is("searching_since", null).lt("expires_at", now).select("id");
-  for (const g of gone ?? []) {
-    out.expired++;
+  // Открытые — все; за 8 дней — ещё и закрытые: истёкшие ищем сутки, а новая заявка на тот же адрес и сумму
+  // забирает перевод у старой.
+  const { data, error } = await db().from("topup_requests").select(COLS)
+    .or(`status.eq.pending,created_at.gt."${new Date(now - 8 * 24 * 3600_000).toISOString()}"`);
+  if (error) fail(new Error(error.message));
+  const rows = (data ?? []).map((r) => num(r as Topup));
+  for (const d of dueSearches(rows, now)) {
+    const r = rows.find((x) => x.id === d.id)!;
     try {
-      const r = (await getTopup(g.id as string))!;
-      await refresh(r);
-        } catch (e) {
-      out.errors.push(e instanceof Error ? e.message : String(e));
+      out.searched++;
+      const t = await trySearch(r, d);
+      // Кто закрыл — тот, кто нажал «Оплачено»; никто не нажимал — пусто: в чате «перевод найден сам».
+      if (t && typeof (await markPaid(r.id, t, r.closed_by, d.expired)) !== "string") out.found++;
+    } catch (e) {
+      fail(e);
     }
   }
 
-  const { data: open } = await db().from("topup_requests").select("id").eq("status", "pending")
-    .not("searching_since", "is", null).gt("searching_since", new Date(Date.now() - SEARCH_FOR_MS).toISOString())
-    .in("network", AUTO_SEARCH);
-  for (const o of open ?? []) {
+  const { data: gone } = await db().from("topup_requests").update({ status: "expired" })
+    .eq("status", "pending").is("searching_since", null).lt("expires_at", new Date().toISOString()).select("id");
+  for (const g of gone ?? []) {
+    out.expired++;
     try {
-      const r = (await getTopup(o.id as string))!;
-      const t = await trySearch(r, 15 * 60_000);
-      if (t && typeof (await markPaid(r.id, t, r.closed_by)) !== "string") out.found++;
+      await refresh((await getTopup(g.id as string))!);
     } catch (e) {
-      out.errors.push(e instanceof Error ? e.message : String(e));
+      fail(e);
     }
   }
   return out;
