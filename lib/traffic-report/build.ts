@@ -104,6 +104,7 @@ export interface ReportNode {
   geo?: string;
   sums: Sums;
   m: Metrics;
+  life?: Life;                         // у крео: за всё время в этой стране — по нему этап
   stage?: Stage;                       // у крео
   left?: number;                       // крео на тесте: сколько ещё до границы, $
   counts?: Record<Stage, number>;      // у баера и страны: крео по этапам
@@ -126,11 +127,22 @@ export function metricsOf(s: Sums): Metrics {
 }
 
 // Этап крео: депы есть — оцениваем по ROMI; нет — на тесте до границы, дальше лузер.
-export function stageOf(s: Sums, geo: string): Stage {
+// В «Отчётах» — по всему времени крео в стране (Daniil 17.11.2026), а не по периоду.
+export type Life = Pick<Sums, "spend" | "deps">;
+export function stageOf(s: Life, geo: string): Stage {
   if (s.spend <= 0) return "nospend";
   if (s.deps > 0) return "deps";
   return s.spend >= testLimit(geo) ? "loser" : "test";
 }
+const stage = (n: ReportNode, geo: string) => {
+  n.stage = stageOf(n.life!, geo);
+  if (n.stage === "test") n.left = Math.max(0, testLimit(geo) - n.life!.spend);
+};
+
+// Всё время крео по странам (CreoAllTime.geos из load.ts) → ключ строки дерева «баер × страна × крео».
+export const lifeKey = (buyer: string, geo: string, creo: string) => `${buyer}\u0000${geo}\u0000${creo}`;
+export const lifeMap = (creos: { buyer: string; creo: string; geos?: Record<string, Life> }[]) =>
+  new Map(creos.flatMap((c) => Object.entries(c.geos ?? {}).map(([geo, l]) => [lifeKey(c.buyer, geo, c.creo), l] as const)));
 
 const NO_MARK = "Без метки в ссылке";
 export const creoName = (ad: string) => {
@@ -199,11 +211,12 @@ export const buildReport = (spend: SpendRow[], torro: TorroRow[], rest?: Map<str
   treeOf(cellsOf(spend, torro, rest));
 
 // Дерево баер → страна → крео из ячеек: лица, воронки и площадки внутри складываются.
-export function treeOf(input: Cell[]): ReportNode[] {
+// life — всё время крео по странам (lifeMap); нет — этап по периоду (алерты теста, Decision 100).
+export function treeOf(input: Cell[], life?: Map<string, Life>): ReportNode[] {
   const add = (a: Sums, b: Sums) => { for (const k of Object.keys(a) as (keyof Sums)[]) a[k] += b[k]; };
   const cells = new Map<string, Sums>();   // баер|страна|крео
   for (const c of input) {
-    const k = `${c.buyer}\u0000${c.geo}\u0000${c.creo}`;
+    const k = lifeKey(c.buyer, c.geo, c.creo);
     if (!cells.has(k)) cells.set(k, { ...ZERO });
     add(cells.get(k)!, c.sums);
   }
@@ -222,9 +235,11 @@ export function treeOf(input: Cell[]): ReportNode[] {
     const g = countries.get(gk)!;
     const node: ReportNode = { key: `${gk} › ${creo}`, level: 2, label: creo, geo, sums: s, m: metricsOf(s) };
     if (geo !== REST) {
-      node.stage = stageOf(s, geo);
-      if (node.stage === "test") node.left = Math.max(0, testLimit(geo) - s.spend);
-      g.counts![node.stage]++; b.counts![node.stage]++;
+      // ponytail: всё время не меньше периода — расход кабинета без закрепления в «всё время» не попадает (load.ts).
+      const l = life?.get(k);
+      node.life = { spend: Math.max(l?.spend ?? 0, s.spend), deps: Math.max(l?.deps ?? 0, s.deps) };
+      stage(node, geo);
+      g.counts![node.stage!]++; b.counts![node.stage!]++;
     }
     g.children!.push(node);
     add(g.sums, s); add(b.sums, s);
@@ -241,7 +256,7 @@ export function treeOf(input: Cell[]): ReportNode[] {
 // Склейка крео внутри страны (Daniil 29.10.2026): «text» — по номеру текста (все t11),
 // «version» — по тексту и его версии (все t11_v8). Номер текста общий для подходов: t11
 // бывает у balance, checklist и live. Крео — строки под текстом; старые имена без tN
-// остаются отдельными строками. Этап считается по сумме склейки.
+// остаются отдельными строками. Этап считается по сумме склейки за всё время.
 export type GroupMode = "creo" | "text" | "version";
 export function textKey(creo: string, mode: Exclude<GroupMode, "creo">): string | null {
   const c = parseCreativeCode(creo);
@@ -263,17 +278,17 @@ export function groupCreos(nodes: ReportNode[], mode: GroupMode): ReportNode[] {
         const key = textKey(c.label, mode);
         if (!key) { units.push(c); continue; }
         if (!groups.has(key)) {
-          const t: ReportNode = { key: `${g.key} › ${key}`, level: 2, label: key, geo: g.geo, sums: { ...ZERO }, m: metricsOf(ZERO), children: [] };
+          const t: ReportNode = { key: `${g.key} › ${key}`, level: 2, label: key, geo: g.geo, sums: { ...ZERO }, m: metricsOf(ZERO), life: { spend: 0, deps: 0 }, children: [] };
           groups.set(key, t); units.push(t);
         }
         const t = groups.get(key)!;
         for (const k of Object.keys(t.sums) as (keyof Sums)[]) t.sums[k] += c.sums[k];
+        t.life!.spend += c.life?.spend ?? c.sums.spend; t.life!.deps += c.life?.deps ?? c.sums.deps;
         t.children!.push({ ...c, level: 3 });
       }
       for (const t of groups.values()) {
         t.m = metricsOf(t.sums);
-        t.stage = stageOf(t.sums, g.geo!);
-        if (t.stage === "test") t.left = Math.max(0, testLimit(g.geo!) - t.sums.spend);
+        stage(t, g.geo!);
       }
       for (const u of units) if (u.stage) { gc[u.stage]++; bc[u.stage]++; }
       units.sort((x, y) => y.sums.spend - x.sums.spend || y.sums.rev - x.sums.rev);

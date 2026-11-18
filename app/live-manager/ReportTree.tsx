@@ -9,6 +9,7 @@ import { DateRange } from "@/components/DatePicker";
 import { Busy, seg, Spinner } from "@/components/ui";
 import { SummaryCard } from "@/components/general-report/shared";
 import { useOpenCreo } from "@/components/CreoModal";
+import { ColumnPicker, orderCols, shiftCol } from "@/components/ColumnPicker";
 
 
 
@@ -153,7 +154,6 @@ export default function ReportTree() {
   const [busy, setBusy] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [refresh, setRefresh] = useState(false);
-  const [showCols, setShowCols] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]") as string[]); } catch { return new Set(); }
   });
@@ -325,17 +325,9 @@ export default function ReportTree() {
       .map((c) => ({ ...c, spend: spend.get(c.accountId) ?? 0, pinned: prefs.pinnedCabs.includes(c.accountId), hidden: prefs.hiddenCabs.includes(c.accountId) }))
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.spend - a.spend);
   }, [data, prefs, showHiddenCabs]);
-  const ordered = useMemo(() => {
-    const at = (l: string) => { const i = prefs.colOrder.indexOf(l); return i < 0 ? 999 + COLS.findIndex((c) => c.label === l) : i; };
-    return [...COLS].sort((a, b) => at(a.label) - at(b.label));
-  }, [prefs.colOrder]);
+  const ordered = useMemo(() => orderCols(COLS, prefs.colOrder), [prefs.colOrder]);
   const cols = ordered.filter((c) => !hidden.has(c.label));
-  const moveCol = (label: string, d: -1 | 1) => setPrefs((p) => {
-    const list = ordered.map((c) => c.label), i = list.indexOf(label), j = i + d;
-    if (j < 0 || j >= list.length) return p;
-    [list[i], list[j]] = [list[j], list[i]];
-    return { ...p, colOrder: list };
-  });
+  const moveCol = (label: string, d: -1 | 1) => setPrefs((p) => ({ ...p, colOrder: shiftCol(ordered.map((c) => c.label), label, d) ?? p.colOrder }));
   const applyPreset = (name: string) => {
     const list = prefs.presets[name];
     if (!list) return;
@@ -417,29 +409,13 @@ export default function ReportTree() {
           </select>
           <button type="button" disabled={Boolean(busy)} onClick={() => { setBusy("Тяну свежий расход…"); setRefresh(true); }}
                   className={`btn border-violet-700/50 text-violet-200 hover:bg-violet-900/20`}>↻ Обновить сейчас</button>
-          <div className="relative">
-            <button type="button" onClick={() => setShowCols((v) => !v)} className={`btn border-line text-zinc-300 hover:bg-violet-900/20`}>☷ Столбцы</button>
-            {showCols && (
-              <div className="absolute z-30 mt-1 w-56 max-h-80 overflow-y-auto bg-card border border-line rounded-xl p-2 shadow-xl">
-                <div className="flex items-center gap-1 px-1 pb-2 mb-1 border-b border-line">
-                  <select value="" onChange={(e) => applyPreset(e.target.value)} className="flex-1 bg-panel border border-line rounded-lg px-2 py-1 text-xs text-white">
-                    <option value="">Наборы…</option>
-                    {Object.keys(prefs.presets).map((k) => <option key={k} value={k}>{k}</option>)}
-                  </select>
-                  <button type="button" onClick={savePreset} className="text-xs text-violet-300 px-1" title="Сохранить текущий набор">＋</button>
-                </div>
-                {ordered.map((c, i) => (
-                  <div key={c.label} className="flex items-center gap-1 px-2 py-1 text-sm text-zinc-300 hover:bg-violet-900/15 rounded">
-                    <label className="flex flex-1 items-center gap-2 cursor-pointer min-w-0">
-                      <input type="checkbox" checked={!hidden.has(c.label)} onChange={() => setCol(c.label)} className="accent-violet-500" /><span className="truncate">{c.label}</span>
-                    </label>
-                    <button type="button" disabled={i === 0} onClick={() => moveCol(c.label, -1)} className="text-hint hover:text-white disabled:opacity-20 px-0.5" aria-label="Выше">↑</button>
-                    <button type="button" disabled={i === ordered.length - 1} onClick={() => moveCol(c.label, 1)} className="text-hint hover:text-white disabled:opacity-20 px-0.5" aria-label="Ниже">↓</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ColumnPicker labels={ordered.map((c) => c.label)} hidden={hidden} onToggle={setCol} onMove={moveCol}>
+            <select value="" onChange={(e) => applyPreset(e.target.value)} className="flex-1 bg-panel border border-line rounded-lg px-2 py-1 text-xs text-white">
+              <option value="">Наборы…</option>
+              {Object.keys(prefs.presets).map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <button type="button" onClick={savePreset} className="text-xs text-violet-300 px-1" title="Сохранить текущий набор">＋</button>
+          </ColumnPicker>
           {busy && <span className="text-xs text-hint">{busy}</span>}
         </div>
       )}

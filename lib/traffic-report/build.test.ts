@@ -1,6 +1,6 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
-import { buildReport, cellsOf, creoGeo, filterCells, geoOf, groupCreos, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
+import { buildReport, cellsOf, creoGeo, filterCells, geoOf, groupCreos, lifeMap, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
 
 const sp = (r: Omit<SpendRow, "face" | "funnel" | "platform"> & Partial<SpendRow>): SpendRow => ({ face: "ROMAN", funnel: "TG", platform: "fb", ...r });
 
@@ -98,4 +98,37 @@ assert.equal(ricky[0].sums.rev, 500);
 assert.equal(treeOf(filterCells(cells, { face: ["Роман"] }))[0].children![0].children![0].stage, "test");
 assert.equal(treeOf(cells)[0].sums.spend, 1000);
 
-console.log("traffic-report: этапы, цвет ROMI, страна депов, склейка, сортировка и фильтры верно");
+// Этап — по всему времени крео в стране (Daniil 17.11.2026), цифры строки — по периоду.
+const period = cellsOf(
+  [
+    sp({ buyer: "D", campaign: "E", ad: "old-loser", geo: "ES", spend: 100, impr: 0, clicks: 0 }),
+    sp({ buyer: "D", campaign: "E", ad: "young", geo: "ES", spend: 100, impr: 0, clicks: 0 }),
+    sp({ buyer: "D", campaign: "M", ad: "old-loser", geo: "MX", spend: 50, impr: 0, clicks: 0 }),
+    sp({ buyer: "D", campaign: "E", ad: "vid-a-t5-v1-b1-es-es", geo: "ES", spend: 100, impr: 0, clicks: 0 }),
+    sp({ buyer: "D", campaign: "E", ad: "vid-b-t5-v2-b1-es-es", geo: "ES", spend: 100, impr: 0, clicks: 0 }),
+  ],
+  [{ buyer: "D", campaign: "E", ad: "dep-later", subs: 0, dia: 0, deps: 1, rev: 300 }],
+);
+const life = lifeMap([
+  { buyer: "D", creo: "old-loser", geos: { ES: { spend: 900, deps: 0 }, MX: { spend: 50, deps: 0 } } },
+  { buyer: "D", creo: "young", geos: { ES: { spend: 40, deps: 0 } } },                  // меньше периода — берём период
+  { buyer: "D", creo: "dep-later", geos: { ES: { spend: 600, deps: 2 } } },             // в периоде не крутилось
+  { buyer: "D", creo: "vid-a-t5-v1-b1-es-es", geos: { ES: { spend: 400, deps: 0 } } },
+  { buyer: "D", creo: "vid-b-t5-v2-b1-es-es", geos: { ES: { spend: 400, deps: 0 } } },
+]);
+const dEs = treeOf(period, life)[0].children!.find((g) => g.geo === "ES")!;
+const row = (label: string) => dEs.children!.find((n) => n.label === label)!;
+assert.equal(row("old-loser").stage, "loser");                  // за период $100 — «на тесте», за всё время $900
+assert.equal(row("old-loser").sums.spend, 100);                 // цифры — периода
+assert.equal(row("young").stage, "test");
+assert.equal(row("young").left, 650);                           // $750 − $100: всё время не меньше периода
+assert.equal(row("dep-later").stage, "deps");                   // раньше — «Без спенда»
+assert.equal(treeOf(period, life)[0].children!.find((g) => g.geo === "MX")!.children![0].stage, "test");  // своя граница у страны
+assert.equal(treeOf(period)[0].children!.find((g) => g.geo === "ES")!.children!.find((n) => n.label === "old-loser")!.stage, "test");  // без всего времени — по периоду (алерты)
+assert.equal(row("vid-a-t5-v1-b1-es-es").stage, "test");
+const t5 = groupCreos(treeOf(period, life), "text")[0].children!.find((g) => g.geo === "ES")!.children!.find((n) => n.label === "t5")!;
+assert.deepEqual(t5.life, { spend: 800, deps: 0 });              // склейка — сумма всего времени её крео
+assert.equal(t5.stage, "loser");
+assert.deepEqual(dEs.counts, { test: 3, loser: 1, deps: 1, nospend: 0 });
+
+console.log("traffic-report: этапы за всё время, цвет ROMI, страна депов, склейка, сортировка и фильтры верно");

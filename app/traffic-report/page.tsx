@@ -1,14 +1,15 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import {
-  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, metricsOf, romiBand, sortCreos, sumAllTime, totalOf, treeOf,
-  type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage,
+  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, lifeMap, metricsOf, romiBand, sortCreos, sumAllTime, totalOf, treeOf,
+  type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage, type Sums,
 } from "@/lib/traffic-report/build";
-import type { TrafficReport } from "@/lib/traffic-report/load";
+import type { CreoAllTime, TrafficReport } from "@/lib/traffic-report/load";
+import { ColumnPicker, useColumns } from "@/components/ColumnPicker";
 import AiPanel, { VERDICT, type Verdict } from "./AiPanel";
 import { CreoLink } from "@/components/CreoModal";
 import { Busy, chip, seg } from "@/components/ui";
@@ -46,19 +47,47 @@ const pct = (digits: number) => (v: number) => `${(v * 100).toLocaleString("ru-R
 const romiText = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v).toLocaleString("ru-RU")}%`;
 const show = (v: number | null | undefined, f: (v: number) => string) => (v === null || v === undefined || Number.isNaN(v) ? "—" : f(v));
 
-const COLS: { label: string; cell: (n: ReportNode) => string }[] = [
-  { label: "Спенд", cell: (n) => usd0(n.sums.spend) },
-  { label: "CPM", cell: (n) => show(n.m.cpm, usd2) },
-  { label: "CPC", cell: (n) => show(n.m.cpc, usd2) },
-  { label: "CTR", cell: (n) => show(n.m.ctr, pct(2)) },
-  { label: "Цена подп.", cell: (n) => show(n.m.cps, usd2) },
-  { label: "Клик → подп.", cell: (n) => show(n.m.crSub, pct(1)) },
-  { label: "Цена диал.", cell: (n) => show(n.m.cpd, usd2) },
-  { label: "Подп. → диал.", cell: (n) => show(n.m.crDia, pct(1)) },
-  { label: "Цена депа", cell: (n) => show(n.m.cpdep, usd0) },
-  { label: "Диал. → деп", cell: (n) => show(n.m.crDep, pct(1)) },
-  { label: "Депы", cell: (n) => n.sums.deps.toLocaleString("ru-RU") },
-  { label: "Ревенью", cell: (n) => usd0(n.sums.rev) },
+// Строка таблицы и её всё время (все страны): у крео — своё, у склейки t11 — сумма её крео.
+type Row = { n: ReportNode; all?: CreoAllTime; allSums?: Sums | null; glued: boolean };
+const chipCls = "inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md";
+// Столбцы по умолчанию: этап, статус, спенд и сразу ROMI (Daniil 17.11.2026); свой набор и порядок — «Столбцы».
+const COLS: { label: string; title?: string; left?: boolean; cell: (r: Row) => ReactNode }[] = [
+  { label: "Этап", left: true, title: "Этап крео — по всему времени крео в этой стране, а не по периоду", cell: ({ n }) => {
+    const st = STAGES.find((s) => s.id === n.stage);
+    if (st) return (
+      <span title={n.life ? `За всё время в стране: спенд ${usd0(n.life.spend)}, депов ${n.life.deps}` : undefined}
+            className={`inline-block px-2 py-0.5 rounded-md border ${st.chip}`}>{st.label}{n.stage === "test" && n.left !== undefined ? ` · ещё ${usd0(n.left)}` : ""}</span>
+    );
+    return n.counts ? (
+      <span className="text-hint font-normal">
+        {STAGES.filter((s) => n.counts![s.id] > 0).map((s, i) => <Fragment key={s.id}>{i > 0 && " · "}{n.counts![s.id]} {s.many(n.counts![s.id])}</Fragment>)}
+      </span>
+    ) : null;
+  } },
+  { label: "Статус", left: true, title: "Последнее состояние объявлений с этим крео у баера (обновляется раз в час)", cell: ({ all }) =>
+    all?.active === true ? <span className="text-green-300">● активно</span> : all?.active === false ? <span className="text-hint">○ остановлено</span> : null },
+  { label: "Спенд", cell: ({ n }) => usd0(n.sums.spend) },
+  { label: "ROMI", cell: ({ n }) => { const b = romiBand(n.m.romi); return <span className={`${chipCls} ${b ? BAND[b] : "text-hint"}`}>{show(n.m.romi, romiText)}</span>; } },
+  { label: "ROMI всё время", title: "ROMI крео за всё время, все страны. Наведи на цифру — спенд, ревенью, цены", cell: ({ allSums, glued }) => {
+    if (!allSums) return null;
+    const m = metricsOf(allSums), b = romiBand(m.romi);
+    return (
+      <span title={[glued ? "Всё время, сумма крео этой строки" : "Всё время, все страны", `Спенд: ${usd0(allSums.spend)}`, `Ревенью: ${usd0(allSums.rev)}`,
+        `Цена подп.: ${show(m.cps, usd2)}`, `Цена диал.: ${show(m.cpd, usd2)}`, `Депы: ${allSums.deps}`].join("\n")}
+            className={`${chipCls} cursor-help ${b ? BAND[b] : "text-hint"}`}>{show(m.romi, romiText)}</span>
+    );
+  } },
+  { label: "CPM", cell: ({ n }) => show(n.m.cpm, usd2) },
+  { label: "CPC", cell: ({ n }) => show(n.m.cpc, usd2) },
+  { label: "CTR", cell: ({ n }) => show(n.m.ctr, pct(2)) },
+  { label: "Цена подп.", cell: ({ n }) => show(n.m.cps, usd2) },
+  { label: "Клик → подп.", cell: ({ n }) => show(n.m.crSub, pct(1)) },
+  { label: "Цена диал.", cell: ({ n }) => show(n.m.cpd, usd2) },
+  { label: "Подп. → диал.", cell: ({ n }) => show(n.m.crDia, pct(1)) },
+  { label: "Цена депа", cell: ({ n }) => show(n.m.cpdep, usd0) },
+  { label: "Диал. → деп", cell: ({ n }) => show(n.m.crDep, pct(1)) },
+  { label: "Депы", cell: ({ n }) => n.sums.deps.toLocaleString("ru-RU") },
+  { label: "Ревенью", cell: ({ n }) => usd0(n.sums.rev) },
 ];
 
 const MODES: { id: GroupMode; label: string; hint: string }[] = [
@@ -137,11 +166,14 @@ export default function TrafficReportPage() {
   const [filters, setFilters] = useState<Filters>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const options = useMemo(() => dimOptions(data?.cells ?? []), [data]);
+  // Этап крео — по его всему времени в стране, цифры строк — за период.
+  const life = useMemo(() => lifeMap(data?.creos ?? []), [data]);
   const base = useMemo(() => {
     const cells = data?.cells ?? [];
     const mine = onlyFav ? cells.filter((c) => favs.has(favKey(idOf.get(c.buyer) ?? c.buyer, c.creo))) : cells;
-    return treeOf(filterCells(mine, filters));
-  }, [data, filters, onlyFav, favs, idOf]);
+    return treeOf(filterCells(mine, filters), life);
+  }, [data, filters, onlyFav, favs, idOf, life]);
+  const cols = useColumns("traffic-report.cols", COLS);
   const tree = useMemo(() => sortCreos(groupCreos(base, mode), sortBy), [base, mode, sortBy]);
   const toggleFilter = (d: Dim, v: string | null) => setFilters((f) => {
     const cur = f[d] ?? [];
@@ -258,9 +290,10 @@ export default function TrafficReportPage() {
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.green}`} />{ROMI_CUTS.yellow + 1}% и выше</span>
           </div>
           <p className="text-xs text-hint mb-4 max-w-5xl">
-            «На тесте» — депов нет и спенд меньше {TEST_MULT.toLocaleString("ru-RU")} × целевой цены депа страны: Испания {usd0(TEST_MULT * TARGET_DEP.ES)},
-            Латам {usd0(TEST_MULT * TARGET_DEP.LATAM)}, остальные {usd0(TEST_MULT * TARGET_DEP.OTHER)}. «Лузер пока что» — депов нет, граница пройдена.
-            «Есть депы» — оцениваем по ROMI. «Без спенда» — депы и подписки пришли в периоде с крео, которое в нём уже не крутилось.
+            Этап — по всему времени крео в этой стране, цифры строки — за период. «На тесте» — депов нет и спенд меньше {TEST_MULT.toLocaleString("ru-RU")} × целевой
+            цены депа страны: Испания {usd0(TEST_MULT * TARGET_DEP.ES)}, Латам {usd0(TEST_MULT * TARGET_DEP.LATAM)}, остальные {usd0(TEST_MULT * TARGET_DEP.OTHER)}.
+            «Лузер пока что» — депов нет, граница пройдена. «Есть депы» — оцениваем по ROMI. «Без спенда» — Torro пришёл с крео, расхода по которому
+            в складе нет совсем (крутилось до склада или имя в ссылке не совпало с объявлением).
           </p>
 
           <div data-tour="traffic-filters" className="flex flex-wrap items-center gap-2 mb-3">
@@ -277,6 +310,7 @@ export default function TrafficReportPage() {
                     {...chip(onlyFav)}>★ Только избранные{favs.size ? ` · ${favs.size}` : ""}</button>
             <button onClick={expandAll} className="btn btn-sm">Развернуть всё</button>
             <button onClick={collapseAll} className="btn btn-sm">Свернуть всё</button>
+            <ColumnPicker labels={cols.ordered.map((c) => c.label)} hidden={cols.hidden} onToggle={cols.toggle} onMove={cols.move} />
             <select id="traffic-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage | "")} className="field" aria-label="Этап крео">
               <option value="">Все этапы</option>
               {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -290,17 +324,15 @@ export default function TrafficReportPage() {
               <thead>
                 <tr className="text-hint">
                   <th className="sticky top-0 left-0 z-30 bg-card text-left font-medium px-3 py-2 border-b border-line min-w-[13rem]">Баер / страна / крео</th>
-                  <th className="sticky top-0 z-20 bg-card text-left font-medium px-3 py-2 border-b border-line">Этап</th>
-                  <th className="sticky top-0 z-20 bg-card text-left font-medium px-3 py-2 border-b border-line" title="Последнее состояние объявлений с этим крео у баера (обновляется раз в час)">Статус</th>
-                  {COLS.map((c) => <th key={c.label} className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line whitespace-nowrap">{c.label}</th>)}
-                  <th className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line">ROMI</th>
-                  <th className="sticky top-0 z-20 bg-card text-right font-medium px-3 py-2 border-b border-line whitespace-nowrap" title="ROMI крео за всё время, все страны. Наведи на цифру — спенд, ревенью, цены">ROMI всё время</th>
+                  {cols.visible.map((c) => (
+                    <th key={c.label} title={c.title} className={`sticky top-0 z-20 bg-card ${c.left ? "text-left" : "text-right"} font-medium px-3 py-2 border-b border-line whitespace-nowrap`}>{c.label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {!data && !err && <tr><td colSpan={COLS.length + 5} className="px-3 py-6 text-hint">Загружаю…</td></tr>}
+                {!data && !err && <tr><td colSpan={cols.visible.length + 1} className="px-3 py-6 text-hint">Загружаю…</td></tr>}
                 {data && rows.length === 0 && (
-                  <tr><td colSpan={COLS.length + 5} className="px-3 py-6 text-hint">
+                  <tr><td colSpan={cols.visible.length + 1} className="px-3 py-6 text-hint">
                     {!onlyFav ? "За этот период расхода и Torro нет."
                       : favs.size ? "Избранные крео в этом периоде не крутились и Torro по ним нет."
                       : "Избранного пока нет — отметь крео звездой ☆ слева от названия."}
@@ -311,15 +343,11 @@ export default function TrafficReportPage() {
                   const fav = creoRow && isFav(rowBuyer, n.label);
                   const aiKey = creoRow ? favKey(idOf.get(rowBuyer) ?? rowBuyer, n.label) : "";
                   const verdict = ai.get(aiKey);
-                  const band = romiBand(n.m.romi);
                   const bg = n.level === 0 ? "bg-raised" : "bg-card";
-                  const st = STAGES.find((s) => s.id === n.stage);
                   const allOf = (creo: string) => allTime.get(`${rowBuyer}\u0000${creo}`);
                   const all = creoRow ? allOf(n.label) : undefined;
                   const glued = n.level === 2 && Boolean(n.children);   // строка склейки: t11, t11_v8
-                  const allSums = glued ? sumAllTime(n.children!.flatMap((c) => allOf(c.label)?.sums ?? [])) : all?.sums;
-                  const allM = allSums ? metricsOf(allSums) : null;
-                  const allBand = allM ? romiBand(allM.romi) : null;
+                  const row: Row = { n, all, glued, allSums: glued ? sumAllTime(n.children!.flatMap((c) => allOf(c.label)?.sums ?? [])) : all?.sums };
                   return (
                     <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
                       <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-line/50 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>
@@ -337,30 +365,9 @@ export default function TrafficReportPage() {
                         {creoRow ? <CreoLink name={n.label} /> : n.label}
                         {n.level === 2 && n.children && <span className="text-hint font-normal"> · {n.children.length} крео</span>}
                       </td>
-                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 whitespace-nowrap`}>
-                        {st ? (
-                          <span className={`inline-block px-2 py-0.5 rounded-md border ${st.chip}`}>{st.label}{n.stage === "test" && n.left !== undefined ? ` · ещё ${usd0(n.left)}` : ""}</span>
-                        ) : n.counts ? (
-                          <span className="text-hint font-normal">
-                            {STAGES.filter((s) => n.counts![s.id] > 0).map((s, i) => <Fragment key={s.id}>{i > 0 && " · "}{n.counts![s.id]} {s.many(n.counts![s.id])}</Fragment>)}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 whitespace-nowrap`}>
-                        {all?.active === true ? <span className="text-green-300">● активно</span>
-                          : all?.active === false ? <span className="text-hint">○ остановлено</span> : null}
-                      </td>
-                      {COLS.map((c) => <td key={c.label} className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>{c.cell(n)}</td>)}
-                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>
-                        <span className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md ${band ? BAND[band] : "text-hint"}`}>{show(n.m.romi, romiText)}</span>
-                      </td>
-                      <td className={`${bg} px-3 py-1.5 border-b border-line/50 text-right whitespace-nowrap`}>
-                        {allSums && allM && (
-                          <span title={[glued ? "Всё время, сумма крео этой строки" : "Всё время, все страны", `Спенд: ${usd0(allSums.spend)}`, `Ревенью: ${usd0(allSums.rev)}`,
-                            `Цена подп.: ${show(allM.cps, usd2)}`, `Цена диал.: ${show(allM.cpd, usd2)}`, `Депы: ${allSums.deps}`].join("\n")}
-                                className={`inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md cursor-help ${allBand ? BAND[allBand] : "text-hint"}`}>{show(allM.romi, romiText)}</span>
-                        )}
-                      </td>
+                      {cols.visible.map((c) => (
+                        <td key={c.label} className={`${bg} px-3 py-1.5 border-b border-line/50 whitespace-nowrap ${c.left ? "" : "text-right"}`}>{c.cell(row)}</td>
+                      ))}
                     </tr>
                   );
                 })}
