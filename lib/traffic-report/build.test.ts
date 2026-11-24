@@ -1,6 +1,7 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
-import { buildReport, cellsOf, creoGeo, filterCells, geoOf, groupCreos, lifeMap, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
+import { orderCols } from "@/components/ColumnPicker";
+import { buildReport, cellsOf, countRejects, sumRejects, creoGeo, filterCells, geoOf, groupCreos, lifeMap, metricsOf, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
 
 const sp = (r: Omit<SpendRow, "face" | "funnel" | "platform"> & Partial<SpendRow>): SpendRow => ({ face: "ROMAN", funnel: "TG", platform: "fb", ...r });
 
@@ -110,11 +111,11 @@ const period = cellsOf(
   [{ buyer: "D", campaign: "E", ad: "dep-later", subs: 0, dia: 0, deps: 1, rev: 300 }],
 );
 const life = lifeMap([
-  { buyer: "D", creo: "old-loser", geos: { ES: { spend: 900, deps: 0 }, MX: { spend: 50, deps: 0 } } },
-  { buyer: "D", creo: "young", geos: { ES: { spend: 40, deps: 0 } } },                  // меньше периода — берём период
-  { buyer: "D", creo: "dep-later", geos: { ES: { spend: 600, deps: 2 } } },             // в периоде не крутилось
-  { buyer: "D", creo: "vid-a-t5-v1-b1-es-es", geos: { ES: { spend: 400, deps: 0 } } },
-  { buyer: "D", creo: "vid-b-t5-v2-b1-es-es", geos: { ES: { spend: 400, deps: 0 } } },
+  { buyer: "D", creo: "old-loser", geos: { ES: s(900), MX: s(50) } },
+  { buyer: "D", creo: "young", geos: { ES: s(40) } },                  // меньше периода — берём период
+  { buyer: "D", creo: "dep-later", geos: { ES: { ...s(600, 2), rev: 1500 } } },   // в периоде не крутилось
+  { buyer: "D", creo: "vid-a-t5-v1-b1-es-es", geos: { ES: s(400) } },
+  { buyer: "D", creo: "vid-b-t5-v2-b1-es-es", geos: { ES: s(400) } },
 ]);
 const dEs = treeOf(period, life)[0].children!.find((g) => g.geo === "ES")!;
 const row = (label: string) => dEs.children!.find((n) => n.label === label)!;
@@ -127,8 +128,34 @@ assert.equal(treeOf(period, life)[0].children!.find((g) => g.geo === "MX")!.chil
 assert.equal(treeOf(period)[0].children!.find((g) => g.geo === "ES")!.children!.find((n) => n.label === "old-loser")!.stage, "test");  // без всего времени — по периоду (алерты)
 assert.equal(row("vid-a-t5-v1-b1-es-es").stage, "test");
 const t5 = groupCreos(treeOf(period, life), "text")[0].children!.find((g) => g.geo === "ES")!.children!.find((n) => n.label === "t5")!;
-assert.deepEqual(t5.life, { spend: 800, deps: 0 });              // склейка — сумма всего времени её крео
+assert.deepEqual(t5.life, s(800));                               // склейка — сумма всего времени её крео
 assert.equal(t5.stage, "loser");
 assert.deepEqual(dEs.counts, { test: 3, loser: 1, deps: 1, nospend: 0 });
+// ROMI всё время у страны и баера — по всему времени их крео (24.11.2026): ES $900 + $100 + $600 + $400 + $400, ревенью $1500.
+assert.equal(dEs.life!.spend, 2400);
+assert.equal(dEs.life!.rev, 1500);
+assert.equal(metricsOf(dEs.life!).romi, -37.5);
+assert.equal(treeOf(period, life)[0].life!.spend, 2450);          // баер — ещё $50 Мексики
+assert.equal(treeOf(period)[0].life!.spend, 450);                  // без всего времени — период
 
-console.log("traffic-report: этапы за всё время, цвет ROMI, страна депов, склейка, сортировка и фильтры верно");
+// Реджекты крео у баера: каждое отклонение, объявления, отклонено сейчас, политики по убыванию.
+const rj = countRejects([
+  { buyer: "A", creo: "x", times: 2, now: true, policies: ["Спам"] },
+  { buyer: "A", creo: "x", times: 1, now: false, policies: ["Спам", "Азартные игры"] },
+  { buyer: "A", creo: "x", times: 1, now: false, policies: ["Причины нет"] },
+  { buyer: "B", creo: "x", times: 1, now: true, policies: ["Спам"] },
+]);
+assert.deepEqual(rj.get("A\u0000x"), { n: 4, ads: 3, now: 1, reasons: [["Спам", 2], ["Азартные игры", 1], ["Причины нет", 1]] });
+assert.equal(rj.get("B\u0000x")!.ads, 1);                          // у другого баера — своё
+assert.deepEqual(sumRejects([rj.get("A\u0000x")!, rj.get("B\u0000x")!]), { n: 5, ads: 4, now: 2, reasons: [["Спам", 3], ["Азартные игры", 1], ["Причины нет", 1]] });  // склейка t11
+assert.equal(sumRejects([]), null);
+
+// «Столбцы»: свой порядок из браузера; новый столбец встаёт за соседом слева, а не в конец.
+const L = (xs: { label: string }[]) => xs.map((c) => c.label).join("");
+const C = ["A", "B", "C", "D"].map((label) => ({ label }));
+assert.equal(L(orderCols(C, [])), "ABCD");
+assert.equal(L(orderCols(C, ["D", "C", "B", "A"])), "DCBA");
+assert.equal(L(orderCols(C, ["C", "A", "D"])), "CABD");                // B — новый, за A
+assert.equal(L(orderCols(C, ["X", "B", "A", "C", "D"])), "BACD");      // пропавший столбец X не мешает
+
+console.log("traffic-report: этапы и ROMI за всё время, реджекты, порядок столбцов, цвет ROMI, страна депов, склейка, сортировка и фильтры верно");

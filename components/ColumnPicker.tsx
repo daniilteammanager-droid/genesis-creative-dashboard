@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 // Выбор столбцов таблицы, как у Артёма: галочка — показать, ↑ ↓ — порядок. Live Manager и Отчёты.
 
-// Свой порядок — по списку order; столбцов, которых в нём нет (новых), — в конце, в исходном порядке.
+// Свой порядок — по списку order. Столбец, которого в нём нет (новый), встаёт за своим соседом слева из исходного
+// порядка: «Реджекты» (24.11.2026) — за «Этапом», а не в конец таблицы.
 export function orderCols<T extends { label: string }>(all: T[], order: string[]): T[] {
-  const at = (l: string) => { const i = order.indexOf(l); return i < 0 ? 999 + all.findIndex((c) => c.label === l) : i; };
-  return [...all].sort((a, b) => at(a.label) - at(b.label));
+  const by = new Map(all.map((c) => [c.label, c]));
+  const out = order.filter((l) => by.has(l));
+  all.forEach((c, i) => { if (!out.includes(c.label)) out.splice(i ? out.indexOf(all[i - 1].label) + 1 : 0, 0, c.label); });
+  return out.map((l) => by.get(l)!);
 }
 // Столбец на одну позицию выше или ниже; на краю — null.
 export function shiftCol(labels: string[], label: string, d: -1 | 1): string[] | null {

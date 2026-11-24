@@ -5,11 +5,12 @@ import { DateRange } from "@/components/DatePicker";
 import { SummaryCard } from "@/components/general-report/shared";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import {
-  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, groupCreos, lifeMap, metricsOf, romiBand, sortCreos, sumAllTime, totalOf, treeOf,
-  type Dim, type Filters, type GroupMode, type ReportNode, type SortBy, type Stage, type Sums,
+  DIMS, DIM_LABELS, REST, ROMI_CUTS, TARGET_DEP, TEST_MULT, dimOptions, filterCells, geoName, groupCreos, lifeMap, metricsOf, romiBand, sortCreos, sumAllTime, sumRejects, totalOf, treeOf,
+  type Dim, type Filters, type GroupMode, type Rejects, type ReportNode, type SortBy, type Stage, type Sums,
 } from "@/lib/traffic-report/build";
 import type { CreoAllTime, TrafficReport } from "@/lib/traffic-report/load";
 import { ColumnPicker, useColumns } from "@/components/ColumnPicker";
+import { HoverTip } from "@/components/HoverTip";
 import AiPanel, { VERDICT, type Verdict } from "./AiPanel";
 import { CreoLink } from "@/components/CreoModal";
 import { Busy, chip, seg } from "@/components/ui";
@@ -47,10 +48,15 @@ const pct = (digits: number) => (v: number) => `${(v * 100).toLocaleString("ru-R
 const romiText = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v).toLocaleString("ru-RU")}%`;
 const show = (v: number | null | undefined, f: (v: number) => string) => (v === null || v === undefined || Number.isNaN(v) ? "—" : f(v));
 
-// Строка таблицы и её всё время (все страны): у крео — своё, у склейки t11 — сумма её крео.
-type Row = { n: ReportNode; all?: CreoAllTime; allSums?: Sums | null; glued: boolean };
+const plural = (n: number, one: string, few: string, many: string) =>
+  n % 10 === 1 && n % 100 !== 11 ? one : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? few : many;
+
+// Строка таблицы и её всё время по всем странам: у крео — своё, у склейки t11 — сумма её крео.
+// rej — реджекты крео (у склейки — сумма), «tg» — крео только в TG Ads, там модерация своя. hasLife — всё время пришло.
+type Row = { n: ReportNode; all?: CreoAllTime; allSums?: Sums | null; glued: boolean; rej: Rejects | "tg" | null; hasLife: boolean };
 const chipCls = "inline-block min-w-[3.5rem] px-1.5 py-0.5 rounded-md";
-// Столбцы по умолчанию: этап, статус, спенд и сразу ROMI (Daniil 17.11.2026); свой набор и порядок — «Столбцы».
+const HISTORY_FROM = "история с 24.10.2026";
+// Столбцы по умолчанию: этап, реджекты (24.11.2026), статус, спенд и сразу ROMI (Daniil 17.11.2026); свой набор и порядок — «Столбцы».
 const COLS: { label: string; title?: string; left?: boolean; cell: (r: Row) => ReactNode }[] = [
   { label: "Этап", left: true, title: "Этап крео — по всему времени крео в этой стране, а не по периоду", cell: ({ n }) => {
     const st = STAGES.find((s) => s.id === n.stage);
@@ -64,17 +70,40 @@ const COLS: { label: string; title?: string; left?: boolean; cell: (r: Row) => R
       </span>
     ) : null;
   } },
+  { label: "Реджекты", left: true, title: `Сколько раз Meta отклоняла объявления с этим крео у баера — за всё время, по всем странам (${HISTORY_FROM}). Наведи — объявления и причины`, cell: ({ rej, glued }) => {
+    if (!rej) return null;
+    if (rej === "tg") return <HoverTip label="Реджекты: TG Ads" className="px-1 text-hint cursor-help" tip={<p>У TG Ads своя модерация — отклонения Meta тут не считаем.</p>}>—</HoverTip>;
+    const bad = rej.n > 0;
+    return (
+      <HoverTip label={`Реджекты: ${rej.n}`} tip={<>
+        <p className="text-sm font-semibold text-white">{bad ? `${rej.n} ${plural(rej.n, "отклонение", "отклонения", "отклонений")} · ${rej.ads} ${plural(rej.ads, "объявление", "объявления", "объявлений")}` : "Отклонений не было"}</p>
+        {bad && <p className="text-zinc-400">Сейчас отклонено: {rej.now}</p>}
+        {bad && (
+          <div className="pt-1.5 border-t border-line space-y-0.5">
+            <p className="text-hint">Причины Meta · объявлений</p>
+            {rej.reasons.map(([p, c]) => <p key={p} className="flex justify-between gap-3"><span>{p}</span><span className="tabular-nums text-red-300">{c}</span></p>)}
+          </div>
+        )}
+        <p className="text-hint">{glued ? "Сумма крео строки · " : ""}Всё время, все страны · {HISTORY_FROM}</p>
+      </>} className={`inline-block min-w-[2.25rem] px-1.5 py-0.5 rounded-md text-center tabular-nums cursor-help ring-1 ring-inset ${bad ? "bg-red-500/20 text-red-200 ring-red-500/45" : "bg-green-500/20 text-green-200 ring-green-500/45"}`}>{rej.n}</HoverTip>
+    );
+  } },
   { label: "Статус", left: true, title: "Последнее состояние объявлений с этим крео у баера (обновляется раз в час)", cell: ({ all }) =>
     all?.active === true ? <span className="text-green-300">● активно</span> : all?.active === false ? <span className="text-hint">○ остановлено</span> : null },
   { label: "Спенд", cell: ({ n }) => usd0(n.sums.spend) },
   { label: "ROMI", cell: ({ n }) => { const b = romiBand(n.m.romi); return <span className={`${chipCls} ${b ? BAND[b] : "text-hint"}`}>{show(n.m.romi, romiText)}</span>; } },
-  { label: "ROMI всё время", title: "ROMI крео за всё время, все страны. Наведи на цифру — спенд, ревенью, цены", cell: ({ allSums, glued }) => {
-    if (!allSums) return null;
-    const m = metricsOf(allSums), b = romiBand(m.romi);
+  { label: "ROMI всё время", title: "ROMI за всё время: у крео — в этой стране, у страны и баера — по их крео из отчёта. Наведи — спенд, ревенью, цены", cell: ({ n, allSums, glued, hasLife }) => {
+    if (!hasLife || !n.life) return null;
+    const m = metricsOf(n.life), b = romiBand(m.romi);
+    const line = (s: Sums) => `${show(metricsOf(s).romi, romiText)} · спенд ${usd0(s.spend)} · ревенью ${usd0(s.rev)}`;
+    const head = n.level === 0 ? "Всё время крео баера из отчёта" : n.level === 1 ? `${n.label} · всё время крео из отчёта` : `${geoName(n.geo!)} · за всё время${glued ? ", сумма крео строки" : ""}`;
     return (
-      <span title={[glued ? "Всё время, сумма крео этой строки" : "Всё время, все страны", `Спенд: ${usd0(allSums.spend)}`, `Ревенью: ${usd0(allSums.rev)}`,
-        `Цена подп.: ${show(m.cps, usd2)}`, `Цена диал.: ${show(m.cpd, usd2)}`, `Депы: ${allSums.deps}`].join("\n")}
-            className={`${chipCls} cursor-help ${b ? BAND[b] : "text-hint"}`}>{show(m.romi, romiText)}</span>
+      <HoverTip label={`ROMI всё время: ${show(m.romi, romiText)}`} tip={<>
+        <p className="text-hint">{head}</p>
+        <p>{line(n.life)}</p>
+        <p className="text-zinc-400">Цена подп. {show(m.cps, usd2)} · цена диал. {show(m.cpd, usd2)} · депов {n.life.deps}</p>
+        {allSums && n.level >= 2 && <><p className="pt-1.5 border-t border-line text-hint">Все страны · за всё время</p><p>{line(allSums)}</p></>}
+      </>} className={`${chipCls} cursor-help ${b ? BAND[b] : "text-hint"}`}>{show(m.romi, romiText)}</HoverTip>
     );
   } },
   { label: "CPM", cell: ({ n }) => show(n.m.cpm, usd2) },
@@ -290,7 +319,9 @@ export default function TrafficReportPage() {
             <span className="flex items-center gap-1.5"><i className={`w-3 h-3 rounded-sm ${BAND.green}`} />{ROMI_CUTS.yellow + 1}% и выше</span>
           </div>
           <p className="text-xs text-hint mb-4 max-w-5xl">
-            Этап — по всему времени крео в этой стране, цифры строки — за период. «На тесте» — депов нет и спенд меньше {TEST_MULT.toLocaleString("ru-RU")} × целевой
+            Этап — по всему времени крео в этой стране, цифры строки — за период. Реджекты — сколько раз Meta отклоняла объявления с этим крео
+            у баера, за всё время и по всем странам ({HISTORY_FROM}): красный — отклоняли, зелёный — ни разу, у TG Ads прочерк — модерация своя.
+            ROMI всё время — у крео в этой стране, у страны и баера — по их крео из отчёта. «На тесте» — депов нет и спенд меньше {TEST_MULT.toLocaleString("ru-RU")} × целевой
             цены депа страны: Испания {usd0(TEST_MULT * TARGET_DEP.ES)}, Латам {usd0(TEST_MULT * TARGET_DEP.LATAM)}, остальные {usd0(TEST_MULT * TARGET_DEP.OTHER)}.
             «Лузер пока что» — депов нет, граница пройдена. «Есть депы» — оцениваем по ROMI. «Без спенда» — Torro пришёл с крео, расхода по которому
             в складе нет совсем (крутилось до склада или имя в ссылке не совпало с объявлением).
@@ -347,7 +378,14 @@ export default function TrafficReportPage() {
                   const allOf = (creo: string) => allTime.get(`${rowBuyer}\u0000${creo}`);
                   const all = creoRow ? allOf(n.label) : undefined;
                   const glued = n.level === 2 && Boolean(n.children);   // строка склейки: t11, t11_v8
-                  const row: Row = { n, all, glued, allSums: glued ? sumAllTime(n.children!.flatMap((c) => allOf(c.label)?.sums ?? [])) : all?.sums };
+                  const rejOf = (creo: string) => { const a = allOf(creo); return a ? a.rejects ?? ("tg" as const) : null; };
+                  const kids = glued ? n.children!.map((c) => rejOf(c.label)) : [];
+                  const real = kids.filter((r): r is Rejects => typeof r === "object" && r !== null);
+                  const row: Row = {
+                    n, all, glued, hasLife: life.size > 0,
+                    allSums: glued ? sumAllTime(n.children!.flatMap((c) => allOf(c.label)?.sums ?? [])) : all?.sums,
+                    rej: creoRow ? rejOf(n.label) : glued ? (real.length ? sumRejects(real) : kids.includes("tg") ? "tg" : null) : null,
+                  };
                   return (
                     <tr key={n.key} onClick={n.children ? () => toggle(n) : undefined} className={`${n.children ? "cursor-pointer" : ""} hover:brightness-125 ${n.level === 0 ? "text-sm font-semibold" : n.level === 1 ? "font-medium" : n.level === 2 ? (n.children ? "text-zinc-100 font-medium" : "text-zinc-300") : "text-zinc-400"}`}>
                       <td className={`sticky left-0 z-10 ${bg} px-3 py-1.5 border-b border-line/50 max-w-[24rem] break-words`} style={{ paddingLeft: `${0.75 + n.level * 1.1}rem` }}>

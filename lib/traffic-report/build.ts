@@ -104,7 +104,7 @@ export interface ReportNode {
   geo?: string;
   sums: Sums;
   m: Metrics;
-  life?: Life;                         // у крео: за всё время в этой стране — по нему этап
+  life?: Sums;                         // за всё время в этой стране: у крео — по нему этап, у страны и баера — сумма их крео
   stage?: Stage;                       // у крео
   left?: number;                       // крео на тесте: сколько ещё до границы, $
   counts?: Record<Stage, number>;      // у баера и страны: крео по этапам
@@ -141,7 +141,7 @@ const stage = (n: ReportNode, geo: string) => {
 
 // Всё время крео по странам (CreoAllTime.geos из load.ts) → ключ строки дерева «баер × страна × крео».
 export const lifeKey = (buyer: string, geo: string, creo: string) => `${buyer}\u0000${geo}\u0000${creo}`;
-export const lifeMap = (creos: { buyer: string; creo: string; geos?: Record<string, Life> }[]) =>
+export const lifeMap = (creos: { buyer: string; creo: string; geos?: Record<string, Sums> }[]) =>
   new Map(creos.flatMap((c) => Object.entries(c.geos ?? {}).map(([geo, l]) => [lifeKey(c.buyer, geo, c.creo), l] as const)));
 
 const NO_MARK = "Без метки в ссылке";
@@ -212,7 +212,8 @@ export const buildReport = (spend: SpendRow[], torro: TorroRow[], rest?: Map<str
 
 // Дерево баер → страна → крео из ячеек: лица, воронки и площадки внутри складываются.
 // life — всё время крео по странам (lifeMap); нет — этап по периоду (алерты теста, Decision 100).
-export function treeOf(input: Cell[], life?: Map<string, Life>): ReportNode[] {
+// У страны и баера life — сумма всего времени их крео: «ROMI всё время» строки.
+export function treeOf(input: Cell[], life?: Map<string, Sums>): ReportNode[] {
   const add = (a: Sums, b: Sums) => { for (const k of Object.keys(a) as (keyof Sums)[]) a[k] += b[k]; };
   const cells = new Map<string, Sums>();   // баер|страна|крео
   for (const c of input) {
@@ -225,20 +226,22 @@ export function treeOf(input: Cell[], life?: Map<string, Life>): ReportNode[] {
   const countries = new Map<string, ReportNode>();
   for (const [k, s] of cells) {
     const [buyer, geo, creo] = k.split("\u0000");
-    if (!buyers.has(buyer)) buyers.set(buyer, { key: buyer, level: 0, label: buyer, sums: { ...ZERO }, m: metricsOf(ZERO), counts: blankCounts(), children: [] });
+    if (!buyers.has(buyer)) buyers.set(buyer, { key: buyer, level: 0, label: buyer, sums: { ...ZERO }, m: metricsOf(ZERO), life: { ...ZERO }, counts: blankCounts(), children: [] });
     const b = buyers.get(buyer)!;
     const gk = `${buyer} › ${geo}`;
     if (!countries.has(gk)) {
-      const g: ReportNode = { key: gk, level: 1, label: geoName(geo), geo, sums: { ...ZERO }, m: metricsOf(ZERO), counts: blankCounts(), children: [] };
+      const g: ReportNode = { key: gk, level: 1, label: geoName(geo), geo, sums: { ...ZERO }, m: metricsOf(ZERO), ...(geo === REST ? {} : { life: { ...ZERO } }), counts: blankCounts(), children: [] };
       countries.set(gk, g); b.children!.push(g);
     }
     const g = countries.get(gk)!;
     const node: ReportNode = { key: `${gk} › ${creo}`, level: 2, label: creo, geo, sums: s, m: metricsOf(s) };
     if (geo !== REST) {
       // ponytail: всё время не меньше периода — расход кабинета без закрепления в «всё время» не попадает (load.ts).
-      const l = life?.get(k);
-      node.life = { spend: Math.max(l?.spend ?? 0, s.spend), deps: Math.max(l?.deps ?? 0, s.deps) };
+      const l = life?.get(k) ?? s;
+      node.life = { ...ZERO };
+      for (const f of Object.keys(ZERO) as (keyof Sums)[]) node.life[f] = Math.max(l[f], s[f]);
       stage(node, geo);
+      add(g.life!, node.life); add(b.life!, node.life);
       g.counts![node.stage!]++; b.counts![node.stage!]++;
     }
     g.children!.push(node);
@@ -278,12 +281,12 @@ export function groupCreos(nodes: ReportNode[], mode: GroupMode): ReportNode[] {
         const key = textKey(c.label, mode);
         if (!key) { units.push(c); continue; }
         if (!groups.has(key)) {
-          const t: ReportNode = { key: `${g.key} › ${key}`, level: 2, label: key, geo: g.geo, sums: { ...ZERO }, m: metricsOf(ZERO), life: { spend: 0, deps: 0 }, children: [] };
+          const t: ReportNode = { key: `${g.key} › ${key}`, level: 2, label: key, geo: g.geo, sums: { ...ZERO }, m: metricsOf(ZERO), life: { ...ZERO }, children: [] };
           groups.set(key, t); units.push(t);
         }
         const t = groups.get(key)!;
         for (const k of Object.keys(t.sums) as (keyof Sums)[]) t.sums[k] += c.sums[k];
-        t.life!.spend += c.life?.spend ?? c.sums.spend; t.life!.deps += c.life?.deps ?? c.sums.deps;
+        for (const k of Object.keys(t.life!) as (keyof Sums)[]) t.life![k] += (c.life ?? c.sums)[k];
         t.children!.push({ ...c, level: 3 });
       }
       for (const t of groups.values()) {
@@ -311,6 +314,30 @@ export function sortCreos(nodes: ReportNode[], by: SortBy): ReportNode[] {
   const deep = (n: ReportNode): ReportNode =>
     !n.children ? n : { ...n, children: (n.level >= 1 ? [...n.children].sort(cmp) : n.children).map(deep) };
   return nodes.map(deep);
+}
+
+// Реджекты крео у баера (Daniil 24.11.2026): отклонённые объявления Meta с этим именем — за всё время, по всем странам.
+// n — каждое отклонение (повторное после одобрения — ещё одно), ads — объявлений, now — отклонено сейчас,
+// reasons — политика → сколько объявлений (у объявления с двумя политиками — в обеих), по убыванию.
+export interface Rejects { n: number; ads: number; now: number; reasons: [string, number][] }
+export function countRejects(ads: { buyer: string; creo: string; times: number; now: boolean; policies: string[] }[]): Map<string, Rejects> {
+  const by = new Map<string, Rejects[]>();
+  for (const a of ads) {
+    const k = `${a.buyer}\u0000${a.creo}`;
+    (by.get(k) ?? by.set(k, []).get(k)!).push({ n: a.times, ads: 1, now: a.now ? 1 : 0, reasons: a.policies.map((p) => [p, 1]) });
+  }
+  return new Map([...by].map(([k, list]) => [k, sumRejects(list)!]));
+}
+// Сумма реджектов (крео баера, строка склейки t11); пусто — null.
+export function sumRejects(list: Rejects[]): Rejects | null {
+  if (!list.length) return null;
+  const out: Rejects = { n: 0, ads: 0, now: 0, reasons: [] };
+  for (const r of list) {
+    out.n += r.n; out.ads += r.ads; out.now += r.now;
+    for (const [p, c] of r.reasons) { const x = out.reasons.find(([name]) => name === p); if (x) x[1] += c; else out.reasons.push([p, c]); }
+  }
+  out.reasons.sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], "ru"));
+  return out;
 }
 
 // Всё время строки-склейки — сумма всего времени её крео. Нет ни у одного — null, а не нули.

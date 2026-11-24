@@ -3,7 +3,8 @@ import { NO_CABINETS, resolveScope } from "@/lib/warehouse/accounts";
 import type { Profile } from "@/lib/auth/types";
 import { faceInName } from "@/lib/warehouse/check";
 import { buyerCodeIn, parseName, textNoOf } from "@/lib/creatives/code";
-import { cellsOf, geoOf, REST, type Cell, type Life, type Sums, type SpendRow, type TorroRow } from "./build";
+import { cellsOf, countRejects, geoOf, REST, type Cell, type Rejects, type Sums, type SpendRow, type TorroRow } from "./build";
+import { merge, policiesOf, type CurrentRow, type EventRow } from "@/lib/mcp/rejects";
 import { creativeOfTitle, geoOfTitle, regionOfCabinet } from "@/lib/tgads/names";
 
 // Отчёт по трафику из склада (Decision 098). Баеру — свои подключения, владельцу и
@@ -22,8 +23,9 @@ export interface TrafficReport {
   creos: CreoAllTime[];
   notice?: string;
 }
-// geos — то же всё время по странам (страна — как у цифр периода): по нему этап крео на странице.
-export interface CreoAllTime { buyer: string; creo: string; sums: Sums; geos: Record<string, Life>; active: boolean | null; first?: string }
+// geos — то же всё время по странам (страна — как у цифр периода): по нему этап крео и «ROMI всё время» строки.
+// rejects — отклонённые объявления Meta с этим крео у баера, всё время; нет — крео только в TG Ads (модерация своя).
+export interface CreoAllTime { buyer: string; creo: string; sums: Sums; geos: Record<string, Sums>; rejects?: Rejects; active: boolean | null; first?: string }
 
 type Crm = { subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
 const torroOf = (r: Crm) => ({
@@ -180,10 +182,12 @@ async function allTimeOf(db: ReturnType<typeof warehouse>, cells: Cell[], userId
     days.push(...d);
     for (const p of pairs) torro.push({ buyer: label.get(p.user_id) ?? p.user_id, campaign: p.campaign_name, ad: p.ad_name, ...torroOf(p) });
   }
-  for (const c of cellsOf(await toRows(days), torro)) {
-    const x = slot(c.buyer, c.creo), g = (x.geos[c.geo] ??= { spend: 0, deps: 0 });
-    for (const k of Object.keys(x.sums) as (keyof Sums)[]) x.sums[k] += c.sums[k];
-    g.spend += c.sums.spend; g.deps += c.sums.deps;
+  const life = cellsOf(await toRows(days), torro);
+  const meta = new Set<string>();   // «баер × крео», что крутились в Facebook: у них реджекты считаем, у TG Ads — нет
+  for (const c of [...cells, ...life]) if (c.platform === "fb") meta.add(`${c.buyer}\u0000${c.creo}`);
+  for (const c of life) {
+    const x = slot(c.buyer, c.creo), g = (x.geos[c.geo] ??= { spend: 0, impr: 0, clicks: 0, subs: 0, dia: 0, deps: 0, rev: 0 });
+    for (const k of Object.keys(x.sums) as (keyof Sums)[]) { x.sums[k] += c.sums[k]; g[k] += c.sums[k]; }
   }
   // Первый день с расходом за всё время — по нему штаб и MCP видят новые запуски.
   for (const d of days) {
@@ -191,16 +195,32 @@ async function allTimeOf(db: ReturnType<typeof warehouse>, cells: Cell[], userId
     const who = owner.get(d.account_id ?? "") ?? d.user_id, c = slot(label.get(who) ?? who, (d.ad_name ?? "").trim());
     if (!c.first || d.date < c.first) c.first = d.date;
   }
+  // Реджекты: тот же разбор, что у get_rejects (Decision 123) — текущие отклонения + история, только Meta.
+  // ponytail: вся история этих кабинетов (на 24.11 — ~1,3 тыс. объявлений на команду); вырастет — фильтр по именам в запрос.
+  const [current, events, ents] = await Promise.all([
+    selectAll<CurrentRow>((from, to) => db.from("wh_rejected_ads").select("ad_id, account_id, ad_name, campaign_name, adset_name, status, reason, first_seen_at")
+      .in("account_id", accounts).order("ad_id").range(from, to)),
+    selectAll<EventRow>((from, to) => db.from("antireject_events").select("created_at, kind, ad_id, account_id, ad_name, campaign_name, actor, text, ok, status")
+      .in("account_id", accounts).order("created_at").order("id").range(from, to)),
+    selectAll<{ account_id: string; name: string | null; effective_status: string | null; source: string; missing: boolean }>((from, to) =>
+      db.from("wh_entities").select("account_id, name, effective_status, source, missing").eq("level", "ad").in("account_id", accounts)
+        .order("entity_id").range(from, to)),
+  ]);
+  const rejects = countRejects(merge(current, events).map((a) => {
+    const who = owner.get(a.accountId) ?? "";
+    return { buyer: label.get(who) ?? who, creo: a.name, times: a.times.length, now: !!a.status, policies: policiesOf(a.reason) };
+  }));
   // Статус: у Meta имя объявления — само крео, у TG Ads — заголовок, крео из него.
   const wanted = new Set(names);
-  const ents = await selectAll<{ account_id: string; name: string | null; effective_status: string | null; source: string; missing: boolean }>((from, to) =>
-    db.from("wh_entities").select("account_id, name, effective_status, source, missing").eq("level", "ad").in("account_id", accounts)
-      .order("entity_id").range(from, to));
   for (const e of ents) {
     const creo = e.source === "tgads" ? creativeOfTitle(e.name ?? "") : (e.name ?? "").trim();
     if (!wanted.has(creo)) continue;
     const who = owner.get(e.account_id) ?? "", c = slot(label.get(who) ?? who, creo);
     c.active = Boolean(c.active) || (!e.missing && (e.effective_status ?? "").toUpperCase() === "ACTIVE");
+  }
+  for (const c of out.values()) {
+    const k = `${c.buyer}\u0000${c.creo}`;
+    if (meta.has(k)) c.rejects = rejects.get(k) ?? { n: 0, ads: 0, now: 0, reasons: [] };
   }
   return [...out.values()];
 }
