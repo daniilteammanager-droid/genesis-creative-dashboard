@@ -4,6 +4,7 @@ import { getConnection } from "@/lib/connections/store";
 import { usdRate } from "@/lib/fx";
 import { mskDay } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
+import { escapeHtml, notify } from "@/lib/telegram/links";
 
 // Live Manager в Reports (Decision 079): статус и бюджет кампаний, адсетов и
 // объявлений прямо из таблицы — как у Артёма в Genesis Manager.
@@ -216,4 +217,27 @@ export async function applyLive(me: Profile, items: Item[], action: Action): Pro
     }
   }
   return out;
+}
+
+// Джун меняет кабинеты баера (060_junior.sql): каждое изменение — в журнал mcp_changes (без подключения —
+// со страницы), удачные — баеру в Telegram (уведомление junior_changes). Баер и владелец со страницы не пишутся, как раньше.
+export async function logJunior(seat: Profile, items: Item[], action: Action, results: { id: string; ok: boolean; error?: string }[]): Promise<void> {
+  const by = seat.actor;
+  if (!by || !items.length) return;
+  const db = warehouse();
+  const { data } = await db.from("wh_entities").select("entity_id, name").in("entity_id", items.map((i) => i.id));
+  const name = new Map((data ?? []).map((r) => [r.entity_id as string, (r.name as string | null) ?? (r.entity_id as string)]));
+  const res = new Map(results.map((r) => [r.id, r]));
+  const act = action.kind === "budget" ? "budget" : action.active ? "activate" : "pause";
+  const after = action.kind === "budget" ? { budget: action.usd } : { status: action.active ? "ACTIVE" : "PAUSED" };
+  await db.from("mcp_changes").insert(items.map((i) => ({
+    user_id: by.id, token_id: null, entity_id: i.id, level: i.level, account_id: i.accountId, name: name.get(i.id) ?? i.id,
+    action: act, before: null, after, ok: res.get(i.id)?.ok ?? false, error: res.get(i.id)?.error?.slice(0, 500) ?? null,
+  })));
+  const done = items.filter((i) => res.get(i.id)?.ok);
+  if (!done.length) return;
+  const what = action.kind === "budget" ? `дневной бюджет $${action.usd}` : action.active ? "запуск" : "пауза";
+  const lines = done.slice(0, 20).map((i) => `• ${escapeHtml(name.get(i.id) ?? i.id)}`);
+  if (done.length > 20) lines.push(`…и ещё ${done.length - 20}`);
+  await notify(seat.id, "junior_changes", `👤 <b>${escapeHtml(by.name || by.email)}</b> в Live Manager: ${what}\n${lines.join("\n")}`);
 }

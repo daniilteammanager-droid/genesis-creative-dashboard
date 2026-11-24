@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { S3Client, CopyObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { selfOf } from "@/lib/auth/types";
 import { mayManageKey } from "@/lib/creatives/access";
 import { dropFace, isFace, moveFace, setFace } from "@/lib/creatives/faces";
 
@@ -76,7 +77,7 @@ async function copyAndDelete(fromKey: string, toKey: string) {
 // строку переписывает любой, кто запросил ссылку на загрузку с тем же кодом, —
 // так можно было удалить чужой или легаси-файл.
 async function mayManage(key: string): Promise<string | null> {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return "Нужно войти";
   return mayManageKey(me, key)
     ? null
@@ -95,8 +96,8 @@ export async function POST(req: Request) {
     // Лицо файла (Decision 086): у загруженных до него лица нет — ставится здесь.
     if (op === "face") {
       if (!isFace(body.face)) return NextResponse.json({ error: "Лицо — ROMAN или RICKY" }, { status: 400 });
-      const me = await getProfile();
-      await setFace(key, body.face, me!.id);
+      const me = await getSeat();
+      await setFace(key, body.face, selfOf(me!).id);
       return NextResponse.json({ ok: true });
     }
 

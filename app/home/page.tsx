@@ -58,7 +58,7 @@ export default function HomePage() {
     window.dispatchEvent(new Event(CARDS_EVENT));
   };
 
-  const team = me && me.role !== "buyer";
+  const team = me?.role === "main" || me?.role === "teamlead";
 
   return (
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
@@ -97,7 +97,7 @@ export default function HomePage() {
           {data?.notice && <p className="text-amber-300/80">{data.notice}</p>}
         </div>
 
-        {me && <AiBlock lead={me.role !== "buyer"} />}
+        {me && <AiBlock lead={team} />}
         <Leaders />
       </div>
     </main>

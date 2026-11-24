@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { loadCreatives } from "@/lib/warehouse/creatives";
 
 // Диапазон по умолчанию — последние 14 дней, столько же, сколько перечитывает
@@ -14,7 +14,7 @@ function isoDay(d: Date) {
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
   const p = new URL(req.url).searchParams;

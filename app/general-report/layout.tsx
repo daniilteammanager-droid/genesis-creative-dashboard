@@ -1,10 +1,10 @@
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import NoConnections from "@/components/NoConnections";
 
 // Раздел работал на общих таблицах команды из env, то есть баер видел выгрузки всех.
 // До появления подключений он просто не пускается сюда (Decision 035).
 export default async function GeneralReportLayout({ children }: { children: React.ReactNode }) {
-  const me = await getProfile();
+  const me = await getSeat();
   // Баер с подключённой таблицей заходит и видит только её. Без таблицы — экран
   // с объяснением: показывать ему общие источники команды нельзя (Decision 035).
   if (me?.role === "buyer" && !me.gr_spreadsheet_id) {

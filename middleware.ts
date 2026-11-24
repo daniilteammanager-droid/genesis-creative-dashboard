@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { juniorAreas, juniorMay } from "@/lib/nav";
 
 // Единственная дверь в дашборд. Без сессии сюда не пройти — раньше страницы и
 // роуты были открыты всем, кто знает адрес, включая запись и удаление в R2.
@@ -28,7 +29,10 @@ const under = (pathname: string, p: string) => pathname === p || pathname.starts
 // полуминуты в приложении. Это приемлемо — на уровне базы его уже не пускает
 // app_role() (Decision 033), то есть второй рубеж работает без задержки.
 const STATUS_TTL_MS = 30_000;
-const statusCache = new Map<string, { blocked: boolean; at: number }>();
+// У джуна заодно — его разделы на деле и AI-доступ (060_junior.sql): закрытый раздел режется здесь же,
+// и страница, и её API. Поменяли разделы — доходит за те же полминуты.
+type Junior = { areas: string[]; mcp: boolean };
+const statusCache = new Map<string, { blocked: boolean; junior: Junior | null; at: number }>();
 
 export async function middleware(request: NextRequest) {
   if (BEARER_PATHS.some((p) => under(request.nextUrl.pathname, p))) return NextResponse.next();
@@ -64,23 +68,32 @@ export async function middleware(request: NextRequest) {
   // клиентские. Отключение через Supabase Auth сессию не отзывает, так что без этой
   // проверки кнопка «отключён» не делала ровно ничего.
   let blocked = false;
+  let junior: Junior | null = null;
   if (user) {
     const hit = statusCache.get(user.id);
     if (hit && Date.now() - hit.at < STATUS_TTL_MS) {
       blocked = hit.blocked;
+      junior = hit.junior;
     } else {
       const { data, error } = await supabase
         .from("profiles")
-        .select("status")
+        .select("status, role, junior_areas, junior_mcp")
         .eq("id", user.id)
         .maybeSingle();
       // Ошибка — это недоступный Supabase, а не запрет: дашборд не должен падать
       // вместе с ним (Decision 005). Запираем только когда ответ получен и он не
       // «active» — включая случай, когда профиля нет вовсе.
       blocked = !error && data?.status !== "active";
+      // Джун: разделы — свои ∩ разделы баера. Баер не прочитался — только личное, и это не кэшируем.
+      let fresh = !error;
+      if (data?.role === "junior") {
+        const { data: b, error: e } = await supabase.rpc("junior_buyer").maybeSingle<{ status: string; role: string; legacy_access: boolean }>();
+        junior = { areas: juniorAreas(data.junior_areas as string[] | null, e ? null : b), mcp: data.junior_mcp === true };
+        fresh = fresh && !e;
+      }
       // Ошибку не кэшируем: иначе одна моргнувшая секунда Supabase раздаёт
       // пропуск на полминуты вперёд.
-      if (!error) statusCache.set(user.id, { blocked, at: Date.now() });
+      if (fresh) statusCache.set(user.id, { blocked, junior, at: Date.now() });
     }
   }
 
@@ -103,6 +116,15 @@ export async function middleware(request: NextRequest) {
     // экрану согласия AI-доступа (/oauth/authorize) без параметров OAuth делать нечего.
     else login.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(login);
+  }
+
+  // Джун — только в свои разделы. Страницу закрытого — на «/» (стартовая из открытых), API — отказ.
+  if (user && !blocked && junior && !juniorMay(pathname, junior.areas, junior.mcp)) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Этот раздел джуну закрыт" }, { status: 403 });
+    const home = request.nextUrl.clone();
+    home.pathname = "/";
+    home.search = "";
+    return NextResponse.redirect(home);
   }
 
   // Отключённого с /login не уводим: увести его некуда — на любой странице его

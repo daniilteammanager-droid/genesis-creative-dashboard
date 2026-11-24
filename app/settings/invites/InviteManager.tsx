@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
-import { normalizeBuyerCode, type UserRole } from "@/lib/auth/types";
+import { ROLE_LABELS, normalizeBuyerCode, type UserRole } from "@/lib/auth/types";
 
 export interface Invite {
   token: string;
@@ -13,6 +13,7 @@ export interface Invite {
   created_at: string;
   expires_at: string;
   used_at: string | null;
+  junior_of: string | null;
 }
 
 // 20 hex-символов, 80 бит случайности. Подобрать перебором нереально, а в ссылку
@@ -25,12 +26,14 @@ function inviteLink(token: string): string {
   return `${window.location.origin}/login?invite=${token}`;
 }
 
-export default function InviteManager({ invites }: { invites: Invite[] }) {
+export default function InviteManager({ invites, buyers }: { invites: Invite[]; buyers: { id: string; label: string }[] }) {
   const router = useRouter();
   const [note, setNote] = useState("");
   const [role, setRole] = useState<UserRole>("buyer");
   const [days, setDays] = useState(14);
   const [buyerCode, setBuyerCode] = useState("");
+  // Джун — сразу к баеру (060_junior.sql).
+  const [juniorOf, setJuniorOf] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -52,6 +55,12 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
       return;
     }
 
+    if (role === "junior" && !juniorOf) {
+      setBusy(false);
+      setError("Выбери баера джуна");
+      return;
+    }
+
     const token = newToken();
     const expires = new Date(Date.now() + days * 86_400_000).toISOString();
 
@@ -60,6 +69,7 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
       // Номер задаётся здесь, а не правится после регистрации: действующим баерам
       // нужны их настоящие b1–b4, а последовательность выдала бы следующий свободный.
       buyer_code: role === "buyer" && code ? code : null,
+      junior_of: role === "junior" ? juniorOf : null,
     });
     setBusy(false);
 
@@ -103,9 +113,19 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
             <label className="block text-xs text-hint mb-1.5">Роль</label>
             <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={`field cursor-pointer`}>
               <option value="buyer">Баер</option>
+              <option value="junior">Джун</option>
               <option value="teamlead">Тимлид</option>
             </select>
           </div>
+          {role === "junior" && (
+            <div>
+              <label className="block text-xs text-hint mb-1.5">Баер</label>
+              <select value={juniorOf} onChange={(e) => setJuniorOf(e.target.value)} className={`field cursor-pointer`}>
+                <option value="">выбери</option>
+                {buyers.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+              </select>
+            </div>
+          )}
           {role === "buyer" && (
             <div>
               <label className="block text-xs text-hint mb-1.5">Номер</label>
@@ -157,8 +177,9 @@ export default function InviteManager({ invites }: { invites: Invite[] }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-zinc-200 truncate">{i.note || "без пометки"}</p>
                 <p className="text-[11px] text-hint mt-0.5">
-                  {i.role === "teamlead" ? "тимлид" : "баер"}
-                  {i.buyer_code ? ` ${i.buyer_code}` : ""} · до{" "}
+                  {ROLE_LABELS[i.role].toLowerCase()}
+                  {i.buyer_code ? ` ${i.buyer_code}` : ""}
+                  {i.junior_of ? ` к ${buyers.find((b) => b.id === i.junior_of)?.label ?? "баеру"}` : ""} · до{" "}
                   {new Date(i.expires_at).toLocaleDateString("ru-RU")}
                 </p>
               </div>

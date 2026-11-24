@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { loadHomeMetrics } from "@/lib/home/summary";
 import { PERIODS, type PeriodId } from "@/lib/home/periods";
 
@@ -8,7 +8,7 @@ import { PERIODS, type PeriodId } from "@/lib/home/periods";
 export const maxDuration = 120;
 
 export async function GET(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const raw = new URL(req.url).searchParams.get("period");
   const period = (PERIODS.find((p) => p.id === raw)?.id ?? "7d") as PeriodId;

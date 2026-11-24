@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { mskDaysAgo } from "@/lib/day";
 import { aiReady } from "@/lib/ai/claude";
 import { latestSummary, weeklySummary } from "@/lib/ai/summary";
@@ -9,13 +9,13 @@ import { latestSummary, weeklySummary } from "@/lib/ai/summary";
 export const maxDuration = 300;
 
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me || me.role === "buyer") return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
   return NextResponse.json({ ready: aiReady(), summary: await latestSummary() });
 }
 
 export async function POST() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me || me.role === "buyer") return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
   try {
     await weeklySummary(me, { since: mskDaysAgo(7), until: mskDaysAgo(1) });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { listCountrySheets, fetchSheetValues } from "@/lib/general-report/googleSheets";
 import { parseCountrySheet } from "@/lib/general-report/parseCountrySheet";
 import { parseWaSheet } from "@/lib/general-report/parseWaSheet";
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
   let sources: ReturnType<typeof publicSources> = [];
 
   try {
-    const me = await getProfile();
+    const me = await getSeat();
     if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
     // Список доступного считается по роли, а не берётся из запроса. Источник,

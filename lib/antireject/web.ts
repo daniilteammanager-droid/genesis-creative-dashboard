@@ -3,7 +3,7 @@ import { warehouse } from "@/lib/warehouse/read";
 import { getConnection } from "@/lib/connections/store";
 import { metaTokensOf } from "@/lib/connections/metaKeys";
 import { listLandings } from "@/lib/torro/mcp";
-import type { Profile } from "@/lib/auth/types";
+import { selfOf, type Profile } from "@/lib/auth/types";
 import { writer, type Ctx } from "./bot";
 import { accountPages, applyChange, currentLink, REJECTED, type Change, type Preview } from "./meta";
 import { host, landingChoices, makeLink } from "./landings";
@@ -104,11 +104,11 @@ export async function confirm(me: Profile, nonce: string): Promise<{ status: str
     const r = await applyChange(w.token, p);
     // Забываем отклонение: если повторная проверка снова отклонит, придёт новый алерт.
     await db().from("wh_rejected_ads").delete().eq("ad_id", p.adId);
-    await logEvent({ kind: "action", adId: p.adId, accountId: p.accountId, adName: p.adName, campaignName: p.campaignName, ownerId: ctx.ownerId, actor: me.name || me.email, text: p.describe, ok: true, status: r.status });
+    await logEvent({ kind: "action", adId: p.adId, accountId: p.accountId, adName: p.adName, campaignName: p.campaignName, ownerId: ctx.ownerId, actor: selfOf(me).name || selfOf(me).email, text: p.describe, ok: true, status: r.status });
     return { status: r.status, describe: p.describe };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logEvent({ kind: "action", adId: p.adId, accountId: p.accountId, adName: p.adName, campaignName: p.campaignName, ownerId: ctx.ownerId, actor: me.name || me.email, text: `${p.describe} — ${msg}`, ok: false });
+    await logEvent({ kind: "action", adId: p.adId, accountId: p.accountId, adName: p.adName, campaignName: p.campaignName, ownerId: ctx.ownerId, actor: selfOf(me).name || selfOf(me).email, text: `${p.describe} — ${msg}`, ok: false });
     throw e;
   }
 }

@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { selfOf } from "@/lib/auth/types";
 import { getConnection } from "@/lib/connections/store";
 import { buildPlan, type PlanInput } from "@/lib/autoupload/plan";
 import { accountDetails, myAccounts, myCreatives, myLandings, stemOf } from "@/lib/autoupload/options";
@@ -19,7 +20,7 @@ export const maxDuration = 300;
 const fail = (e: unknown, status = 400) => NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status });
 
 export async function GET(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const p = new URL(req.url).searchParams;
   try {
@@ -46,10 +47,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { op?: string; input?: PlanInput; id?: string; name?: string; form?: unknown; token?: string; secret?: string };
   try {
+    // Джун заливает в кабинеты баера его ключом, но сам ключ меняет только баер (060_junior.sql).
+    if (selfOf(me) !== me && ["setKey", "deleteKey", "checkKey"].includes(b.op ?? "")) return fail("Ключ автозалива подключает баер", 403);
     if (b.op === "setKey") { await setAutouploadKey(me.id, b.name ?? "", b.token ?? "", b.secret ?? ""); return NextResponse.json({ key: await viewAutouploadKey(me.id) }); }
     if (b.op === "deleteKey") { await deleteAutouploadKey(me.id); return NextResponse.json({ ok: true }); }
     if (b.op === "checkKey") return NextResponse.json(await checkAutouploadKey(me.id));
@@ -86,7 +89,7 @@ export async function POST(req: Request) {
     const plan = buildPlan(b.input, accounts, conn?.torroBuyerId ?? null);
     if (b.op === "preview") return NextResponse.json({ plan });
     if (b.op === "launch") {
-      const id = await createJob(me.id, plan);
+      const id = await createJob(me.id, plan, selfOf(me).id);
       after(() => runJob(id));
       return NextResponse.json({ id });
     }

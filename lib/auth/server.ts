@@ -1,7 +1,9 @@
 import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import type { UserRole, Profile } from "./types";
+import { PROFILE_COLS, type UserRole, type Profile } from "./types";
+import { juniorAreas } from "@/lib/nav";
+import { warehouse } from "@/lib/warehouse/read";
 
 // Серверный клиент Supabase: сессия живёт в cookies, поэтому её видят и route
 // handlers, и middleware. Раньше сессии не было вовсе, а клиент ходил в Supabase
@@ -44,12 +46,38 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
 
   const { data } = await supabase
     .from("profiles")
-    .select("id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at, start_page, theme, legacy_access")
+    .select(PROFILE_COLS)
     .eq("id", user.id)
     .maybeSingle();
 
-  return (data as Profile | null) ?? null;
+  const p = (data as Profile | null) ?? null;
+  // Джуну — его разделы на деле и подпись баера: строку баера политика не даёт, junior_buyer() — то, что нужно (060).
+  if (p?.role === "junior") {
+    const { data: b } = await supabase.rpc("junior_buyer").maybeSingle<{ name: string | null; buyer_code: string | null; status: string; role: string; legacy_access: boolean }>();
+    const ok = !!b && b.status === "active" && b.role === "buyer";
+    p.areas = juniorAreas(p.junior_areas, ok ? b : null);
+    p.buyer_label = ok ? b.name || b.buyer_code : null;
+  }
+  return p;
 });
+
+// Чьи данные смотрит человек (060_junior.sql). Джуну — профиль его баера с ролью баера: загрузчики режут
+// его как баера, и 49 проверок role === "buyer" не нужно трогать. «Легаси крео» — только если открыты и
+// баеру, и джуну; кто нажал — actor (selfOf). Баер отключён или больше не баер — null. Остальным — свой профиль.
+// Данные — через getSeat, личное (задачи, Telegram, AI-ключи, профиль) — через getProfile.
+export const getSeat = cache(async function getSeat(): Promise<Profile | null> {
+  return seatOf(await getProfile());
+});
+
+export async function seatOf(me: Profile | null): Promise<Profile | null> {
+  if (!me || me.role !== "junior") return me;
+  if (!me.junior_of) return null;
+  const { data } = await warehouse().from("profiles").select(PROFILE_COLS).eq("id", me.junior_of).maybeSingle();
+  const b = data as Profile | null;
+  if (!b || b.status !== "active" || b.role !== "buyer") return null;
+  const areas = me.areas ?? juniorAreas(me.junior_areas, b);
+  return { ...b, legacy_access: b.legacy_access !== false && areas.includes("/library"), actor: me };
+}
 
 // Профиль с нужными правами или null. Проверка идёт на сервере: скрыть кнопку
 // в интерфейсе — не защита, роут обязан проверять сам.

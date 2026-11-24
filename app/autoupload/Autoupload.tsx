@@ -11,6 +11,7 @@ import UploadApp from "./UploadApp";
 import CreativeUploadModal from "@/app/library/CreativeUploadModal";
 import { DatePicker } from "@/components/DatePicker";
 import { Icon } from "@/components/ui";
+import { useProfile } from "@/components/Shell";
 
 // Автозалив (Decision 081, 087) — форма один в один с Genesis Manager Артёма:
 // 01 кабинеты и основа → общий набор адсетов с креативами → текст → 02 кампании
@@ -26,7 +27,7 @@ const DRAFT = "autoupload.draft.v2";
 interface Account { id: string; name: string; status: string; timezone?: string | null }
 interface Options { accounts: Account[]; landings: Landing[]; creatives: LibraryItem[] }
 type Details = { pixels: { id: string; name: string }[]; pages: { id: string; name: string }[] } | string;
-interface JobView { id: string; status: string; stage: string | null; error: string | null; createdAt: string; summary: Plan["summary"]; names: string[]; done: { campaigns: number; ads: number } }
+interface JobView { id: string; status: string; stage: string | null; error: string | null; createdAt: string; summary: Plan["summary"]; names: string[]; done: { campaigns: number; ads: number }; by: string | null }
 type Fields = Partial<Omit<SetForm, "key">>;
 
 let seq = 0;
@@ -52,6 +53,7 @@ function loadDraft(): Draft {
 }
 
 export default function Autoupload() {
+  const junior = useProfile()?.role === "junior";
   const [opt, setOpt] = useState<Options | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useState<Draft>(EMPTY);
@@ -236,7 +238,8 @@ export default function Autoupload() {
         </div>
       </div>
 
-      <UploadApp />
+      {/* Ключ автозалива — баера: джун заливает им, но не видит и не меняет (060_junior.sql). */}
+      {!junior && <UploadApp />}
 
       <div data-tour="au-base" className={card}>
         <div className="flex items-center gap-2 mb-3">
@@ -429,7 +432,8 @@ export default function Autoupload() {
               <div key={j.id} className="py-2.5 flex flex-wrap items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200">{new Date(j.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · {j.summary.campaigns} кампаний · {j.summary.ads} объявлений
-                    <span className="text-hint"> · создано {j.done.campaigns}/{j.summary.campaigns} кампаний, {j.done.ads}/{j.summary.ads} объявлений</span></p>
+                    <span className="text-hint"> · создано {j.done.campaigns}/{j.summary.campaigns} кампаний, {j.done.ads}/{j.summary.ads} объявлений</span>
+                    {j.by && <span className="text-hint"> · залил {j.by}</span>}</p>
                   <p className="text-[11px] text-hint truncate">{j.names.slice(0, 3).join(", ")}{j.names.length > 3 ? ` +${j.names.length - 3}` : ""}</p>
                   {j.stage && <p className="text-[11px] text-zinc-400 mt-0.5">{j.stage}</p>}
                   {j.error && <p className="text-[11px] text-red-300 mt-0.5">{j.error}</p>}

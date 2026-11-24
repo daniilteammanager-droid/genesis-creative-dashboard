@@ -1,6 +1,6 @@
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { mayManageKey, maySeeKey } from "@/lib/creatives/access";
 import { libraryOf } from "@/lib/creatives/media";
 import { libraryScope } from "@/lib/warehouse/creatives";
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   try {
     // Баер не видит папок других баеров (Decision 077). Middleware пускает только
     // вошедших, но роль он не знает — её проверяем здесь.
-    const me = await getProfile();
+    const me = await getSeat();
     if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
     const allFiles: { key: string; url: string; size: number }[] = [];

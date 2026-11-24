@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { S3Client, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { getProfile, createClient } from "@/lib/auth/server";
+import { getSeat, createClient } from "@/lib/auth/server";
+import { selfOf } from "@/lib/auth/types";
 import { buyerOf } from "@/lib/creatives/code";
 import { getFileBaseName } from "@/lib/creatives/naming";
 import { isFace, setFace } from "@/lib/creatives/faces";
@@ -30,7 +31,7 @@ function extractFolder(filename: string): string {
 
 export async function POST(req: Request) {
   try {
-    const me = await getProfile();
+    const me = await getSeat();
     if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
     const { filename, contentType, face } = (await req.json()) as { filename?: string; contentType?: string; face?: string };
@@ -78,12 +79,13 @@ export async function POST(req: Request) {
     // признак существования файла эта таблица не используется.
     const supabase = await createClient();
     const { error: recordError } = await supabase.from("creative_uploads").upsert(
-      { creative_code: creativeCode, object_key: key, user_id: me.id, buyer_code: me.buyer_code, uploaded_at: new Date().toISOString() },
+      // Папка и код — баера (у джуна место из getSeat), user_id — кто нажал: политика пускает только свой id.
+      { creative_code: creativeCode, object_key: key, user_id: selfOf(me).id, buyer_code: me.buyer_code, uploaded_at: new Date().toISOString() },
       { onConflict: "creative_code" }
     );
     // Не роняем загрузку из-за неудачной записи: файл важнее отметки о нём.
     if (recordError) console.error("Не записан владелец загрузки:", recordError.message);
-    await setFace(key, face, me.id).catch((e) => console.error("Не записано лицо:", e instanceof Error ? e.message : e));
+    await setFace(key, face, selfOf(me).id).catch((e) => console.error("Не записано лицо:", e instanceof Error ? e.message : e));
 
     return NextResponse.json({ uploadUrl, key, exists, warning, publicUrl: `${process.env.R2_PUBLIC_URL}/${key}` });
   } catch (error) {

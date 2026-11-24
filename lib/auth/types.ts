@@ -5,8 +5,8 @@ export function normalizeBuyerCode(raw: string): string {
   return /^[0-9]+$/.test(v) ? `b${v}` : v;
 }
 
-// Роли дашборда. Совпадают с enum public.user_role в supabase/001_auth.sql.
-export type UserRole = "main" | "teamlead" | "buyer";
+// Роли дашборда. Совпадают с enum public.user_role (001_auth.sql, джун — 060_junior.sql).
+export type UserRole = "main" | "teamlead" | "buyer" | "junior";
 
 export interface Profile {
   id: string;
@@ -31,15 +31,33 @@ export interface Profile {
   theme: string | null;
   // «Легаси крео» открыты баеру (Decision 119): новому закрыты, пока не покажет свои. Владелец — на «Команде».
   legacy_access: boolean;
+  // Джун (060_junior.sql): чей он, какие разделы ему открыты (null — по умолчанию), свой AI-доступ.
+  junior_of: string | null;
+  junior_areas: string[] | null;
+  junior_mcp: boolean;
+  // Только у джуна, считает getProfile: разделы, которые он видит на деле (свои ∩ разделы баера),
+  // и подпись баера; null — баер отключён или больше не баер.
+  areas?: string[];
+  buyer_label?: string | null;
+  // Только у места джуна (getSeat): сам джун. Кто нажал — selfOf.
+  actor?: Profile;
 }
 
-// Владелец и тимлид видят легаси всегда, баер — если открыл владелец.
+// Кто на деле нажал: у места джуна — сам джун, у остальных — тот же профиль.
+export const selfOf = (p: Profile): Profile => p.actor ?? p;
+
+// Колонки профиля — одни для getProfile, места джуна (getSeat) и MCP.
+export const PROFILE_COLS = "id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at, start_page, theme, legacy_access, junior_of, junior_areas, junior_mcp";
+
+// Владелец и тимлид видят легаси всегда, баер — если открыл владелец, джун — если раздел в его разделах
+// (а туда он попадает, только когда открыт и баеру — juniorAreas в lib/nav.ts).
 // ponytail: нет профиля (Supabase моргнул) — пускаем, как middleware со статусом (Decision 005).
-export const canSeeLegacy = (p: Pick<Profile, "role" | "legacy_access"> | null | undefined) =>
-  !p || p.role !== "buyer" || p.legacy_access !== false;
+export const canSeeLegacy = (p: (Pick<Profile, "role" | "legacy_access"> & { areas?: string[] }) | null | undefined) =>
+  !p || (p.role === "junior" ? !!p.areas?.includes("/library") : p.role !== "buyer" || p.legacy_access !== false);
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   main: "Владелец",
   teamlead: "Тимлид",
   buyer: "Баер",
+  junior: "Джун",
 };

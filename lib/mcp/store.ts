@@ -1,5 +1,5 @@
 import { warehouse } from "@/lib/warehouse/read";
-import type { Profile } from "@/lib/auth/types";
+import { PROFILE_COLS, type Profile } from "@/lib/auth/types";
 import {
   ACCESS_TTL_S, CODE_TTL_S, PERSONAL_CLIENT, REFRESH_TTL_S, SCOPE,
   hashToken, isCimdClientId, newToken, pkceOk, redirectMatches, redirectUsable,
@@ -9,7 +9,6 @@ import {
 // service role — таблицы mcp_* браузеру закрыты. Токены и коды хранятся только хэшами.
 
 const db = () => warehouse();
-const PROFILE_COLS = "id, email, name, role, buyer_code, crm_buyer_id, notion_url, gr_spreadsheet_id, gr4_spreadsheet_id, status, onboarded_at, start_page, legacy_access";
 const at = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
 
 export class OAuthError extends Error {

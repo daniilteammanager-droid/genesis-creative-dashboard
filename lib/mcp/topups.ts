@@ -1,4 +1,4 @@
-import type { Profile } from "@/lib/auth/types";
+import { selfOf, type Profile } from "@/lib/auth/types";
 import { CATEGORIES, createTopup, listTopups, what, type Topup } from "@/lib/topups/requests";
 import { filterTopups, stage, STAGES, type Stage } from "@/lib/topups/view";
 import { exact, PAIRS, type Asset } from "@/lib/topups/chain";
@@ -125,7 +125,8 @@ const getTopups: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false, title: "Пополнения" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const since = str(a.since) || null, until = str(a.until) || null;
     if ((since && !DAY.test(since)) || (until && !DAY.test(until))) throw new ToolError("Даты — в формате YYYY-MM-DD");
     if (since && until && since > until) throw new ToolError("since позже until");
@@ -175,7 +176,8 @@ const createTopupTool: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true, title: "Новая заявка на пополнение" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const kind = oneOf(str(a.kind), Object.keys(CATEGORIES));
     const asset = str(a.asset).toUpperCase() as Asset;
     const network = str(a.network).toUpperCase() || (PAIRS[asset]?.length === 1 ? PAIRS[asset][0] : "");

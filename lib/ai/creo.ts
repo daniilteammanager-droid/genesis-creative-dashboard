@@ -1,5 +1,5 @@
 import { warehouse } from "@/lib/warehouse/read";
-import type { Profile } from "@/lib/auth/types";
+import { selfOf, type Profile } from "@/lib/auth/types";
 import { mskDay, mskDaysAgo } from "@/lib/day";
 import { notify } from "@/lib/telegram/links";
 import { escapeHtml } from "@/lib/telegram/api";
@@ -142,6 +142,7 @@ async function compute(buyerId: string, creo: string, charged: boolean): Promise
 }
 
 // Кнопка «Разобрать»: баер — только свои крео и в свой лимит; владелец и тимлид — любые, из общего бюджета.
+// Джун — как его баер (место из getSeat), в лимит баера; кто попросил — сам джун.
 export async function analyzeCreo(me: Profile, buyerId: string, creo: string): Promise<Analysis> {
   if (me.role === "buyer" && buyerId !== me.id) throw new Error("Можно разбирать только свои крео");
   if (!aiReady()) throw new Error("AI-разборы не подключены");
@@ -149,7 +150,7 @@ export async function analyzeCreo(me: Profile, buyerId: string, creo: string): P
   const row = await compute(buyerId, creo, me.id === buyerId);
   if (row.reused) return row.reused as Analysis;
   const { data, error } = await db().from("ai_creo_analyses")
-    .insert({ buyer_id: buyerId, creo, trigger: "manual", requested_by: me.id, charged: me.id === buyerId, ...row })
+    .insert({ buyer_id: buyerId, creo, trigger: "manual", requested_by: selfOf(me).id, charged: me.id === buyerId, ...row })
     .select(COLS).single();
   if (error) throw new Error(error.message);
   return data as Analysis;

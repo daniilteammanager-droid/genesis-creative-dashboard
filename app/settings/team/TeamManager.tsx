@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/auth/client";
 import { ROLE_LABELS, normalizeBuyerCode, type Profile, type UserRole } from "@/lib/auth/types";
 import { seg } from "@/components/ui";
+import { areasFor } from "@/lib/nav";
+import JuniorAccess from "../JuniorAccess";
 
 // Две таблицы баера: General 3.0 (старый формат) и 4.0 (новый). Каждая — своё
 // поле профиля и своя пара аргументов admin_update_profile.
@@ -26,6 +28,15 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
   // Месячный лимит AI-разборов баера (Decision 101) — своя таблица, мимо admin_update_profile.
   const [budgets, setBudgets] = useState<Record<string, { limit: number; used: number }>>({});
   const [budgetDraft, setBudgetDraft] = useState<Record<string, string>>({});
+  // Роль «Джун» без баера база не примет — сначала выбрать баера, потом роль уходит вместе с ним.
+  const [pickBuyer, setPickBuyer] = useState<string | null>(null);
+  const buyers = people.filter((p) => p.role === "buyer");
+  const juniorsOf = (id: string) => people.filter((p) => p.role === "junior" && p.junior_of === id);
+  // Джун — сразу под своим баером; без баера в списке — в конце.
+  const ordered = [
+    ...people.filter((p) => p.role !== "junior").flatMap((p) => [p, ...(p.role === "buyer" ? juniorsOf(p.id) : [])]),
+    ...people.filter((p) => p.role === "junior" && !buyers.some((b) => b.id === p.junior_of)),
+  ];
   useEffect(() => {
     fetch("/api/ai/budget").then((r) => r.json()).then((j) => j.budgets && setBudgets(j.budgets)).catch(() => {});
   }, []);
@@ -123,12 +134,15 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
       <div className="card divide-y divide-line">
         {people.length === 0 && <p className="text-sm text-hint p-5">Пока никого нет.</p>}
 
-        {people.map((p) => {
+        {ordered.map((p) => {
           const isMe = p.id === meId;
+          const junior = p.role === "junior";
+          const buyer = junior ? buyers.find((b) => b.id === p.junior_of) : undefined;
           return (
-            <div key={p.id} className="flex items-center gap-3 px-5 py-3.5 flex-wrap">
+            <div key={p.id} className={`flex items-center gap-3 px-5 py-3.5 flex-wrap ${junior && buyer ? "pl-12 bg-raised" : ""}`}>
               <div className="min-w-[180px] flex-1">
                 <p className="text-sm text-zinc-200 truncate">
+                  {junior && buyer && <span aria-hidden="true" className="text-hint mr-1.5">↳</span>}
                   {p.name || "без имени"}
                   {isMe && <span className="text-violet-400/70 ml-1.5 text-[11px]">это ты</span>}
                 </p>
@@ -138,7 +152,11 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
               <select
                 value={p.role}
                 disabled={busy === p.id}
-                onChange={(e) => update(p.id, { p_role: e.target.value as UserRole })}
+                onChange={(e) => {
+                  const role = e.target.value as UserRole;
+                  if (role === "junior" && !p.junior_of) setPickBuyer(p.id);
+                  else update(p.id, { p_role: role });
+                }}
                 className={`field cursor-pointer disabled:opacity-50`}
               >
                 {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
@@ -146,7 +164,29 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                 ))}
               </select>
 
-              <input
+              {/* Баер джуна: при смене роли на «Джун» — сначала он, потом роль уходит вместе с ним. */}
+              {(junior || pickBuyer === p.id) && (
+                <label className="flex items-center gap-1.5 text-[11px] text-hint">
+                  баер
+                  <select
+                    value={junior ? p.junior_of ?? "" : ""}
+                    disabled={busy === p.id}
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      setPickBuyer(null);
+                      update(p.id, junior ? { p_junior_of: e.target.value } : { p_role: "junior", p_junior_of: e.target.value });
+                    }}
+                    className="field cursor-pointer disabled:opacity-50"
+                  >
+                    <option value="">выбери баера</option>
+                    {buyers.filter((b) => b.id !== p.id).map((b) => (
+                      <option key={b.id} value={b.id}>{b.name || b.email}{b.buyer_code ? ` · ${b.buyer_code}` : ""}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {!junior && <input
                 type="text"
                 placeholder="код"
                 value={codeDraft[p.id] ?? p.buyer_code ?? ""}
@@ -155,7 +195,7 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                 onBlur={() => commitCode(p)}
                 onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                 className={`field w-20 disabled:opacity-50`}
-              />
+              />}
 
               <button
                 disabled={busy === p.id || isMe}
@@ -207,6 +247,21 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
                   </div>
                 </div>
               )}
+              {p.role === "buyer" && juniorsOf(p.id).length > 0 && (
+                <div className="w-full flex items-center gap-2">
+                  <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">Джуны</span>
+                  <span className="text-sm text-zinc-300">{juniorsOf(p.id).map((j) => j.name || j.email).join(", ")}</span>
+                </div>
+              )}
+              {/* Джун (060_junior.sql): разделы — не больше, чем у его баера; AI-доступ — отдельно. */}
+              {junior && buyer && (
+                <JuniorAccess chosen={p.junior_areas} allowed={areasFor(buyer).map((a) => a.href)} mcp={p.junior_mcp} busy={busy === p.id}
+                  onAreas={(areas) => update(p.id, areas ? { p_areas: areas } : { p_reset_areas: true })}
+                  onMcp={(on) => update(p.id, { p_junior_mcp: on })} />
+              )}
+              {junior && !buyer && (
+                <p className="w-full text-[11px] text-amber-300">Баер не выбран или больше не баер — джун видит только свои задачи.</p>
+              )}
               {p.role === "buyer" && budgets[p.id] && (
                 <div className="w-full flex items-center gap-2">
                   <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">AI-лимит</span>
@@ -235,7 +290,9 @@ export default function TeamManager({ people, meId }: { people: Profile[]; meId:
         сохранить её не получится. AI-лимит — сколько долларов в месяц баер может потратить на AI-разборы своих крео
         (кнопка в «Отчётах» и автоматические разборы в Telegram); разборы, которые запускаешь ты, в него не идут.
         «Легаси крео» новому баеру закрыты: раздел пропадает из панели и не открывается по адресу. Открой, когда
-        он покажет 10–15 своих крео.
+        он покажет 10–15 своих крео. Джун — без своего кода и подключений: видит кабинеты, цифры и крео своего баера в
+        открытых разделах, не больше, чем видит сам баер. По умолчанию закрыты General 4.0 и Пополнения. Разделы джуну
+        меняешь ты и его баер. Отключишь баера — джун теряет его данные, пока не перепривяжешь.
       </p>
     </div>
   );

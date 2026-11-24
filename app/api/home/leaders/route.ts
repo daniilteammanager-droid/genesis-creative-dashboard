@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { snapshot } from "@/lib/general-report-4/store";
 import { forViewer, rankBuyers, type BuyerInput } from "@/lib/home/leaderboard";
 import { mskDay, mskDaysAgo } from "@/lib/day";
@@ -11,7 +11,7 @@ import { mskDay, mskDaysAgo } from "@/lib/day";
 export const maxDuration = 120;
 
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });

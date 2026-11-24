@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { COMBINED_ID, collectSources4, publicSources4 } from "@/lib/general-report-4/sources";
 import { snapshot, syncSheet } from "@/lib/general-report-4/store";
 import type { Gr4Kind, Gr4SourceInfo } from "@/lib/general-report-4/types";
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   // нечем переключиться на рабочую.
   let sources: Gr4SourceInfo[] = [];
   try {
-    const me = await getProfile();
+    const me = await getSeat();
     if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
     const all = await collectSources4(me);

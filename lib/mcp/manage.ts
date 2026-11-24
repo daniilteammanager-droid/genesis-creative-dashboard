@@ -1,7 +1,7 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { applyLive, liveStates, type Item, type Level } from "@/lib/reports-live/manage";
 import { escapeHtml, notify } from "@/lib/telegram/links";
-import type { Profile } from "@/lib/auth/types";
+import { selfOf, type Profile } from "@/lib/auth/types";
 import { ToolError, type ToolDef } from "./protocol";
 
 // AI-доступ, этап 2 (Decision 117): пауза, запуск и дневной бюджет тем же путём, что Live Manager
@@ -118,7 +118,7 @@ const manageCampaigns: Tool = {
 
     const db = warehouse();
     const { count } = await db.from("mcp_changes").select("id", { count: "exact", head: true })
-      .eq("user_id", me.id).eq("ok", true).gte("created_at", new Date(Date.now() - 3_600_000).toISOString());
+      .eq("user_id", selfOf(me).id).eq("ok", true).gte("created_at", new Date(Date.now() - 3_600_000).toISOString());
     if ((count ?? 0) + ids.length > MAX_PER_HOUR) throw new ToolError(`Лимит — ${MAX_PER_HOUR} изменений в час, за последний час уже ${count}. Подожди или сделай это в Live Manager.`);
 
     const list = await entities(me, ids);
@@ -149,7 +149,7 @@ const manageCampaigns: Tool = {
     }
 
     await db.from("mcp_changes").insert(rows.map((r) => ({
-      user_id: me.id, token_id: tokenId ?? null, entity_id: r.e.id, level: r.e.level, account_id: r.e.accountId, name: r.e.name,
+      user_id: selfOf(me).id, token_id: tokenId ?? null, entity_id: r.e.id, level: r.e.level, account_id: r.e.accountId, name: r.e.name,
       action, before: r.before, after: r.after, ok: r.ok, error: r.error?.slice(0, 500) ?? null,
     })));
     await tell(me, tokenId, action, rows.filter((r) => r.ok)).catch(() => {});   // Telegram не роняет ответ
@@ -170,12 +170,13 @@ async function tell(me: Profile, tokenId: string | undefined, action: Action, do
     tokenId ? db.from("mcp_tokens").select("client_name").eq("id", tokenId).maybeSingle() : Promise.resolve({ data: null }),
     db.from("wh_account_owners").select("owner_user_id").in("account_id", [...new Set(done.map((d) => d.e.accountId))]),
   ]);
-  const who = `${escapeHtml((tok?.client_name as string | undefined) || "AI")} · ${escapeHtml(me.name || me.email)}`;
+  const self = selfOf(me);
+  const who = `${escapeHtml((tok?.client_name as string | undefined) || "AI")} · ${escapeHtml(self.name || self.email)}`;
   const lines = done.map(({ e, before, after }) => `• ${LEVEL_RU[e.level]} «${escapeHtml(e.name)}» — ` + (action === "budget"
     ? `${before.budget == null ? "?" : money(before.budget)} → ${money(after.budget!)}`
     : `${escapeHtml(before.status ?? "?")} → ${after.status}`));
   const text = `🤖 <b>Изменение через AI</b> (${who}): ${ACTION_RU[action]}\n${lines.join("\n")}`;
-  const to = new Set([me.id, ...(own ?? []).map((o) => o.owner_user_id as string).filter(Boolean)]);
+  const to = new Set([self.id, ...(own ?? []).map((o) => o.owner_user_id as string).filter(Boolean)]);
   await Promise.allSettled([...to].map((id) => notify(id, "ai_changes", text)));
 }
 

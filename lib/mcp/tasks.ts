@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { warehouse } from "@/lib/warehouse/read";
-import type { Profile } from "@/lib/auth/types";
+import { selfOf, type Profile } from "@/lib/auth/types";
 import { boards, createBoard, loadTasks, saveTasks, updateBoard, type Board } from "@/lib/tasks/store";
 import { blank, byId, depth, diff, fromRows, isId, kids, layout, mapOf, move, patch, progress, removeBranch, roots, rows, under, NW, STATUS, type Status, type Task } from "@/lib/tasks/tree";
 import { mskDay } from "@/lib/day";
@@ -280,7 +280,8 @@ const getTasks: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false, title: "Задачи" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const [list, people] = await Promise.all([boards(me), team()]);
     const name = namer(people);
     const pick = str(a.board) ? [boardOf(list, str(a.board))] : list;
@@ -329,7 +330,8 @@ const addTasks: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false, title: "Добавить задачи" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const [list, people] = await Promise.all([boards(me), team()]);
     let b = boardOf(list, str(a.board));
     const parent = str(a.parent) || null;
@@ -390,7 +392,8 @@ const updateTasks: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false, title: "Изменить задачи" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const raw = (Array.isArray(a.changes) ? a.changes : []) as Record<string, unknown>[];
     if (!raw.length) throw new ToolError("Нужен список changes");
     if (raw.length > MAX_EDIT) throw new ToolError(`За раз — не больше ${MAX_EDIT} правок`);
@@ -425,7 +428,8 @@ const deleteTasks: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false, title: "Удалить задачи" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const ids = [...new Set(arr(a.ids))];
     if (!ids.length) throw new ToolError("Нужны ids");
     if (ids.length > MAX_EDIT) throw new ToolError(`За раз — не больше ${MAX_EDIT}`);
@@ -454,7 +458,8 @@ const createBoardTool: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false, title: "Новый холст" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const title = str(a.title);
     if (!title) throw new ToolError("Назови холст");
     const people = await team(), active = people.filter((p) => p.active);
@@ -480,7 +485,8 @@ const updateBoardTool: Tool = {
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false, title: "Изменить холст" },
-  async run({ me }, a) {
+  async run({ me: seat }, a) {
+    const me = selfOf(seat);
     const [list, people] = await Promise.all([boards(me), team()]);
     const b = boardOf(list, str(a.board));
     if (!b.shared) throw new ToolError("Личный холст не переименовывается и людей в нём нет — для общего дела создай холст: create_board");

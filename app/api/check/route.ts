@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { loadCheck, type CheckGroup } from "@/lib/warehouse/check";
 import { mskDay } from "@/lib/day";
 
@@ -9,7 +9,7 @@ const GROUPS: CheckGroup[] = ["campaign", "creative", "country"];
 export const maxDuration = 300;
 
 export async function GET(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
   const p = new URL(req.url).searchParams;

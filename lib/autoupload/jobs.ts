@@ -8,8 +8,9 @@ import type { Plan } from "./plan";
 const db = () => warehouse();
 const LEASE_MS = 290_000;
 
-export async function createJob(userId: string, plan: Plan): Promise<string> {
-  const { data, error } = await db().from("autoupload_jobs").insert({ user_id: userId, plan, stage: "В очереди" }).select("id").single();
+// userId — чьи кабинеты и ключ (у джуна — его баер), actorId — кто нажал (060_junior.sql).
+export async function createJob(userId: string, plan: Plan, actorId = userId): Promise<string> {
+  const { data, error } = await db().from("autoupload_jobs").insert({ user_id: userId, actor_id: actorId, plan, stage: "В очереди" }).select("id").single();
   if (error) throw new Error(error.message);
   return data.id as string;
 }
@@ -70,14 +71,19 @@ export async function cancelJob(userId: string, id: string): Promise<string[]> {
 }
 
 export async function listJobs(userId: string) {
-  const { data } = await db().from("autoupload_jobs").select("id, status, stage, error, created_at, updated_at, plan, state")
+  const { data } = await db().from("autoupload_jobs").select("id, status, stage, error, created_at, updated_at, plan, state, actor_id")
     .eq("user_id", userId).order("created_at", { ascending: false }).limit(20);
+  // Залил джун — его имя у задания: баер и джун видят один список.
+  const others = [...new Set((data ?? []).map((j) => j.actor_id as string | null).filter((a): a is string => !!a && a !== userId))];
+  const { data: people } = others.length ? await db().from("profiles").select("id, name, email").in("id", others) : { data: [] };
+  const nameOf = new Map((people ?? []).map((p) => [p.id as string, (p.name as string | null) || (p.email as string)]));
   return (data ?? []).map((j) => {
     const plan = j.plan as Plan;
     const created = ((j.state as { created?: { id?: string; adsets?: { ads?: { id?: string }[] }[] }[] } | null)?.created ?? []);
     return {
       id: j.id as string, status: j.status as string, stage: j.stage as string | null, error: j.error as string | null,
       createdAt: j.created_at as string, summary: plan.summary, names: plan.campaigns.map((c) => c.name),
+      by: nameOf.get(j.actor_id as string) ?? null,
       done: {
         campaigns: created.filter((c) => c.id).length,
         ads: created.reduce((s, c) => s + (c.adsets ?? []).reduce((t, a) => t + (a.ads ?? []).filter((x) => x.id).length, 0), 0),

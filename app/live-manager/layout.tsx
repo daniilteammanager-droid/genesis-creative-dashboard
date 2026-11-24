@@ -1,4 +1,4 @@
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
 import { getConnection } from "@/lib/connections/store";
 import { listTgadsKeys } from "@/lib/connections/tgadsKeys";
@@ -8,7 +8,7 @@ import NoConnections from "@/components/NoConnections";
 // показывать нечего, и лучше сказать это прямо, чем отдать пустую таблицу.
 // Владелец и тимлид видят сводную по всем — им заглушка не нужна.
 export default async function ReportsLayout({ children }: { children: React.ReactNode }) {
-  const me = await getProfile();
+  const me = await getSeat();
 
   if (me?.role === "buyer") {
     // Сбой чтения ключей не должен класть раздел — дальше ответит роут и

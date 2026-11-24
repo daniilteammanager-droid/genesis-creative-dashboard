@@ -12,7 +12,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
         <h1 className="page-title mb-6">Настройки</h1>
-        <SettingsNav isMain={profile.role === "main"} />
+        <SettingsNav role={profile.role} mcp={profile.junior_mcp === true} />
         {children}
       </div>
     </main>

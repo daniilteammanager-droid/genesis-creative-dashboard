@@ -162,7 +162,9 @@ export default function Shell({ profile, children }: { profile: Profile | null; 
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-zinc-200 truncate">{profile.name || profile.email}</p>
-                  <p className="text-[11px] text-hint">{profile.buyer_code ?? ROLE_LABELS[profile.role]}</p>
+                  <p className="text-[11px] text-hint truncate">
+                    {profile.role === "junior" ? `джун · ${profile.buyer_label ?? "баер отключён"}` : profile.buyer_code ?? ROLE_LABELS[profile.role]}
+                  </p>
                 </div>
                 <span className="text-hint text-xs">›</span>
               </Link>

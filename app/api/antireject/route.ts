@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { selfOf } from "@/lib/auth/types";
 import { warehouse } from "@/lib/warehouse/read";
 import { myCreatives } from "@/lib/autoupload/options";
 import { downloadUrl, findSource, originalKey, publicUrl } from "@/lib/uniq/source";
@@ -24,7 +25,7 @@ async function myAccountIds(userId: string): Promise<string[]> {
 }
 
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const all = me.role !== "buyer";
   const mine = all ? null : await myAccountIds(me.id);
@@ -58,7 +59,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { op?: string; adId?: string; key?: string; tail?: string; frame?: string; kind?: string; value?: string; nonce?: string; retry?: string; id?: string; keys?: string[] };
   const KINDS = ["link", "page", "multi"];
@@ -114,7 +115,7 @@ export async function POST(req: Request) {
     if (foreign.length) return NextResponse.json({ error: `Нет в твоей Медиатеке: ${foreign.map((k) => k.split("/").pop()).join(", ")}` }, { status: 400 });
     rows = await Promise.all(keys.map(async (k) => ({ owner_id: me.id, source_key: await originalKey(k), source_name: k.split("/").pop() })));
   }
-  const { data, error } = await db().from("video_variant_jobs").insert(rows.map((r) => ({ ...r, tail_type: b.tail, frame_type: b.frame, status: "queued" }))).select("id");
+  const { data, error } = await db().from("video_variant_jobs").insert(rows.map((r) => ({ ...r, actor_id: selfOf(me).id, tail_type: b.tail, frame_type: b.frame, status: "queued" }))).select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ id: data[0]?.id, ids: data.map((d) => d.id) });
 }

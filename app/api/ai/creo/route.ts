@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { warehouse } from "@/lib/warehouse/read";
 import { aiReady } from "@/lib/ai/claude";
 import { analysesFor, analyzeCreo, budgetOf, creoBuyers, latest } from "@/lib/ai/creo";
@@ -13,7 +13,7 @@ export const maxDuration = 120;
 const fail = (e: unknown, status = 400) => NextResponse.json({ error: e instanceof Error ? e.message : "Ошибка" }, { status });
 
 export async function GET(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const q = new URL(req.url).searchParams;
   try {
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const body = (await req.json().catch(() => null)) as { buyer?: unknown; creo?: unknown } | null;
   try {

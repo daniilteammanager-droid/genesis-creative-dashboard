@@ -50,7 +50,7 @@ export default function Home() {
   const [activeSort, setActiveSort] = useState<"none" | "romi" | "spend" | "deposits">("none");
   const [topTab,     setTopTab]     = useState<"creatives" | "analytics">("creatives");
   const [showLibrary, setShowLibrary] = useState(false);
-  const isBuyer = useProfile()?.role === "buyer";
+  const role = useProfile()?.role, isBuyer = role === "buyer" || role === "junior";
   const [notes,      setNotes]      = useState<Record<string, CreativeNote>>({});
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState<string | null>(null);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { loadTrafficReport } from "@/lib/traffic-report/load";
 
 // Отчёт по трафику (Decision 098). Баеру — свои подключения, владельцу и тимлиду —
@@ -9,7 +9,7 @@ export const maxDuration = 120;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const q = new URL(req.url).searchParams;
   const since = q.get("since") ?? "", until = q.get("until") ?? "";

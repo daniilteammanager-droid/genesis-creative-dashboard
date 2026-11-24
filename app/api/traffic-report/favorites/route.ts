@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { listFavorites, setFavorite } from "@/lib/traffic-report/favorites";
 
 // Избранные крео «Отчётов» — личный список. GET — мои, POST { buyer, creo, on } — отметить или снять.
 
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     return NextResponse.json({ favorites: await listFavorites(me) });
@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const body = (await req.json().catch(() => null)) as { buyer?: unknown; creo?: unknown; on?: unknown } | null;
   try {
