@@ -1,6 +1,6 @@
 import { selfOf, type Profile } from "@/lib/auth/types";
 import { CATEGORIES, createTopup, listTopups, what, type Topup } from "@/lib/topups/requests";
-import { filterTopups, stage, STAGES, type Stage } from "@/lib/topups/view";
+import { filterTopups, received, stage, STAGES, type Stage } from "@/lib/topups/view";
 import { exact, PAIRS, type Asset } from "@/lib/topups/chain";
 import { mskDay, mskTime } from "@/lib/day";
 import { findPerson, team } from "./tasks";
@@ -55,7 +55,8 @@ export function keyOf(r: Topup, g: Group): string {
   }
 }
 
-// Суммы — по монетам: USDT и BTC в одну цифру не складываются. amount — все заявки выборки, paid — оплаченные.
+// Суммы — по монетам: USDT и BTC в одну цифру не складываются. amount — что просили во всех заявках выборки,
+// paid — что пришло по оплаченным (received: перевод из блокчейна, а не сумма заявки).
 export interface Sum { name: string; count: number; paid_count: number; amount: Partial<Record<Asset, number>>; paid: Partial<Record<Asset, number>> }
 
 export function summarize(rows: Topup[], g: Group): Sum[] {
@@ -65,7 +66,7 @@ export function summarize(rows: Topup[], g: Group): Sum[] {
     const s = by.get(k) ?? by.set(k, { name: k, count: 0, paid_count: 0, amount: {}, paid: {} }).get(k)!;
     s.count++;
     s.amount[r.asset] = (s.amount[r.asset] ?? 0) + r.amount;
-    if (r.status === "paid") { s.paid_count++; s.paid[r.asset] = (s.paid[r.asset] ?? 0) + r.amount; }
+    if (r.status === "paid") { s.paid_count++; s.paid[r.asset] = (s.paid[r.asset] ?? 0) + received(r); }
   }
   const round = (m: Sum["amount"]) => { for (const a of Object.keys(m) as Asset[]) m[a] = Number(exact(m[a]!, a)); };
   const out = [...by.values()];
@@ -107,7 +108,7 @@ export function rowOf(r: Topup) {
 const getTopups: Tool = {
   name: "get_topups",
   title: "Пополнения",
-  description: "Заявки на пополнение кабинетов, карт, агентов и расходников — как раздел «Пополнения»: номер, кто создал, категория и куда, сумма, монета и сеть, комиссия, статус, кто взял и кто оплатил, ссылка на перевод. Плюс сводка: количество и суммы по монетам (все заявки и оплаченные) с разбивкой по статусу, категории, «куда», монете и сети, автору, дням или месяцам. Владелец видит все заявки, остальные — только свои. Создать заявку — create_topup.",
+  description: "Заявки на пополнение кабинетов, карт, агентов и расходников — как раздел «Пополнения»: номер, кто создал, категория и куда, сумма, монета и сеть, комиссия, статус, кто взял и кто оплатил, ссылка на перевод. Плюс сводка: количество и суммы по монетам (amount — запрошено во всех заявках, paid — сколько реально пришло по оплаченным, по блокчейну) с разбивкой по статусу, категории, «куда», монете и сети, автору, дням или месяцам. Владелец видит все заявки, остальные — только свои. Создать заявку — create_topup.",
   inputSchema: {
     type: "object",
     properties: {

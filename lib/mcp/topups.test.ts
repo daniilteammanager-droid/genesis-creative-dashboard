@@ -38,6 +38,9 @@ assert.deepEqual(summarize(rows, "month").map((s) => s.name), ["2026-10", "2026-
 assert.equal(summarize(rows, "coin")[0].name, "USDT · TRC20");
 assert.equal(summarize(rows, "target").find((s) => s.name === "Агенты · T2A")?.paid.BTC, 0.0154);
 assert.deepEqual(summarize([], "total"), []);
+// paid — что пришло по блокчейну, amount — что просили (#144: 5000 → 500).
+assert.deepEqual(summarize([row({ status: "paid", amount: 5000, paid_amount: 500 })], "total")[0].paid, { USDT: 500 });
+assert.deepEqual(summarize([row({ status: "paid", amount: 5000, paid_amount: 500 })], "total")[0].amount, { USDT: 5000 });
 
 // Строка списка: статус словами, пустое не тащим.
 const r = rowOf(rows[0]);

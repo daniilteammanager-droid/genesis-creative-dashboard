@@ -38,9 +38,13 @@ export function filterTopups(rows: Topup[], f: TopupFilter): Topup[] {
       .join(" ").toLowerCase().includes(q)));
 }
 
+// Сколько ушло по оплаченной заявке: что пришло на адрес по блокчейну (paid_amount), а не что просили. Хэш ответом
+// закрывает заявку любым переводом на её адрес — #144 (20.11.2026): просили 5000, пришло 500. Нет paid_amount — сумма заявки.
+export const received = (r: Pick<Topup, "amount" | "paid_amount">) => r.paid_amount ?? r.amount;
+
 // Сколько оплачено по монетам: «2 400 USDT · 350 GRAM».
 export function paidTotals(rows: Topup[]): string {
   const by = new Map<string, number>();
-  for (const r of rows) if (r.status === "paid") by.set(r.asset, (by.get(r.asset) ?? 0) + r.amount);
+  for (const r of rows) if (r.status === "paid") by.set(r.asset, (by.get(r.asset) ?? 0) + received(r));
   return [...by].map(([a, s]) => `${s.toLocaleString("ru-RU", { maximumFractionDigits: 9 })} ${a}`).join(" · ");
 }
