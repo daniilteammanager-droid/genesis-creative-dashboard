@@ -1,6 +1,8 @@
 import { after, NextResponse } from "next/server";
 import { getSeat } from "@/lib/auth/server";
 import { selfOf } from "@/lib/auth/types";
+import { INTEGRATIONS } from "@/lib/nav";
+import { juniorDid } from "@/lib/telegram/links";
 import type { PlanInput } from "@/lib/autoupload/plan";
 import { accountDetails, myAccounts, myCreatives, myLandings } from "@/lib/autoupload/options";
 import { cancelJob, createJob, listJobs, planFor, runJob } from "@/lib/autoupload/jobs";
@@ -50,10 +52,15 @@ export async function POST(req: Request) {
   if (!me || me.status !== "active") return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const b = (await req.json().catch(() => ({}))) as { op?: string; input?: PlanInput; id?: string; name?: string; form?: unknown; token?: string; secret?: string };
   try {
-    // Джун заливает в кабинеты баера его ключом, но сам ключ меняет только баер (060_junior.sql).
-    if (selfOf(me) !== me && ["setKey", "deleteKey", "checkKey"].includes(b.op ?? "")) return fail("Ключ автозалива подключает баер", 403);
-    if (b.op === "setKey") { await setAutouploadKey(me.id, b.name ?? "", b.token ?? "", b.secret ?? ""); return NextResponse.json({ key: await viewAutouploadKey(me.id) }); }
-    if (b.op === "deleteKey") { await deleteAutouploadKey(me.id); return NextResponse.json({ ok: true }); }
+    // Джун заливает в кабинеты баера его ключом; сам ключ меняет, только если ему открыли «Интеграции» (Decision 127).
+    const keyOp = ["setKey", "deleteKey", "checkKey"].includes(b.op ?? "");
+    if (keyOp && me.actor && !me.actor.areas?.includes(INTEGRATIONS)) return fail("Ключ автозалива подключает баер", 403);
+    if (b.op === "setKey") {
+      await setAutouploadKey(me.id, b.name ?? "", b.token ?? "", b.secret ?? "");
+      await juniorDid(me, "поменял ключ автозалива");
+      return NextResponse.json({ key: await viewAutouploadKey(me.id) });
+    }
+    if (b.op === "deleteKey") { await deleteAutouploadKey(me.id); await juniorDid(me, "отключил ключ автозалива"); return NextResponse.json({ ok: true }); }
     if (b.op === "checkKey") return NextResponse.json(await checkAutouploadKey(me.id));
     if (b.op === "saveDraft") {
       const name = (b.name ?? "").trim().slice(0, 80);

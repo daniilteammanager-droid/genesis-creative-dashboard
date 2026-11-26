@@ -12,6 +12,7 @@ import CreativeUploadModal from "@/app/library/CreativeUploadModal";
 import { DatePicker } from "@/components/DatePicker";
 import { Icon } from "@/components/ui";
 import { useProfile } from "@/components/Shell";
+import { INTEGRATIONS } from "@/lib/nav";
 
 // Автозалив (Decision 081, 087) — форма один в один с Genesis Manager Артёма:
 // 01 кабинеты и основа → общий набор адсетов с креативами → текст → 02 кампании
@@ -49,7 +50,9 @@ function loadDraft(): Draft {
 }
 
 export default function Autoupload() {
-  const junior = useProfile()?.role === "junior";
+  // Ключ автозалива — баера: джун видит и меняет его, только если ему открыли «Интеграции» (Decision 127).
+  const profile = useProfile();
+  const keyHidden = profile?.role === "junior" && !profile.areas?.includes(INTEGRATIONS);
   const [opt, setOpt] = useState<Options | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useState<Draft>(EMPTY);
@@ -229,8 +232,7 @@ export default function Autoupload() {
         </div>
       </div>
 
-      {/* Ключ автозалива — баера: джун заливает им, но не видит и не меняет (060_junior.sql). */}
-      {!junior && <UploadApp />}
+      {!keyHidden && <UploadApp />}
 
       <div data-tour="au-base" className={card}>
         <div className="flex items-center gap-2 mb-3">

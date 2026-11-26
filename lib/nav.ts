@@ -42,22 +42,30 @@ export const startPageOf = (v: string | null | undefined, areas = WORK_AREAS) =>
 // По умолчанию джуну закрыты деньги (24.11.2026, Даниил). Остальное открыто.
 export const JUNIOR_OFF = ["/general-report-4", "/topups"];
 export const juniorDefault = () => WORK_AREAS.map((a) => a.href).filter((h) => !JUNIOR_OFF.includes(h));
+// «Интеграции» джуну — отдельный переключатель (26.11.2026, Даниил): хранится строкой в тех же разделах
+// (profiles.junior_areas), по умолчанию закрыты. Открыты — джун в «Интеграциях» как его баер: ключи Meta, TG Ads,
+// Dolphin, FB Tool, Torro баера и ключ автозалива; Telegram — свои чаты.
+export const INTEGRATIONS = "/settings/integrations";
 
 // Разделы джуна на деле: выбранные (null — по умолчанию) ∩ разделы его баера, поэтому закрыли баеру легаси —
 // у джуна они пропали сами. Баер отключён или больше не баер — остаётся только личное: Задачи.
 export function juniorAreas(chosen: string[] | null, buyer: { role: string; status: string; legacy_access: boolean } | null): string[] {
   const mine = chosen ?? juniorDefault();
-  const ok = buyer && buyer.status === "active" && buyer.role === "buyer" ? areasFor(buyer as Parameters<typeof areasFor>[0]).map((a) => a.href) : ["/tasks"];
-  return WORK_AREAS.map((a) => a.href).filter((h) => mine.includes(h) && ok.includes(h));
+  const live = !!buyer && buyer.status === "active" && buyer.role === "buyer";
+  const ok = live ? areasFor(buyer as Parameters<typeof areasFor>[0]).map((a) => a.href) : ["/tasks"];
+  return [...WORK_AREAS.map((a) => a.href).filter((h) => mine.includes(h) && ok.includes(h)), ...(live && mine.includes(INTEGRATIONS) ? [INTEGRATIONS] : [])];
 }
 
 const under = (path: string, p: string) => path === p || path.startsWith(`${p}/`);
 
-// Ключи и подключения баера джуну закрыты целиком, как и админка.
+// Админка и деньги команды джуну закрыты всегда.
 const JUNIOR_NEVER = [
-  "/settings/integrations", "/settings/team", "/settings/invites", "/settings/juniors",
-  "/api/connections", "/api/meta-keys", "/api/tgads-keys", "/api/fbtool", "/api/dolphin", "/api/accounts",
-  "/api/telegram", "/api/sheets", "/api/gr-sheets", "/api/ai/budget", "/api/ai/summary",
+  "/settings/team", "/settings/invites", "/settings/juniors",
+  "/api/sheets", "/api/gr-sheets", "/api/ai/budget", "/api/ai/summary",
+];
+// «Интеграции» и их API — только с переключателем (INTEGRATIONS в разделах джуна).
+const JUNIOR_INTEGRATIONS = [
+  INTEGRATIONS, "/api/connections", "/api/meta-keys", "/api/tgads-keys", "/api/fbtool", "/api/dolphin", "/api/accounts", "/api/telegram",
 ];
 // Свой Claude или Codex — только если включили (profiles.junior_mcp).
 const JUNIOR_MCP = ["/settings/ai", "/api/mcp-tokens", "/oauth/authorize", "/api/oauth/authorize"];
@@ -85,6 +93,7 @@ const AREA_OF: [string, string[]][] = [
 // Пускает ли middleware джуна по адресу: страница закрытого раздела и её API — нет.
 export function juniorMay(path: string, areas: string[], mcp: boolean): boolean {
   if (JUNIOR_NEVER.some((p) => under(path, p))) return false;
+  if (JUNIOR_INTEGRATIONS.some((p) => under(path, p))) return areas.includes(INTEGRATIONS);
   if (JUNIOR_MCP.some((p) => under(path, p))) return mcp;
   const hit = AREA_OF.find(([p]) => under(path, p));
   return !hit || hit[1].some((a) => areas.includes(a));

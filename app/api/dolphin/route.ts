@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { juniorDid } from "@/lib/telegram/links";
 import { getConnection, setDolphinToken } from "@/lib/connections/store";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
 import { verifyDolphin } from "@/lib/dolphin/api";
@@ -15,7 +16,7 @@ const fail = (e: unknown, status = 400) =>
   NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status });
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     const { token } = (await req.json()) as { token?: string };
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     if (typeof checked === "string") return fail(checked);
     await setDolphinToken(me.id, token);
     ingestSoon(me.id);
+    await juniorDid(me, "подключил Dolphin Cloud");
     return NextResponse.json({ ok: true, account: checked.name });
   } catch (e) {
     return fail(e, 500);
@@ -36,10 +38,11 @@ export async function POST(req: Request) {
 
 // Отключить. История в складе остаётся: отключение забирает доступ, а не данные.
 export async function DELETE() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     await setDolphinToken(me.id, null);
+    await juniorDid(me, "отключил Dolphin Cloud");
     return NextResponse.json({ ok: true });
   } catch (e) {
     return fail(e, 500);

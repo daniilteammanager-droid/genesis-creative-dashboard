@@ -23,7 +23,7 @@ export const EVENTS: TelegramEvent[] = [
   { key: "test_limit", label: "Крео за границей теста", hint: "крео без депов потратило 2,5 × целевой цены депа страны и ещё крутится", ready: true },
   { key: "ai_analysis", label: "AI-разбор крео", hint: "почему крео не взлетело или что сработало: когда прошло границу теста и когда дало первые депы", ready: true },
   { key: "tasks", label: "Задачи", hint: "в 10:00 МСК — сроки на сегодня и просроченное; и когда тебе поручили задачу на общем холсте", ready: true },
-  { key: "junior_changes", label: "Изменения джуна", hint: "твой джун поставил на паузу, запустил или поменял бюджет в Live Manager", ready: true, roles: ["buyer"] },
+  { key: "junior_changes", label: "Изменения джуна", hint: "твой джун поставил на паузу, запустил или поменял бюджет в Live Manager, поменял твои ключи или подключения", ready: true, roles: ["buyer"] },
   { key: "ai_changes", label: "Изменения через AI", hint: "твой Claude или Codex поставил на паузу, запустил или поменял бюджет — что было и что стало", ready: true },
   { key: "ai_weekly", label: "AI-сводка недели", hint: "по понедельникам: что работает у каждого баера и у команды — владельцу и тимлиду", ready: true, roles: ["main", "teamlead"] },
 ];

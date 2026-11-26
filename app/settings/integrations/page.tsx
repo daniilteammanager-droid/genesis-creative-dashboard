@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
 import { getConnectionView } from "@/lib/connections/store";
 import ConnectionsForm from "./ConnectionsForm";
 import MetaKeys from "./MetaKeys";
@@ -9,7 +9,8 @@ import TelegramLinks from "./TelegramLinks";
 import { createClient } from "@/lib/auth/server";
 
 export default async function IntegrationsPage() {
-  const profile = await getProfile();
+  // Джун с открытыми «Интеграциями» (Decision 127) — подключения своего баера; Telegram ниже — свои чаты.
+  const profile = await getSeat();
   if (!profile) redirect("/login");
 
   // Читаем на сервере: таблица подключений закрыта от браузера, а страница и так

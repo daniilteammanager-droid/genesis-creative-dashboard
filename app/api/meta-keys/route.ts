@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { juniorDid } from "@/lib/telegram/links";
 import { addMetaKey, deleteMetaKey, listMetaKeys } from "@/lib/connections/metaKeys";
 import { warehouse } from "@/lib/warehouse/read";
 import { ingestSoon } from "@/lib/warehouse/kick";
@@ -7,7 +8,8 @@ import { ingestSoon } from "@/lib/warehouse/kick";
 // Загрузка после подключения идёт следом за ответом (ingestSoon) — ей нужно время.
 export const maxDuration = 300;
 
-// Свои ключи Meta. user_id из сессии: чужой ключ не увидеть и не удалить.
+// Свои ключи Meta. user_id из сессии: чужой ключ не увидеть и не удалить. Джун с открытыми «Интеграциями» —
+// ключи своего баера (getSeat), баеру — в Telegram, что поменялось.
 // Источник расхода у человека один (Decision 061): пока подключён FB Tool или
 // Dolphin, ключ Meta не добавить — сначала удалить ту интеграцию.
 
@@ -29,7 +31,7 @@ async function view(userId: string) {
 }
 
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     return NextResponse.json(await view(me.id));
@@ -39,7 +41,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     const { name, token } = (await req.json()) as { name?: string; token?: string };
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
     }
     await addMetaKey(me.id, name ?? "", token ?? "");
     ingestSoon(me.id);
+    await juniorDid(me, `добавил ключ Meta «${(name ?? "").trim() || "без названия"}»`);
     return NextResponse.json(await view(me.id));
   } catch (e) {
     return fail(e);
@@ -56,12 +59,13 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return fail("Нет id ключа");
   try {
     await deleteMetaKey(me.id, id);
+    await juniorDid(me, "удалил ключ Meta");
     return NextResponse.json(await view(me.id));
   } catch (e) {
     return fail(e, 500);

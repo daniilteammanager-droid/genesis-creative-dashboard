@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { juniorDid } from "@/lib/telegram/links";
 import { getConnection, setFbtoolKey } from "@/lib/connections/store";
 import { listMetaKeys } from "@/lib/connections/metaKeys";
 import { fbtoolAccounts } from "@/lib/fbtool/api";
@@ -16,7 +17,7 @@ const fail = (e: unknown, status = 400) =>
 
 // Аккаунты FB Tool и их состояние — чтобы баер видел, какой разлогинен.
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     const c = await getConnection(me.id);
@@ -28,7 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     const { key } = (await req.json()) as { key?: string };
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
     const accounts = await fbtoolAccounts(key.trim());
     await setFbtoolKey(me.id, key);
     ingestSoon(me.id);
+    await juniorDid(me, "подключил FB Tool");
     return NextResponse.json({ ok: true, accounts });
   } catch (e) {
     return fail(e);
@@ -47,10 +49,11 @@ export async function POST(req: Request) {
 
 // Отключить. История в складе остаётся: отключение забирает доступ, а не данные.
 export async function DELETE() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
   try {
     await setFbtoolKey(me.id, null);
+    await juniorDid(me, "отключил FB Tool");
     return NextResponse.json({ ok: true });
   } catch (e) {
     return fail(e, 500);

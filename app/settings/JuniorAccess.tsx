@@ -1,9 +1,9 @@
 "use client";
 
-import { WORK_AREAS, juniorDefault } from "@/lib/nav";
+import { INTEGRATIONS, WORK_AREAS, juniorDefault } from "@/lib/nav";
 import { chip, seg } from "@/components/ui";
 
-// Разделы и AI-доступ джуна (060_junior.sql) — одни и те же на «Команде» у владельца и на «Джунах» у баера.
+// Разделы, «Интеграции» и AI-доступ джуна (Decision 127) — одни и те же на «Команде» у владельца и на «Джунах» у баера.
 // allowed — разделы баера: больше, чем видит баер, джуну не открыть (закрытое — серым, с причиной).
 export default function JuniorAccess({ chosen, allowed, mcp, busy, onAreas, onMcp }: {
   chosen: string[] | null;
@@ -15,6 +15,7 @@ export default function JuniorAccess({ chosen, allowed, mcp, busy, onAreas, onMc
 }) {
   const now = chosen ?? juniorDefault();
   const toggle = (href: string) => onAreas(now.includes(href) ? now.filter((h) => h !== href) : [...now, href]);
+  const ints = now.includes(INTEGRATIONS);
   return (
     <>
       <div className="w-full flex items-center gap-2 flex-wrap">
@@ -34,6 +35,18 @@ export default function JuniorAccess({ chosen, allowed, mcp, busy, onAreas, onMc
             как по умолчанию
           </button>
         )}
+      </div>
+      {/* «Интеграции» — отдельно (26.11.2026, Даниил): открыты — у джуна тот же доступ, что у баера. */}
+      <div className="w-full flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">Интеграции</span>
+        <div className="seg">
+          {([false, true] as const).map((on) => (
+            <button key={String(on)} type="button" {...seg(ints === on)} disabled={busy} onClick={() => ints !== on && toggle(INTEGRATIONS)}>
+              {on ? "Открыты" : "Закрыты"}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] text-hint">как у баера: ключи Meta, TG Ads, Dolphin, FB Tool, Torro, ключ автозалива</span>
       </div>
       <div className="w-full flex items-center gap-2 flex-wrap">
         <span className="text-[11px] text-hint whitespace-nowrap w-[72px]">AI-доступ</span>

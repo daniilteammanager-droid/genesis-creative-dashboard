@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { warehouse } from "@/lib/warehouse/read";
 import { DEFAULT_EVENTS } from "./events";
+import type { Profile } from "@/lib/auth/types";
 import { escapeHtml, sendMessage, sendRich, TelegramError } from "./api";
 
 // Привязки чатов к профилям. Таблицы закрыты от браузера (017_telegram.sql),
@@ -185,3 +186,11 @@ export async function sendToLinks(links: { id: string; chat_id: number; thread_i
 }
 
 export { escapeHtml };
+
+// Джун поменял что-то у баера (Decision 127): подключения, ключи — баеру в Telegram (уведомление junior_changes).
+// seat — место из getSeat: у джуна в нём actor; у баера и владельца ничего не шлём. Telegram не роняет ответ.
+export async function juniorDid(seat: Profile, what: string): Promise<void> {
+  const by = seat.actor;
+  if (!by) return;
+  await notify(seat.id, "junior_changes", `👤 <b>${escapeHtml(by.name || by.email)}</b>: ${escapeHtml(what)}`).catch(() => 0);
+}

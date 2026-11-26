@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth/server";
+import { getSeat } from "@/lib/auth/server";
+import { juniorDid } from "@/lib/telegram/links";
 import { getConnection, getConnectionView, saveConnection, torroBuyerTakenBy, type ConnectionInput } from "@/lib/connections/store";
 import { verifyTorro } from "@/lib/torro/mcp";
 import { mskDay } from "@/lib/day";
@@ -12,7 +13,7 @@ export const maxDuration = 300;
 // тела запроса. Иначе один баер подменил бы ключ другому.
 
 export async function GET() {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
   try {
@@ -26,7 +27,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const me = await getProfile();
+  const me = await getSeat();
   if (!me) return NextResponse.json({ error: "Нужно войти" }, { status: 401 });
 
   try {
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
     }
 
     await saveConnection(me.id, body);
+    await juniorDid(me, "поменял подключение Torro");
     if (body.torroToken) ingestSoon(me.id);
     return NextResponse.json(await getConnectionView(me.id));
   } catch (e) {

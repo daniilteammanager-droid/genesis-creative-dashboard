@@ -1,7 +1,7 @@
 // Самопроверка доступа к «Легаси крео» (Decision 119) и разделов джуна (060_junior.sql). Запуск: npx tsx lib/nav.test.ts
 import assert from "node:assert/strict";
 import { canSeeLegacy } from "./auth/types";
-import { areasFor, juniorAreas, juniorMay, juniorTool, startPageOf } from "./nav";
+import { INTEGRATIONS, areasFor, juniorAreas, juniorMay, juniorTool, startPageOf } from "./nav";
 import { stepsFor } from "./onboarding/steps";
 
 const closed = { role: "buyer", legacy_access: false } as const;
@@ -66,9 +66,18 @@ assert.equal(juniorMay("/api/report-live", def, false), true);
 // Уникализация открыта, антиотклон закрыт — роут заданий всё равно нужен.
 assert.equal(juniorMay("/api/antireject", ["/uniquify"], false), true);
 assert.equal(juniorMay("/antireject", ["/uniquify"], false), false);
-// Интеграции и админка — никогда, даже если открыто всё.
+// Интеграции — только с переключателем; админка — никогда, даже если открыто всё.
 const all = juniorAreas(["/home", "/tasks", "/library", "/creatives", "/check", "/live-manager", "/traffic-report", "/general-report-4", "/autoupload", "/antireject", "/uniquify", "/topups"], buyerOpen);
-for (const p of ["/settings/integrations", "/api/meta-keys", "/api/connections", "/api/telegram/links", "/settings/team", "/api/accounts", "/api/ai/summary"]) assert.equal(juniorMay(p, all, true), false, p);
+const ints = ["/settings/integrations", "/api/meta-keys", "/api/connections", "/api/telegram/links", "/api/accounts", "/api/dolphin", "/api/fbtool", "/api/tgads-keys"];
+for (const p of ints) assert.equal(juniorMay(p, all, true), false, p);
+assert.equal(def.includes(INTEGRATIONS), false);
+const withInt = juniorAreas([...all, INTEGRATIONS], buyerOpen);
+for (const p of ints) assert.equal(juniorMay(p, withInt, false), true, p);
+for (const p of ["/settings/team", "/settings/invites", "/settings/juniors", "/api/ai/summary", "/api/gr-sheets"]) assert.equal(juniorMay(p, withInt, true), false, p);
+// Баер отключён — интеграции у джуна закрываются вместе с остальным.
+assert.equal(juniorAreas([INTEGRATIONS], { ...buyerOpen, status: "disabled" }).includes(INTEGRATIONS), false);
+// В панели «Интеграций» нет — это вкладка настроек, не рабочая область.
+assert.equal(areasFor({ role: "junior", legacy_access: false, areas: withInt }).some((a) => a.href === INTEGRATIONS), false);
 // AI-доступ — только с выключателем.
 assert.equal(juniorMay("/settings/ai", all, false), false);
 assert.equal(juniorMay("/api/mcp-tokens", all, true), true);

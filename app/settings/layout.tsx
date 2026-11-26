@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth/server";
 import SettingsNav from "./SettingsNav";
+import { INTEGRATIONS } from "@/lib/nav";
 
 // Всё, что касается аккаунта и администрирования, живёт под /settings и делит
 // одну шапку с вкладками. Так раздел растёт вкладкой, а не пунктом в левой панели.
@@ -12,7 +13,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     <main className="min-h-screen bg-background text-white p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
         <h1 className="page-title mb-6">Настройки</h1>
-        <SettingsNav role={profile.role} mcp={profile.junior_mcp === true} />
+        <SettingsNav role={profile.role} mcp={profile.junior_mcp === true} integrations={!!profile.areas?.includes(INTEGRATIONS)} />
         {children}
       </div>
     </main>
