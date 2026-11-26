@@ -19,7 +19,8 @@ export default async function TeamPage() {
   return (
     <>
       <p className="text-hint text-sm mb-5">
-        Роль, номер баера и доступ. Изменения применяются сразу.
+        Роль, номер баера и доступ. Изменения применяются сразу. Отключение отзывает и все AI-подключения человека — после
+        включения он подключает Claude или Codex заново.
       </p>
       <TeamManager people={(data as Profile[]) ?? []} meId={me.id} />
       <AccountOwners />
