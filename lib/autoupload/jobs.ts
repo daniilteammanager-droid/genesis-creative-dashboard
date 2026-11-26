@@ -84,6 +84,17 @@ export async function runOpenJobs(budgetMs: number): Promise<number> {
   return data?.length ?? 0;
 }
 
+// Продолжить упавший залив с места, где он встал (Decision 130: кончился лимит приложения — сменили ключ): что уже
+// создано, записано в state, следующий проход крона идёт дальше, как после временного сбоя.
+export async function resumeJob(userId: string, id: string): Promise<void> {
+  const { data } = await db().from("autoupload_jobs").select("state").eq("id", id).eq("user_id", userId).eq("status", "failed").maybeSingle();
+  if (!data) throw new Error("Залив не найден или не в статусе «Ошибка»");
+  const state = data.state ? { ...(data.state as Record<string, unknown>), retries: 0 } : null;
+  const { error } = await db().from("autoupload_jobs").update({ status: "creating", error: null, stage: "Продолжаю", state, lease_until: null, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("user_id", userId).eq("status", "failed");
+  if (error) throw new Error(error.message);
+}
+
 export async function cancelJob(userId: string, id: string): Promise<string[]> {
   const { data } = await db().from("autoupload_jobs").update({ status: "cancelling", stage: "Удаляю созданное" })
     .eq("id", id).eq("user_id", userId).in("status", ["creating", "created", "failed"])

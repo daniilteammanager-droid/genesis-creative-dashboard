@@ -1,7 +1,7 @@
 // Самопроверка отчёта по трафику. Запуск: npx tsx lib/traffic-report/build.test.ts
 import assert from "node:assert/strict";
 import { orderCols } from "@/components/ColumnPicker";
-import { buildReport, cellsOf, countRejects, sumRejects, creoGeo, filterCells, geoOf, groupCreos, lifeMap, metricsOf, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
+import { buildReport, cellsOf, countRejects, REST, splitCells, sumRejects, creoGeo, filterCells, geoOf, groupCreos, lifeMap, metricsOf, romiBand, sortCreos, stageOf, sumAllTime, textKey, totalOf, treeOf, type SpendRow } from "./build";
 
 const sp = (r: Omit<SpendRow, "face" | "funnel" | "platform"> & Partial<SpendRow>): SpendRow => ({ face: "ROMAN", funnel: "TG", platform: "fb", ...r });
 
@@ -157,5 +157,17 @@ assert.equal(L(orderCols(C, [])), "ABCD");
 assert.equal(L(orderCols(C, ["D", "C", "B", "A"])), "DCBA");
 assert.equal(L(orderCols(C, ["C", "A", "D"])), "CABD");                // B — новый, за A
 assert.equal(L(orderCols(C, ["X", "B", "A", "C", "D"])), "BACD");      // пропавший столбец X не мешает
+
+{
+  const cs = cellsOf([], [{ buyer: "A", campaign: "X", ad: "vid-a-t1-v1-b1-es-es", subs: 1, dia: 0, deps: 0, rev: 0, crm: { lp: 5, q: [1, 0, 0, 0, 2] } }],
+    new Map([["A", { subs: 1, dia: 0, deps: 0, rev: 0, crm: { lp: 3, q: [0, 1, 0, 0, 0] } }]]));
+  assert.equal(cs.reduce((t, c) => t + (c.crm?.lp ?? 0), 0), 8);
+  assert.deepEqual(cs.find((c) => c.geo === REST)?.crm?.q, [0, 1, 0, 0, 0]);
+  assert.equal(Object.keys(cs[0].sums).length, 7);   // в Sums лишних ключей нет
+  // Квал пришёл днём позже подписки — в отчёт строка не идёт, а в crmOnly — да.
+  const sp2 = splitCells([], [{ buyer: "A", campaign: "X", ad: "vid-b-t2-v1-b1-es-es", subs: 0, dia: 0, deps: 0, rev: 0, crm: { lp: 0, q: [1, 0, 0, 0, 0] } }]);
+  assert.equal(sp2.cells.length, 0);
+  assert.deepEqual(sp2.crmOnly.map((c) => c.crm?.q[0]), [1]);
+}
 
 console.log("traffic-report: этапы и ROMI за всё время, реджекты, порядок столбцов, цвет ROMI, страна депов, склейка, сортировка и фильтры верно");

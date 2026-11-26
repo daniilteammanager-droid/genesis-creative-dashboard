@@ -57,12 +57,17 @@ export function geoOf(countries: string[], campaignName: string, ad = ""): strin
 export type Platform = "fb" | "tg";
 // face — ROMAN | RICKY | "" (из имени кампании, у TG Ads — из названия кабинета); funnel — TG | WA | "".
 export interface SpendRow { buyer: string; campaign: string; ad: string; geo: string; face: string; funnel: string; platform: Platform; spend: number; impr: number; clicks: number }
-export interface TorroRow { buyer: string; campaign: string; ad: string; subs: number; dia: number; deps: number; rev: number }
+export interface TorroRow { buyer: string; campaign: string; ad: string; subs: number; dia: number; deps: number; rev: number; crm?: CellCrm }
 export interface Sums { spend: number; impr: number; clicks: number; subs: number; dia: number; deps: number; rev: number }
 
 // Ячейка отчёта: баер × страна × лицо × воронка × площадка × крео. Фильтры режут ячейки,
 // дерево собирается из того, что осталось (treeOf) — итоги и этапы считаются заново.
-export interface Cell { buyer: string; geo: string; face: string; funnel: string; platform: Platform; creo: string; sums: Sums }
+export interface Cell { buyer: string; geo: string; face: string; funnel: string; platform: Platform; creo: string; sums: Sums; crm?: CellCrm }
+// Клики на ленде и квалы A–E из Torro (26.11.2026, AI-доступ: get_stats по странам). Не в Sums: дерево и страница
+// их не считают, а суммы Sums складываются по всем ключам.
+export interface CellCrm { lp: number; q: number[] }
+export const noCrm = (): CellCrm => ({ lp: 0, q: [0, 0, 0, 0, 0] });
+export const addCrm = (to: CellCrm, from: CellCrm) => { to.lp += from.lp; from.q.forEach((v, i) => { to.q[i] += v; }); };
 
 // Фильтры как в General 4.0: в каждом разрезе несколько значений, пусто — все.
 export const DIMS = ["face", "region", "geo", "platform", "funnel"] as const;
@@ -153,12 +158,17 @@ export const creoName = (ad: string) => {
 // Расход и Torro → ячейки. Torro берёт страну, лицо, воронку и площадку той пары
 // «кампания × объявление», что крутилась в периоде, иначе — кампании, иначе — из имени
 // кампании Torro (площадка — та, на которой у баера был расход).
-export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, Omit<Sums, "spend" | "impr" | "clicks">> = new Map()): Cell[] {
+type Rest = Omit<Sums, "spend" | "impr" | "clicks"> & { crm?: CellCrm };
+// В отчёт идут ячейки с расходом или воронкой Torro. crmOnly — те, где за период только клики на ленде или квалы
+// (квал пришёл днём позже подписки, клики без подписок): их не видит ни страница, ни алерты, только get_stats.
+const counted = ({ sums: s }: Cell) => Boolean(s.spend > 0 || s.subs || s.dia || s.deps || s.rev);
+export const cellsOf = (spend: SpendRow[], torro: TorroRow[], rest?: Map<string, Rest>): Cell[] => splitCells(spend, torro, rest).cells;
+export function splitCells(spend: SpendRow[], torro: TorroRow[], rest: Map<string, Rest> = new Map()): { cells: Cell[]; crmOnly: Cell[] } {
   const cells = new Map<string, Cell>();
   const cell = (buyer: string, geo: string, face: string, funnel: string, platform: Platform, creo: string) => {
     const k = [buyer, geo, face, funnel, platform, creo].join("\u0000");
     if (!cells.has(k)) cells.set(k, { buyer, geo, face, funnel, platform, creo, sums: { ...ZERO } });
-    return cells.get(k)!.sums;
+    return cells.get(k)!;
   };
   type Seen = { geo: Set<string>; face: Set<string>; funnel: Set<string>; platform: Set<Platform> };
   const pairs = new Map<string, Seen>(), camps = new Map<string, Seen>(), ads = new Map<string, Seen>(), platforms = new Map<string, Set<Platform>>();
@@ -175,7 +185,7 @@ export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, 
   for (const raw of spend) {
     const ad = ads.get(`${raw.buyer}\u0000${raw.ad.trim()}`);
     const r = { ...raw, face: raw.face || named(ad?.face) || "", funnel: raw.funnel || named(ad?.funnel) || "" };
-    const s = cell(r.buyer, r.geo, r.face, r.funnel, r.platform, creoName(r.ad));
+    const s = cell(r.buyer, r.geo, r.face, r.funnel, r.platform, creoName(r.ad)).sums;
     s.spend += r.spend; s.impr += r.impr; s.clicks += r.clicks;
     note(pairs, `${r.buyer}\u0000${r.campaign.trim()}\u0000${r.ad.trim()}`, r);
     note(camps, `${r.buyer}\u0000${r.campaign.trim()}`, r);
@@ -191,7 +201,7 @@ export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, 
     const platform = one(seen?.platform, "fb" as Platform) ?? only(ad?.platform) ?? (own?.size === 1 ? [...own][0] : "fb");
     // У TG Ads страна — в имени кампании («Static 4 Spain», «… Channels»), а parseName его не узнаёт.
     const tgGeo = platform === "tg" ? geoOfTitle(r.campaign) : null;
-    const s = cell(
+    const c = cell(
       r.buyer,
       one(seen?.geo, MULTI) ?? name.geo ?? tgGeo ?? creoGeo(r.ad) ?? only(ad?.geo) ?? NO_GEO,
       one(seen?.face, "") || named(ad?.face) || name.face || "",
@@ -199,15 +209,21 @@ export function cellsOf(spend: SpendRow[], torro: TorroRow[], rest: Map<string, 
       platform,
       creoName(r.ad),
     );
+    const s = c.sums;
     s.subs += r.subs; s.dia += r.dia; s.deps += r.deps; s.rev += r.rev;
+    if (r.crm) addCrm(c.crm ??= noCrm(), r.crm);
   }
-  for (const [buyer, x] of rest) {
-    if (x.subs > 0 || x.dia > 0 || x.deps > 0 || x.rev > 0) Object.assign(cell(buyer, REST, "", "", "fb", "Torro без связки с крео"), { ...ZERO, ...x });
+  for (const [buyer, { crm, ...x }] of rest) {
+    if (!(x.subs > 0 || x.dia > 0 || x.deps > 0 || x.rev > 0) && !crm) continue;
+    const c = cell(buyer, REST, "", "", "fb", "Torro без связки с крео");
+    Object.assign(c.sums, { ...ZERO, ...x });
+    if (crm) addCrm(c.crm ??= noCrm(), crm);
   }
-  return [...cells.values()].filter(({ sums: s }) => s.spend > 0 || s.subs || s.dia || s.deps || s.rev);
+  const all = [...cells.values()];
+  return { cells: all.filter(counted), crmOnly: all.filter((c) => !counted(c) && c.crm) };
 }
 
-export const buildReport = (spend: SpendRow[], torro: TorroRow[], rest?: Map<string, Omit<Sums, "spend" | "impr" | "clicks">>) =>
+export const buildReport = (spend: SpendRow[], torro: TorroRow[], rest?: Map<string, Rest>) =>
   treeOf(cellsOf(spend, torro, rest));
 
 // Дерево баер → страна → крео из ячеек: лица, воронки и площадки внутри складываются.

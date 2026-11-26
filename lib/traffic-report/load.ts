@@ -3,7 +3,7 @@ import { NO_CABINETS, resolveScope } from "@/lib/warehouse/accounts";
 import type { Profile } from "@/lib/auth/types";
 import { faceInName } from "@/lib/warehouse/check";
 import { buyerCodeIn, parseName, textNoOf } from "@/lib/creatives/code";
-import { cellsOf, countRejects, geoOf, REST, type Cell, type Rejects, type Sums, type SpendRow, type TorroRow } from "./build";
+import { addCrm, cellsOf, countRejects, geoOf, noCrm, REST, splitCells, type Cell, type CellCrm, type Rejects, type Sums, type SpendRow, type TorroRow } from "./build";
 import { merge, policiesOf, type CurrentRow, type EventRow } from "@/lib/mcp/rejects";
 import { creativeOfTitle, geoOfTitle, regionOfCabinet } from "@/lib/tgads/names";
 
@@ -21,20 +21,28 @@ export interface TrafficReport {
   // Крео баера за всё время (все страны) и его последний статус — рядом с цифрами периода.
   // active: хоть одно объявление с этим именем сейчас крутится; null — объявлений в складе нет.
   creos: CreoAllTime[];
+  // Только клики на ленде или квалы (splitCells) — по просьбе (withCrm), для get_stats AI-доступа.
+  crmOnly?: Cell[];
   notice?: string;
 }
 // geos — то же всё время по странам (страна — как у цифр периода): по нему этап крео и «ROMI всё время» строки.
 // rejects — отклонённые объявления Meta с этим крео у баера, всё время; нет — крео только в TG Ads (модерация своя).
 export interface CreoAllTime { buyer: string; creo: string; sums: Sums; geos: Record<string, Sums>; rejects?: Rejects; active: boolean | null; first?: string }
 
-type Crm = { subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null; redep_sum: number | string | null };
+type Crm = { subscribers: number | null; dialogs: number | null; dep_count: number | null; dep_sum: number | string | null; redep_sum: number | string | null;
+  clicks?: number | null; qual_a?: number | null; qual_b?: number | null; qual_c?: number | null; qual_d?: number | null; qual_e?: number | null };
+const crmOf = (r: Crm): CellCrm | undefined => {
+  const q = [r.qual_a ?? 0, r.qual_b ?? 0, r.qual_c ?? 0, r.qual_d ?? 0, r.qual_e ?? 0], lp = r.clicks ?? 0;
+  return lp || q.some(Boolean) ? { lp, q } : undefined;
+};
+const CRM_COLS = "clicks, qual_a, qual_b, qual_c, qual_d, qual_e";
 const torroOf = (r: Crm) => ({
   subs: r.subscribers ?? 0, dia: r.dialogs ?? 0, deps: r.dep_count ?? 0,
   rev: Number(r.dep_sum ?? 0) + Number(r.redep_sum ?? 0),
 });
 
 // allTime: false — без «ROMI всё время» у крео (creos пустой): отчёту в Telegram он не нужен, а это лишний обход склада.
-export async function loadTrafficReport(me: Profile, since: string, until: string, buyerFilter?: string, opts: { allTime?: boolean } = {}): Promise<TrafficReport> {
+export async function loadTrafficReport(me: Profile, since: string, until: string, buyerFilter?: string, opts: { allTime?: boolean; withCrm?: boolean } = {}): Promise<TrafficReport> {
   const db = warehouse();
   const { buyers, userIds, accountIds } = await resolveScope(db, me, buyerFilter);
   const empty: TrafficReport = { since, until, buyers, isBuyer: me.role === "buyer", cells: [], creos: [] };
@@ -53,13 +61,13 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
   });
   const [pairs, campaigns] = await Promise.all([
     torroRange<Crm & { user_id: string; period_start: string; campaign_name: string; ad_name: string }>(
-      "wh_crm_pairs", "user_id, period_start, campaign_name, ad_name, subscribers, dialogs, dep_count, dep_sum, redep_sum",
+      "wh_crm_pairs", `user_id, period_start, campaign_name, ad_name, subscribers, dialogs, dep_count, dep_sum, redep_sum, ${CRM_COLS}`,
       ["user_id", "period_start", "campaign_name", "ad_name"]),
     torroRange<Crm & { user_id: string; period_start: string; period_end: string; campaign_name: string }>(
-      "wh_crm_campaign_periods", "user_id, period_start, period_end, campaign_name, subscribers, dialogs, dep_count, dep_sum, redep_sum",
+      "wh_crm_campaign_periods", `user_id, period_start, period_end, campaign_name, subscribers, dialogs, dep_count, dep_sum, redep_sum, ${CRM_COLS}`,
       ["user_id", "period_start", "campaign_name"]),
   ]);
-  const torro: TorroRow[] = pairs.map((p) => ({ buyer: label.get(p.user_id) ?? p.user_id, campaign: p.campaign_name, ad: p.ad_name, ...torroOf(p) }));
+  const torro: TorroRow[] = pairs.map((p) => ({ buyer: label.get(p.user_id) ?? p.user_id, campaign: p.campaign_name, ad: p.ad_name, ...torroOf(p), crm: crmOf(p) }));
 
   const days = await selectAll<Day>((from, to) => {
     const q = db.from("wh_ad_days").select(COLS).gte("date", since).lte("date", until);
@@ -84,16 +92,22 @@ export async function loadTrafficReport(me: Profile, since: string, until: strin
   const plus = (a: T4, b: T4) => { a.subs += b.subs; a.dia += b.dia; a.deps += b.deps; a.rev += b.rev; };
   for (const c of campaigns) if (c.period_start === c.period_end) plus(slot(`${c.user_id}|${c.period_start}`).camp, torroOf(c));
   for (const p of pairs) plus(slot(`${p.user_id}|${p.period_start}`).pair, torroOf(p));
-  const rest = new Map<string, T4>();
+  const crmDay = new Map<string, { camp: CellCrm; pair: CellCrm }>();
+  const cslot = (k: string) => crmDay.get(k) ?? crmDay.set(k, { camp: noCrm(), pair: noCrm() }).get(k)!;
+  for (const c of campaigns) { const x = c.period_start === c.period_end ? crmOf(c) : undefined; if (x) addCrm(cslot(`${c.user_id}|${c.period_start}`).camp, x); }
+  for (const p of pairs) { const x = crmOf(p); if (x) addCrm(cslot(`${p.user_id}|${p.period_start}`).pair, x); }
+  const rest = new Map<string, T4 & { crm?: CellCrm }>();
   for (const [k, { camp, pair }] of byDay) {
     const who = label.get(k.split("|")[0]) ?? k.split("|")[0];
     const r = rest.get(who) ?? rest.set(who, { subs: 0, dia: 0, deps: 0, rev: 0 }).get(who)!;
     r.subs += Math.max(0, camp.subs - pair.subs); r.dia += Math.max(0, camp.dia - pair.dia);
     r.deps += Math.max(0, camp.deps - pair.deps); r.rev += Math.max(0, camp.rev - pair.rev);
+    const cc = crmDay.get(k);
+    if (cc) addCrm(r.crm ??= noCrm(), { lp: Math.max(0, cc.camp.lp - cc.pair.lp), q: cc.camp.q.map((v, i) => Math.max(0, v - cc.pair.q[i])) });
   }
 
-  const cells = cellsOf(spend, torro, rest);
-  return { ...empty, cells, creos: opts.allTime === false ? [] : await allTimeOf(db, cells, userIds, owner, label, toRows) };
+  const { cells, crmOnly } = splitCells(spend, torro, rest);
+  return { ...empty, cells, crmOnly: opts.withCrm ? crmOnly : undefined, creos: opts.allTime === false ? [] : await allTimeOf(db, cells, userIds, owner, label, toRows) };
 }
 
 type Day = { user_id: string; account_id: string | null; ad_name: string; adset_id: string | null; campaign_name: string | null; source: string; spend: number | string; impressions: number; clicks: number; date?: string };

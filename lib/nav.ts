@@ -109,7 +109,7 @@ const TOOL_AREAS: Record<string, string[]> = {
   get_tasks: ["/tasks"], add_tasks: ["/tasks"], update_tasks: ["/tasks"], delete_tasks: ["/tasks"], create_board: ["/tasks"], update_board: ["/tasks"],
   get_topups: ["/topups"], create_topup: ["/topups"],
   get_autoupload_options: ["/autoupload", "/uniquify"], preview_autoupload: ["/autoupload"], launch_autoupload: ["/autoupload"],
-  get_autoupload_jobs: ["/autoupload"], cancel_autoupload: ["/autoupload"], save_autoupload_draft: ["/autoupload"],
+  get_autoupload_jobs: ["/autoupload"], resume_autoupload: ["/autoupload"], cancel_autoupload: ["/autoupload"], save_autoupload_draft: ["/autoupload"],
   get_media_upload_url: ["/autoupload", "/creatives"],
   get_antireject_options: ["/antireject"], antireject_change: ["/antireject"], check_rejects_now: ["/antireject"], get_antireject_history: ["/antireject"],
   get_deposits: ["/traffic-report"], refresh_now: ["/live-manager"],

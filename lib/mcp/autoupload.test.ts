@@ -4,6 +4,7 @@ import { buildPlan } from "@/lib/autoupload/plan";
 import { draftInput, type DraftForm } from "@/lib/autoupload/sets";
 import type { Landing } from "@/lib/autoupload/options";
 import { draftByName, formOf, planPrint, planView, repeatOf, setChildren, REPEAT_MS } from "./autoupload";
+import { activeKey, APP_KEY, type UploadKey } from "@/lib/autoupload/key";
 
 const c1 = { key: "b1/vid-storytell-t31-v1-b1-es-ar.mp4", code: "vid-storytell-t31-v1-b1-es-ar", kind: "video" as const };
 const form: DraftForm = {
@@ -82,5 +83,13 @@ const cut = { ...sets, omitted: [kids[1].omit_key] };
 assert.deepEqual(setChildren(cut)!.map((k) => k.creative), [c1.code], "убранная кампания сета не раскрывается");
 assert.equal(buildPlan(draftInput(cut, new Set(["111"]), []), accounts, null).summary.campaigns, 1, "и не заливается");
 assert.equal(setChildren(bare), undefined, "без 1-1-1 — нечего раскрывать");
+
+// Каким ключом заливать (Decision 130): отмеченный главнее приложения автозалива, без отметки — как раньше.
+const k = (id: string, o: Partial<UploadKey> = {}): UploadKey => ({ id, name: id, appId: null, canWrite: true, marked: false, lastError: null, ...o });
+assert.equal(activeKey([k("m1"), k("m2")])?.id, "m1", "без приложения и отметки — первый ключ с ads_management");
+assert.equal(activeKey([k(APP_KEY), k("m1")])?.id, APP_KEY, "без отметки — приложение автозалива");
+assert.equal(activeKey([k(APP_KEY), k("m1"), k("m2", { marked: true })])?.id, "m2", "отмеченный — главнее");
+assert.equal(activeKey([k("m1", { canWrite: false }), k("m2", { marked: true, canWrite: false }), k("m3")])?.id, "m3", "без права управления — мимо");
+assert.equal(activeKey([k("m1", { canWrite: false })]), null);
 
 console.log("mcp autoupload: ok");

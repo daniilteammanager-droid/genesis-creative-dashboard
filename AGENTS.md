@@ -536,7 +536,8 @@ Decision 116. Свой Claude (сайт, приложение, телефон, C
   Джун (Decision 127) — только если владелец или баер включили ему AI-доступ (`profiles.junior_mcp`): данные — его баера
   (`seatOf`), инструменты — только открытых ему разделов (`juniorTool` в `lib/nav.ts`), задачи и заявки — свои (`selfOf`).
 - **Инструменты** (`lib/mcp/tools.ts`): `get_stats` (как «Отчёты», разбивки и фильтры, второй разрез `then_by` и разбивка по дням `day` —
-  отчёт на каждый день, до 31 дня; у строк крео — баер и первый день
+  отчёт на каждый день, до 31 дня; клики на ленде `lp_clicks` и квалы A–E Torro у итога и строк — `crm` ячейки, с днями, где были
+  только клики или квалы (`splitCells` → `crmOnly`, его просит только `get_stats`: `loadTrafficReport(…, { withCrm })`); у строк крео — баер и первый день
   расхода за всё время, `new_only` — только новые запуски периода, у строки `new_text`: новый текст «bN + tN» или перемонтаж старого — по ним
   штаб считает новые тексты в тесте, `oldTextsOf` в `lib/traffic-report/load.ts`), `get_campaigns` (дерево Live Manager: статус доставки,
   дата создания в Meta — `wh_entities.created_time`, миграция 061, квалы A–E, клики на ленде, id кампании и адсета у строк ниже, фильтры кабинета,
@@ -584,7 +585,10 @@ Decision 116. Свой Claude (сайт, приложение, телефон, C
   и имена — 30 минут не повторяется, `repeatOf`), `get_autoupload_jobs`, `cancel_autoupload` (destructive: удалить созданное), `save_autoupload_draft`,
   `get_media_upload_url` (ссылка PUT в R2 — тот же `issueUpload`, `lib/creatives/upload.ts`, что у Медиатеки). План — тот же `planFor`
   (`lib/autoupload/jobs.ts`), что у `/api/autoupload`, форма → вход — `draftInput` (`sets.ts`), её же берёт страница; задание — `createJob`,
-  заливает крон `kind=autoupload` (до минуты). Ключ приложения автозалива через AI не меняется.
+  заливает крон `kind=autoupload` (до минуты). Сам ключ приложения автозалива через AI не меняется, но (Decision 130) `set_autoupload_key`
+  выбирает, каким из уже добавленных ключей заливать (`keys` в `get_autoupload_options`, джуну не видны и не меняются), а `resume_autoupload`
+  продолжает упавший залив с места, где он встал (`resumeJob`): кончился лимит приложения — сменил ключ, продолжил. Ошибка лимита Meta
+  (коды 4, 17, 32, 613, 80000–80014) помечена в тексте ошибки залива.
 - **Антиотклон** (Decision 129, `lib/mcp/antireject.ts`): `get_antireject_options` и `antireject_change` (destructive, по одному или пачкой до 20) — те же
   `options`, `preview` + `confirm` (`lib/antireject/web.ts`), что кнопки страницы и бота: ссылка, ФП, Multi-advertiser, запись ключом Meta владельца
   кабинета, событие в `antireject_events`; `check_rejects_now` (как «Проверить сейчас», не чаще раза в 5 минут — по `mcp_calls`), `get_antireject_history`; `start_uniquify` (destructive; по `ad_id` готовое видео само встаёт в объявление, по `videos` — файлом)
@@ -660,7 +664,9 @@ Bid cap — `LOWEST_COST_WITH_BID_CAP` на кампании (при CBO) и а�
 автозалива (Decision 093, блок вверху страницы, `autoupload_keys`, `lib/autoupload/key.ts`): ключ с ads_management
 и необязательный App Secret (`appsecret_proof`, `lib/meta/proof.ts`), «Проверить и лимит» — уровень доступа
 (Development / Standard), часовой лимит Marketing API и общий % приложения. Статистика, алерты, Live Manager и
-антиотклон этим ключом не ходят. Не подключено — заливает ключ статистики с ads_management.
+антиотклон этим ключом не ходят. Не подключено — заливает ключ статистики с ads_management. Каким ключом заливать (Decision 130,
+`uploadKeys` / `activeKey` в `key.ts`): ключ Meta с отметкой `meta_keys.for_upload` главнее всего, без отметки — приложение автозалива,
+иначе первый ключ с ads_management. Отметку ставит AI-доступ (`set_autoupload_key`), на странице её не видно.
 Свой Claude или Codex (AI-доступ, Decision 129) заливает тем же путём: показывает план человеку, заливает только его (`plan_id`).
 
 ---
@@ -857,7 +863,8 @@ Supabase stores:
   коды, подключения (хэши access и refresh или личного ключа, отзыв) и журнал вызовов инструментов; `mcp_changes` — изменения
   кампаний через AI: кто, каким подключением, что было и что стало (Decision 117)
 - `antireject_events` — история антиотклона: новые отклонения и действия (Decision 091)
-- `meta_keys` — ключи Meta, у человека их несколько (Decision 061)
+- `meta_keys` — ключи Meta, у человека их несколько (Decision 061); `for_upload` — этим ключом заливает автозалив, одна отметка на
+  человека (Decision 130, миграция 062)
 - заметки и избранное (личные), транскрипции и `ignored` (общие). Ключ `creative_code` — `normalize()` кода крео, как пишет воркер
   (нижний регистр, «/» → «:», без расширения); строки одного крео в разном написании при чтении сливаются (`lib/creatives/notes.ts`)
 - `creative_match_suffixes` — суффиксы для матчинга по базовому имени

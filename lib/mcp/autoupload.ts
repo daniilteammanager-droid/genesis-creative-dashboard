@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { warehouse } from "@/lib/warehouse/read";
 import { selfOf, type Profile } from "@/lib/auth/types";
 import { accountDetails, myAccounts, myCreatives, myLandings } from "@/lib/autoupload/options";
-import { cancelJob, createJob, listJobs, planFor } from "@/lib/autoupload/jobs";
+import { cancelJob, createJob, listJobs, planFor, resumeJob } from "@/lib/autoupload/jobs";
+import { activeKey, setUploadKey, uploadKeys, type UploadKey } from "@/lib/autoupload/key";
 import { ACTORS, CTAS, FUNNEL_LANDERS, GEOS, MARKERS, TARGETS, cabCode, type Plan } from "@/lib/autoupload/plan";
 import { draftInput, expandSet, type DraftForm } from "@/lib/autoupload/sets";
 import { issueUpload } from "@/lib/creatives/upload";
@@ -127,10 +128,16 @@ const PLAN_PROPS = {
   },
 };
 
+// Ключи залива без токенов: active — каким заливает сейчас (Decision 130).
+const keyView = (keys: UploadKey[]) => {
+  const on = activeKey(keys);
+  return keys.map((k) => ({ id: k.id, name: k.name, app_id: k.appId ?? undefined, active: k === on, can_write: k.canWrite, error: k.lastError ?? undefined }));
+};
+
 const getOptions: Tool = {
   name: "get_autoupload_options",
   title: "Автозалив: из чего собирать",
-  description: "Что есть для автозалива, как на странице «Автозалив»: свои живые кабинеты (refresh — перепроверить вживую, как «Обновить кабинеты»), сохранённые сборки, ссылки MVP (лендинги Torro), креативы своей Медиатеки (поиск по коду, лицу, подходу, версии), допустимые GEO, лица, воронки, ленды, аудитории и CTA. С account_id — ещё пиксели и Facebook-страницы этого кабинета (вживую из Meta).",
+  description: "Что есть для автозалива, как на странице «Автозалив»: свои живые кабинеты (refresh — перепроверить вживую, как «Обновить кабинеты»), сохранённые сборки, ссылки MVP (лендинги Torro), креативы своей Медиатеки (поиск по коду, лицу, подходу, версии), допустимые GEO, лица, воронки, ленды, аудитории и CTA, ключи (приложения Meta), которыми можно заливать, — active у того, каким заливает сейчас. С account_id — ещё пиксели и Facebook-страницы этого кабинета (вживую из Meta).",
   inputSchema: {
     type: "object",
     properties: {
@@ -146,7 +153,8 @@ const getOptions: Tool = {
   },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true, title: "Автозалив: из чего собирать" },
   async run({ me }, a) {
-    const [accounts, landings, creatives, saved] = await Promise.all([myAccounts(me, a.refresh === true), myLandings(me).catch(() => []), myCreatives(me), drafts(me.id)]);
+    const [accounts, landings, creatives, saved, keys] = await Promise.all([myAccounts(me, a.refresh === true), myLandings(me).catch(() => []), myCreatives(me), drafts(me.id),
+      me.actor ? Promise.resolve(null) : uploadKeys(me.id)]);   // ключ автозалива джуну не виден (Decision 127)
     const q = str(a.search).toLowerCase(), face = str(a.face).toUpperCase(), approach = str(a.approach).toLowerCase(), version = str(a.version).toLowerCase();
     const found = creatives.filter((c) => (!q || c.code.includes(q)) && (!face || c.face === face) && (!approach || c.approach === approach) && (!version || c.version === version));
     const limit = Math.min(200, Math.max(1, Number.isInteger(a.limit) ? (a.limit as number) : 40));
@@ -163,6 +171,7 @@ const getOptions: Tool = {
       creatives: found.slice(0, limit).map((c) => ({ code: c.code, key: c.key, kind: c.kind, face: c.face, approach: c.approach || undefined, version: c.version || undefined, uploaded: c.uploadedAt.slice(0, 10) })),
       more_creatives: Math.max(0, found.length - limit) || undefined,
       pixels: details?.pixels, pages: details?.pages,
+      keys: keys ? keyView(keys) : undefined,
       allowed: { geos: GEOS, actors: ACTORS, markers: MARKERS, funnels: FUNNEL_LANDERS, targets: TARGETS, ctas: CTAS },
     };
   },
@@ -233,6 +242,34 @@ const cancelAutoupload: Tool = {
   },
 };
 
+const setKey: Tool = {
+  name: "set_autoupload_key",
+  title: "Автозалив: каким ключом заливать",
+  description: "Сменить ключ (приложение Meta), которым заливает автозалив, на другой уже добавленный: ключи из «Интеграций» с правом ads_management или своё приложение автозалива (id app). Для того, когда у приложения кончился часовой лимит Meta — у залива ошибка «лимит запросов приложения»: смени ключ и продолжи залив resume_autoupload. Действует и на заливы, которые уже идут, со следующего прохода. Новый ключ добавляют только на странице. Список и активный — keys в get_autoupload_options.",
+  inputSchema: { type: "object", properties: { key: { type: "string", description: "id из keys (get_autoupload_options), app — приложение автозалива, или точное имя ключа." } }, required: ["key"], additionalProperties: false },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false, title: "Автозалив: каким ключом заливать" },
+  async run({ me }, a) {
+    if (me.actor) throw new ToolError("Ключ автозалива меняет сам баер");
+    const want = str(a.key), keys = await uploadKeys(me.id);
+    const k = keys.find((x) => x.id === want) ?? keys.find((x) => x.name.toLowerCase() === want.toLowerCase());
+    if (!k) throw new ToolError(`Нет такого ключа. Есть: ${keys.map((x) => `${x.name} (${x.id})`).join(", ") || "ни одного"}`);
+    await setUploadKey(me.id, k.id).catch((e: unknown) => { throw new ToolError(e instanceof Error ? e.message : String(e)); });
+    return { active: k.name, keys: keyView(await uploadKeys(me.id)) };
+  },
+};
+
+const resumeAutoupload: Tool = {
+  name: "resume_autoupload",
+  title: "Автозалив: продолжить упавший залив",
+  description: "Продолжить залив со статусом «Ошибка» с места, где он встал: созданное уже записано и второй раз не создаётся, крон продолжит в течение минуты. Для лимита приложения Meta — сначала смени ключ (set_autoupload_key). Ошибку в самой сборке (пиксель, страница, ссылка) так не исправить — нужен новый залив.",
+  inputSchema: { type: "object", properties: { job_id: { type: "string", description: "job_id из get_autoupload_jobs." } }, required: ["job_id"], additionalProperties: false },
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true, title: "Автозалив: продолжить залив" },
+  async run({ me }, a) {
+    await resumeJob(me.id, str(a.job_id)).catch((e: unknown) => { throw new ToolError(e instanceof Error ? e.message : String(e)); });
+    return { resumed: true, note: "Крон продолжит залив в течение минуты; ход — get_autoupload_jobs." };
+  },
+};
+
 const saveDraft: Tool = {
   name: "save_autoupload_draft",
   title: "Автозалив: сохранить сборку",
@@ -271,4 +308,4 @@ const uploadUrl: Tool = {
   },
 };
 
-export const AUTOUPLOAD_TOOLS: Tool[] = [getOptions, previewAutoupload, launchAutoupload, getJobs, cancelAutoupload, saveDraft, uploadUrl];
+export const AUTOUPLOAD_TOOLS: Tool[] = [getOptions, previewAutoupload, launchAutoupload, getJobs, resumeAutoupload, cancelAutoupload, setKey, saveDraft, uploadUrl];

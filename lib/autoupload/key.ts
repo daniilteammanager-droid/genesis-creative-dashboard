@@ -1,6 +1,6 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { decryptSecret, encryptSecret, secretHint } from "@/lib/connections/crypto";
-import { metaTokensOf, WRITE_SCOPE } from "@/lib/connections/metaKeys";
+import { WRITE_SCOPE } from "@/lib/connections/metaKeys";
 import { proofFor, rememberSecret } from "@/lib/meta/proof";
 
 // Приложение Meta для автозалива (Decision 093). Статистика, алерты, Live Manager и
@@ -22,16 +22,55 @@ export interface AutouploadKeyView {
   canWrite: boolean; expiresAt: string | null; lastError: string | null; hasSecret: boolean; updatedAt: string;
 }
 
-// Ключ, которым заливать: своё приложение автозалива, иначе ключ статистики с правом управления.
+// Каким ключом заливать (Decision 130). У баера несколько приложений Meta в «Интеграциях», у каждого свой часовой
+// лимит. Отмеченный for_upload ключ главнее всего — его меняет AI-доступ (set_autoupload_key), когда у приложения
+// кончился лимит; нет отметки — своё приложение автозалива (Decision 093), иначе первый ключ с ads_management.
+export const APP_KEY = "app";
+export interface UploadKey { id: string; name: string; appId: string | null; canWrite: boolean; marked: boolean; lastError: string | null }
+export const activeKey = (keys: UploadKey[]): UploadKey | null =>
+  keys.find((k) => k.marked && k.canWrite) ?? keys.find((k) => k.id === APP_KEY) ?? keys.find((k) => k.canWrite) ?? null;
+
+// Все ключи, которыми можно заливать: приложение автозалива (id app) и ключи Meta из «Интеграций». Без токенов.
+export async function uploadKeys(userId: string): Promise<UploadKey[]> {
+  const [{ data: app }, { data: meta, error }] = await Promise.all([
+    db().from("autoupload_keys").select("name, app_id, app_name, last_error").eq("user_id", userId).maybeSingle(),
+    db().from("meta_keys").select("id, name, app_id, scopes, last_error, for_upload").eq("user_id", userId).order("created_at"),
+  ]);
+  if (error) throw new Error(error.message);
+  return [
+    ...(app ? [{ id: APP_KEY, name: (app.name as string) || (app.app_name as string) || "Приложение автозалива", appId: app.app_id as string | null,
+      canWrite: true, marked: false, lastError: app.last_error as string | null }] : []),
+    ...(meta ?? []).map((k) => ({
+      id: k.id as string, name: (k.name as string) || "Ключ Meta", appId: k.app_id as string | null,
+      canWrite: ((k.scopes as string[] | null) ?? []).includes(WRITE_SCOPE), marked: Boolean(k.for_upload), lastError: k.last_error as string | null,
+    })),
+  ];
+}
+
 export async function uploadCred(userId: string): Promise<{ token: string; source: "autoupload" | "stats" } | null> {
-  const { data } = await db().from("autoupload_keys").select("token_enc, secret_enc").eq("user_id", userId).maybeSingle();
-  if (data) {
+  const a = activeKey(await uploadKeys(userId));
+  if (!a) return null;
+  if (a.id === APP_KEY) {
+    const { data } = await db().from("autoupload_keys").select("token_enc, secret_enc").eq("user_id", userId).maybeSingle();
+    if (!data) return null;
     const token = decryptSecret(data.token_enc as string);
     rememberSecret(token, data.secret_enc ? decryptSecret(data.secret_enc as string) : null);
     return { token, source: "autoupload" };
   }
-  const k = (await metaTokensOf(userId)).find((x) => x.canWrite);
-  return k ? { token: k.token, source: "stats" } : null;
+  const { data } = await db().from("meta_keys").select("token_enc").eq("id", a.id).eq("user_id", userId).maybeSingle();
+  return data ? { token: decryptSecret(data.token_enc as string), source: "stats" } : null;
+}
+
+// Заливать этим ключом (id из uploadKeys). Отметка одна на человека; app — снять отметку, заливает приложение автозалива.
+export async function setUploadKey(userId: string, id: string): Promise<void> {
+  const k = (await uploadKeys(userId)).find((x) => x.id === id);
+  if (!k) throw new Error("Такого ключа нет");
+  if (!k.canWrite) throw new Error(`У ключа «${k.name}» нет права ads_management — заливать им нельзя`);
+  const off = await db().from("meta_keys").update({ for_upload: false }).eq("user_id", userId).eq("for_upload", true);
+  if (off.error) throw new Error(off.error.message);
+  if (id === APP_KEY) return;
+  const on = await db().from("meta_keys").update({ for_upload: true }).eq("user_id", userId).eq("id", id);
+  if (on.error) throw new Error(on.error.message);
 }
 
 export async function viewAutouploadKey(userId: string): Promise<AutouploadKeyView | null> {

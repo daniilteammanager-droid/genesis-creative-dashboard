@@ -70,8 +70,11 @@ async function graphForm<T>(token: string, path: string, form: FormData): Promis
 async function answer<T>(res: Response): Promise<T> {
   const j = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; error_user_msg?: string; code?: number; is_transient?: boolean } };
   if (!res.ok || j.error) {
-    const transient = Boolean(j.error?.is_transient) || [1, 2].includes(Number(j.error?.code)) || res.status >= 500;
-    throw new MetaError(`Meta: ${j.error?.error_user_msg || j.error?.message || `HTTP ${res.status}`}`, transient);
+    const code = Number(j.error?.code);
+    const transient = Boolean(j.error?.is_transient) || [1, 2].includes(code) || res.status >= 500;
+    // Лимит запросов приложения (4, 17, 32, 613, 80000–80014): ждать час или залить другим ключом (Decision 130).
+    const limit = [4, 17, 32, 613].includes(code) || (code >= 80000 && code <= 80014);
+    throw new MetaError(`Meta${limit ? ` (лимит запросов приложения, код ${code})` : ""}: ${j.error?.error_user_msg || j.error?.message || `HTTP ${res.status}`}`, transient);
   }
   return j;
 }
