@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ACTORS, CTAS, FUNNEL_LANDERS, GEOS, MARKERS, codeForGeo, type Plan, type PlanInput, type SharedAdset } from "@/lib/autoupload/plan";
-import { childKey, expandSet, rowsFor, type ChildOverride, type SetForm } from "@/lib/autoupload/sets";
+import { ACTORS, CTAS, FUNNEL_LANDERS, GEOS, MARKERS, codeForGeo, type Plan, type SharedAdset } from "@/lib/autoupload/plan";
+import { childKey, draftInput, expandSet, type DraftForm, type SetForm } from "@/lib/autoupload/sets";
 import { landingChoices } from "@/lib/autoupload/landings";
 import type { Landing, LibraryItem } from "@/lib/autoupload/options";
 import { mskDay } from "@/lib/day";
@@ -36,11 +36,7 @@ const newCampaign = (): SetForm => ({ key: newKey(), geo: "ESP", actor: "ROMAN",
 const newAdset = (): SharedAdset => ({ id: newKey(), target: "BROAD", customAudienceId: "", label: "", creatives: [] });
 const STATUS: Record<string, string> = { creating: "Заливается", created: "Готово", failed: "Ошибка", cancelling: "Удаляю", cancelled: "Отменено" };
 
-interface Draft {
-  accountIds: string[]; pixelId: string; pageId: string; date: string; campaignNumber: number; budget: string;
-  oneToOne: boolean; abo: boolean; paused: boolean; campaigns: SetForm[]; adsets: SharedAdset[]; omitted: string[];
-  overrides: Record<string, ChildOverride>; text: PlanInput["text"];
-}
+type Draft = DraftForm;
 const EMPTY: Draft = {
   accountIds: [], pixelId: "", pageId: "", date: mskDay(), campaignNumber: 1, budget: "20", oneToOne: false, abo: false, paused: false,
   campaigns: [newCampaign()], adsets: [newAdset()], omitted: [], overrides: {}, text: { primaryText: "", headline: "", description: "", cta: "LEARN_MORE" },
@@ -151,12 +147,7 @@ export default function Autoupload() {
 
   const landings = useMemo(() => opt?.landings ?? [], [opt]);
   const omitted = useMemo(() => new Set(f.omitted), [f.omitted]);
-  const withLanding = useCallback((r: SetForm): SetForm => ({ ...r, landingUrl: r.landingUrl || landingChoices(landings, r.geo, r.actor)[0]?.url || "" }), [landings]);
-  const input = useMemo((): PlanInput => ({
-    accountIds, pixelId: f.pixelId, pageId: f.pageId, date: f.date, campaignNumber: f.campaignNumber, dailyBudgetUsd: f.budget,
-    oneToOne: f.oneToOne, abo: f.abo, paused: f.paused, adsets: f.adsets, text: f.text,
-    campaigns: rowsFor(f.oneToOne, f.campaigns, f.adsets, omitted, f.overrides).map(withLanding),
-  }), [accountIds, f, omitted, withLanding]);
+  const input = useMemo(() => draftInput(f, alive, landings), [f, alive, landings]);
   const inputKey = JSON.stringify(input);
   const fresh = plan && plan.key === inputKey ? plan.plan : null;
 

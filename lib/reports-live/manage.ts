@@ -5,6 +5,7 @@ import { usdRate } from "@/lib/fx";
 import { mskDay } from "@/lib/day";
 import type { Profile } from "@/lib/auth/types";
 import { escapeHtml, notify } from "@/lib/telegram/links";
+import { fromMinor, toMinor } from "@/lib/alerts/cabinets";
 
 // Live Manager в Reports (Decision 079): статус и бюджет кампаний, адсетов и
 // объявлений прямо из таблицы — как у Артёма в Genesis Manager.
@@ -20,6 +21,8 @@ export interface LiveState {
   id: string; status: string; effective: string;
   dailyBudget: number | null;   // в долларах; null — бюджет не на этом уровне
   canEdit: boolean;
+  // Ставка (bid cap) — у адсета, в валюте кабинета; стратегия — у кампании и адсета. Только Meta (27.11.2026, AI-доступ).
+  bid?: number | null; bidStrategy?: string | null; currency?: string;
 }
 
 const GRAPH = "https://graph.facebook.com/v26.0";
@@ -80,7 +83,7 @@ const byAccount = (items: Item[]) => {
 };
 const may = (me: Profile, ownerId: string | undefined) => me.role === "main" || (ownerId !== undefined && ownerId === me.id);
 
-interface RawMeta { id: string; status?: string; effective_status?: string; daily_budget?: string }
+interface RawMeta { id: string; status?: string; effective_status?: string; daily_budget?: string; bid_amount?: string | number; bid_strategy?: string }
 interface RawDolphin { id: number | string; campaign_id?: string; adset_id?: string; ad_id?: string; status?: string; effective_status?: string; daily_budget?: number | string | null }
 const fbIdOf = (level: Level, r: RawDolphin) => String((level === "campaign" ? r.campaign_id : level === "adset" ? r.adset_id : r.ad_id) ?? "");
 
@@ -117,13 +120,14 @@ export async function liveStates(me: Profile, items: Item[]): Promise<{ states: 
         if (w.kind === "meta") {
           const rate = await usdRate(w.currency, mskDay());
           for (let k = 0; k < ids.length; k += 50) {
-            const fields = level === "ad" ? "id,status,effective_status" : "id,status,effective_status,daily_budget";
+            const fields = level === "ad" ? "id,status,effective_status" : level === "adset" ? "id,status,effective_status,daily_budget,bid_amount,bid_strategy" : "id,status,effective_status,daily_budget,bid_strategy";
             const r = await graph<{ data: RawMeta[] }>(w.token, `act_${accountId}/${EDGE[level]}`, {
               fields, limit: "100", filtering: JSON.stringify([{ field: "id", operator: "IN", value: ids.slice(k, k + 50) }]),
             });
             for (const o of r.data) states.push({
               id: o.id, status: o.status ?? "", effective: o.effective_status ?? o.status ?? "",
               dailyBudget: o.daily_budget ? Math.round((Number(o.daily_budget) / 100) * rate * 100) / 100 : null, canEdit: editable,
+              bid: o.bid_amount != null ? fromMinor(String(o.bid_amount), w.currency) : null, bidStrategy: o.bid_strategy ?? null, currency: w.currency,
             });
           }
         } else {
@@ -176,11 +180,13 @@ export async function liveReach(me: Profile, items: Item[], since: string, until
   return out;
 }
 
-export type Action = { kind: "status"; active: boolean } | { kind: "budget"; usd: number };
+// bid — ставка (bid cap) адсета в валюте кабинета; только Meta: Dolphin ставку отсюда не меняет.
+export type Action = { kind: "status"; active: boolean } | { kind: "budget"; usd: number } | { kind: "bid"; amount: number };
 
 // Применить к выбранным. Ответ — по строке: получилось или почему нет.
 export async function applyLive(me: Profile, items: Item[], action: Action): Promise<{ id: string; ok: boolean; error?: string }[]> {
   if (action.kind === "budget" && !(action.usd > 0)) throw new Error("Бюджет должен быть больше нуля");
+  if (action.kind === "bid" && !(action.amount > 0)) throw new Error("Ставка должна быть больше нуля");
   const own = await owners([...new Set(items.map((i) => i.accountId))]);
   const out: { id: string; ok: boolean; error?: string }[] = [];
   for (const [accountId, list] of byAccount(items)) {
@@ -193,12 +199,16 @@ export async function applyLive(me: Profile, items: Item[], action: Action): Pro
     for (const it of list) {
       try {
         if (action.kind === "budget" && it.level === "ad") throw new Error("У объявления нет своего бюджета");
+        if (action.kind === "bid" && it.level !== "adset") throw new Error("Ставка (bid cap) — у адсета: дай id адсетов");
         if (w.kind === "meta") {
           const params: Record<string, string> = action.kind === "status"
             ? { status: action.active ? "ACTIVE" : "PAUSED" }
-            : { daily_budget: String(Math.round((action.usd / (await usdRate(w.currency, mskDay()))) * 100)) };
+            : action.kind === "bid"
+              ? { bid_amount: String(toMinor(action.amount, w.currency)) }
+              : { daily_budget: String(Math.round((action.usd / (await usdRate(w.currency, mskDay()))) * 100)) };
           await graph(w.token, it.id, params, "POST");
         } else {
+          if (action.kind === "bid") throw new Error("Ставку кабинета Dolphin меняют в самом Dolphin");
           const raw = (await dolphinList(w.token, it.level)).find((o) => fbIdOf(it.level, o) === it.id);
           if (!raw) throw new Error("Dolphin не нашёл объект — обнови Dolphin и повтори");
           const path = `/${DOLPHIN_PATH[it.level]}`;
@@ -228,15 +238,15 @@ export async function logJunior(seat: Profile, items: Item[], action: Action, re
   const { data } = await db.from("wh_entities").select("entity_id, name").in("entity_id", items.map((i) => i.id));
   const name = new Map((data ?? []).map((r) => [r.entity_id as string, (r.name as string | null) ?? (r.entity_id as string)]));
   const res = new Map(results.map((r) => [r.id, r]));
-  const act = action.kind === "budget" ? "budget" : action.active ? "activate" : "pause";
-  const after = action.kind === "budget" ? { budget: action.usd } : { status: action.active ? "ACTIVE" : "PAUSED" };
+  const act = action.kind === "budget" ? "budget" : action.kind === "bid" ? "bid" : action.active ? "activate" : "pause";
+  const after = action.kind === "budget" ? { budget: action.usd } : action.kind === "bid" ? { bid: action.amount } : { status: action.active ? "ACTIVE" : "PAUSED" };
   await db.from("mcp_changes").insert(items.map((i) => ({
     user_id: by.id, token_id: null, entity_id: i.id, level: i.level, account_id: i.accountId, name: name.get(i.id) ?? i.id,
     action: act, before: null, after, ok: res.get(i.id)?.ok ?? false, error: res.get(i.id)?.error?.slice(0, 500) ?? null,
   })));
   const done = items.filter((i) => res.get(i.id)?.ok);
   if (!done.length) return;
-  const what = action.kind === "budget" ? `дневной бюджет $${action.usd}` : action.active ? "запуск" : "пауза";
+  const what = action.kind === "budget" ? `дневной бюджет $${action.usd}` : action.kind === "bid" ? `ставка ${action.amount}` : action.active ? "запуск" : "пауза";
   const lines = done.slice(0, 20).map((i) => `• ${escapeHtml(name.get(i.id) ?? i.id)}`);
   if (done.length > 20) lines.push(`…и ещё ${done.length - 20}`);
   await notify(seat.id, "junior_changes", `👤 <b>${escapeHtml(by.name || by.email)}</b> в Live Manager: ${what}\n${lines.join("\n")}`);

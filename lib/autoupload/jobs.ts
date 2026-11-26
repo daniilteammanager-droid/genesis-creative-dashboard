@@ -1,6 +1,9 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { advance, cancelCreated, MetaError, type Job } from "./launch";
-import type { Plan } from "./plan";
+import { buildPlan, type Plan, type PlanInput } from "./plan";
+import { myAccounts, myCreatives, stemOf } from "./options";
+import { getConnection } from "@/lib/connections/store";
+import type { Profile } from "@/lib/auth/types";
 
 // Очередь автозалива (Decision 081). Проход берёт задание арендой: пока аренда не
 // истекла, второй проход его не тронет — иначе одна кампания создалась бы дважды.
@@ -13,6 +16,29 @@ export async function createJob(userId: string, plan: Plan, actorId = userId): P
   const { data, error } = await db().from("autoupload_jobs").insert({ user_id: userId, actor_id: actorId, plan, stage: "В очереди" }).select("id").single();
   if (error) throw new Error(error.message);
   return data.id as string;
+}
+
+// Сборка → план, как у страницы: кабинеты — свои живые, креативы — только из своей Медиатеки (ключ сверяется
+// заново), нейминг и проверки — buildPlan. Общий для /api/autoupload и AI-доступа (lib/mcp/autoupload.ts).
+export async function planFor(me: Profile, input: PlanInput): Promise<Plan> {
+  const accounts = new Map((await myAccounts(me)).map((a) => [a.id, a]));
+  // Креативы — только свои из Медиатеки: ключ из формы сверяется заново. Ключ в форме
+  // устаревает: воркер пережимает X.mov в X.mp4 и удаляет .mov, сборка лежит с прошлой недели —
+  // тот же файл ищем по имени без расширения, а чего нет совсем — называем поимённо.
+  const lib = await myCreatives(me);
+  const own = new Set(lib.map((c) => c.key));
+  const byStem = new Map(lib.map((c) => [`${c.kind}|${stemOf(c.key)}`, c.key]));
+  const missing: string[] = [];
+  for (const a of input.adsets ?? []) for (const c of a.creatives ?? []) {
+    if (own.has(c.key)) continue;
+    const now = byStem.get(`${c.kind}|${stemOf(c.key)}`);
+    if (now) c.key = now; else missing.push(c.code || c.key.split("/").pop() || c.key);
+  }
+  if (missing.length) {
+    throw new Error(`Нет в твоей Медиатеке: ${[...new Set(missing)].join(", ")}. Файл удалили или переименовали — убери его из адсета и добавь заново из Медиатеки.`);
+  }
+  const conn = await getConnection(me.id).catch(() => null);
+  return buildPlan(input, accounts, conn?.torroBuyerId ?? null);
 }
 
 async function lease(id: string): Promise<Job | null> {

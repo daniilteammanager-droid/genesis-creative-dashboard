@@ -89,6 +89,15 @@ export function fromMinor(raw: string | undefined, currency: string | undefined)
   return n / 10 ** digits;
 }
 
+// Обратно: сумма в валюте → минимальные единицы, как ждёт Meta (ставка bid_amount, бюджет).
+export function toMinor(value: number, currency: string | undefined): number {
+  let digits = 2;
+  try {
+    digits = new Intl.NumberFormat("en", { style: "currency", currency: currency || "USD" }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch { /* неизвестная валюта — считаем центами */ }
+  return Math.round(value * 10 ** digits);
+}
+
 export function toState(a: MetaAccount): CabinetState {
   return {
     accountId: a.id.replace(/^act_/, ""),

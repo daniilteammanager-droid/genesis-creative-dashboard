@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSeat } from "@/lib/auth/server";
-import { selfOf } from "@/lib/auth/types";
 import { warehouse } from "@/lib/warehouse/read";
 import { myCreatives } from "@/lib/autoupload/options";
-import { downloadUrl, findSource, originalKey, publicUrl } from "@/lib/uniq/source";
+import { downloadUrl, publicUrl } from "@/lib/uniq/source";
 import { TYPES } from "@/lib/uniq/bot";
+import { startUniq, UniqError } from "@/lib/uniq/start";
 import { confirm, options, preview, scanTokens, type Kind } from "@/lib/antireject/web";
 import { checkRejectedAds } from "@/lib/alerts/rejected";
 import { myLandings } from "@/lib/autoupload/options";
@@ -85,37 +85,11 @@ export async function POST(req: Request) {
     if (!data?.length) return NextResponse.json({ error: "Это задание уже не отменить — оно смонтировано или закончено" }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
-  if (b.op !== "start" || !TYPES[b.tail ?? ""] || !TYPES[b.frame ?? ""]) return NextResponse.json({ error: "Выбери вставку и кадры" }, { status: 400 });
-  let rows: Record<string, unknown>[];
-  if (b.retry) {
-    // Повтор упавшего или отменённого задания из библиотеки — новое задание с тем же исходником.
-    const { data: j } = await db().from("video_variant_jobs").select("owner_id, source_key, source_name, ad_id, status").eq("id", b.retry).maybeSingle();
-    if (!j || !["failed", "cancelled"].includes(j.status as string) || j.ad_id) return NextResponse.json({ error: "Повторить можно упавшее или отменённое задание из библиотеки" }, { status: 400 });
-    if (j.owner_id !== me.id && me.role !== "main") return NextResponse.json({ error: "Это не твоё задание" }, { status: 403 });
-    rows = [{ owner_id: j.owner_id, source_key: j.source_key, source_name: j.source_name }];
-  } else if (b.adId) {
-    const { data: ad } = await db().from("wh_rejected_ads").select("ad_id, account_id, ad_name, owner_user_id").eq("ad_id", b.adId).maybeSingle();
-    if (!ad) return NextResponse.json({ error: "Этого объявления нет среди отклонённых" }, { status: 400 });
-    const { data: own } = await db().from("wh_account_owners").select("owner_user_id").eq("account_id", ad.account_id).maybeSingle();
-    const owner = (own?.owner_user_id ?? ad.owner_user_id) as string | null;
-    if (!owner || (owner !== me.id && me.role !== "main")) return NextResponse.json({ error: "Это не твой кабинет" }, { status: 403 });
-    if (String(ad.ad_id).startsWith("tg:")) return NextResponse.json({ error: "Уникализация — только для Facebook" }, { status: 400 });
-    const key = await findSource(String(ad.ad_name ?? ""));
-    if (!key) return NextResponse.json({ error: "Исходник v1 этого креатива не найден в библиотеке" }, { status: 400 });
-    const { data: open } = await db().from("video_variant_jobs").select("id").eq("ad_id", ad.ad_id).in("status", ["choosing", "queued", "processing", "ready", "replacing"]).limit(1);
-    if (open?.length) return NextResponse.json({ error: "Для этого объявления уже идёт уникализация" }, { status: 400 });
-    rows = [{ ad_id: ad.ad_id, account_id: ad.account_id, owner_id: owner, source_key: key, source_name: key.split("/").pop() }];
-  } else {
-    // Одно видео (key) или несколько сразу (keys) — по заданию на каждое, с одними настройками.
-    const keys = [...new Set(b.keys?.length ? b.keys : b.key ? [b.key] : [])];
-    if (!keys.length) return NextResponse.json({ error: "Выбери видео из своей библиотеки" }, { status: 400 });
-    if (keys.length > 30) return NextResponse.json({ error: "Не больше 30 видео за раз — очередь одна на всю команду" }, { status: 400 });
-    const videos = new Map((await myCreatives(me)).filter((x) => x.kind === "video").map((x) => [x.key, x]));
-    const foreign = keys.filter((k) => !videos.has(k));
-    if (foreign.length) return NextResponse.json({ error: `Нет в твоей Медиатеке: ${foreign.map((k) => k.split("/").pop()).join(", ")}` }, { status: 400 });
-    rows = await Promise.all(keys.map(async (k) => ({ owner_id: me.id, source_key: await originalKey(k), source_name: k.split("/").pop() })));
+  if (b.op !== "start") return NextResponse.json({ error: "Выбери вставку и кадры" }, { status: 400 });
+  try {
+    const ids = await startUniq(me, b);
+    return NextResponse.json({ id: ids[0], ids });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: e instanceof UniqError ? e.status : 500 });
   }
-  const { data, error } = await db().from("video_variant_jobs").insert(rows.map((r) => ({ ...r, actor_id: selfOf(me).id, tail_type: b.tail, frame_type: b.frame, status: "queued" }))).select("id");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ id: data[0]?.id, ids: data.map((d) => d.id) });
 }

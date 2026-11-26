@@ -1,4 +1,6 @@
-import type { CampaignRow, SharedAdset } from "./plan";
+import type { CampaignRow, PlanInput, SharedAdset } from "./plan";
+import type { Landing } from "./options";
+import { landingChoices } from "./landings";
 
 // Сеты 1-1-1 — как у Артёма (syncOneToOneSets): строка кампании в режиме 1-1-1 — шаблон
 // сета, из него раскрывается по кампании на каждый «адсет × креатив» общего набора.
@@ -37,4 +39,22 @@ export function expandSet(set: SetForm, setNumber: number, adsets: SharedAdset[]
 export function rowsFor(oneToOne: boolean, campaigns: SetForm[], adsets: SharedAdset[], omitted: Set<string>, overrides: Record<string, ChildOverride>): CampaignRow[] {
   if (!oneToOne) return campaigns;
   return campaigns.flatMap((s, i) => expandSet(s, i + 1, adsets, omitted, overrides).map((c) => c.row));
+}
+
+// Форма страницы — она же сохранённая сборка (autoupload_drafts.form, Decision 092).
+export interface DraftForm {
+  accountIds: string[]; pixelId: string; pageId: string; date: string; campaignNumber: number; budget: string;
+  oneToOne: boolean; abo: boolean; paused: boolean; campaigns: SetForm[]; adsets: SharedAdset[]; omitted: string[];
+  overrides: Record<string, ChildOverride>; text: PlanInput["text"];
+}
+
+// Форма → вход плана, как «Проверить сборку» на странице: кабинеты — только живые (alive), строки — rowsFor,
+// ссылка MVP по умолчанию — свежая своей серии. Сборки, сохранённые до 1-1-1 и ABO, без этих полей — их значения по умолчанию.
+export function draftInput(f: DraftForm, alive: Set<string>, landings: Landing[]): PlanInput {
+  const withLanding = (r: CampaignRow): CampaignRow => ({ ...r, landingUrl: r.landingUrl || landingChoices(landings, r.geo, r.actor)[0]?.url || "" });
+  return {
+    accountIds: f.accountIds.filter((id) => alive.has(id)), pixelId: f.pixelId, pageId: f.pageId, date: f.date, campaignNumber: f.campaignNumber,
+    dailyBudgetUsd: f.budget, oneToOne: !!f.oneToOne, abo: !!f.abo, paused: !!f.paused, adsets: f.adsets, text: f.text,
+    campaigns: rowsFor(!!f.oneToOne, f.campaigns, f.adsets, new Set(f.omitted ?? []), f.overrides ?? {}).map(withLanding),
+  };
 }

@@ -1,6 +1,6 @@
 // Самопроверка алертов кабинетов. Запуск: npx tsx lib/alerts/cabinets.test.ts
 import assert from "node:assert/strict";
-import { bmOf, diffCabinets, fromMinor, toState, withBm, type CabinetState } from "./cabinets";
+import { bmOf, diffCabinets, fromMinor, toMinor, toState, withBm, type CabinetState } from "./cabinets";
 
 const cab = (id: string, status: string, extra: Partial<CabinetState> = {}): CabinetState => ({
   accountId: id, name: `Cab ${id}`, status, disableReason: null, currency: "USD", balance: null, prepay: false, ...extra,
@@ -76,5 +76,10 @@ const both = withBm([
 assert.deepEqual(both.map((a) => a.bm), [viaY, viaY, null], "строки одного кабинета получают общий BM");
 assert.deepEqual(toState(both[0]).bm, viaY);
 assert.equal(toState({ id: "act_7", account_status: 1 }).bm, null, "Dolphin и FB Tool — без BM");
+
+// В минимальные единицы и обратно — ставка bid_amount: центы у доллара, их нет у иены.
+assert.equal(toMinor(2.5, "USD"), 250);
+assert.equal(toMinor(300, "JPY"), 300);
+assert.equal(fromMinor(String(toMinor(1.23, "EUR")), "EUR"), 1.23);
 
 console.log("cabinets: смены статусов, пропажи, балансы и BM разбираются верно");

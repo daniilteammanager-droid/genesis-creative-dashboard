@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { authorizationServer, hashToken, isCimdClientId, newToken, pkceOk, protectedResource, redirectMatches, redirectUsable } from "./oauth";
 import { handleRpc, ToolError, type ToolDef } from "./protocol";
-import { budgetTarget } from "./manage";
+import { bidTarget, budgetTarget } from "./manage";
 
 // PKCE S256 — пример из RFC 7636, приложение B.
 assert.ok(pkceOk("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"));
@@ -42,6 +42,12 @@ assert.deepEqual(authorizationServer(o).code_challenge_methods_supported, ["S256
 
 // Бюджет через AI (Decision 117): не дальше чем вдвое от текущего, проценты от текущего.
 assert.deepEqual(budgetTarget(50, 100, null), { usd: 100 });
+// Ставка адсета — в валюте кабинета, тоже не дальше чем вдвое; без bid cap — нечего менять.
+assert.deepEqual(bidTarget(2.5, 3, null, "USD"), { amount: 3 });
+assert.deepEqual(bidTarget(2.5, null, -20, "USD"), { amount: 2 });
+assert.match((bidTarget(2.5, 6, null, "USD") as { error: string }).error, /вдвое: сейчас 2.5 USD, можно от 1.25 до 5/);
+assert.match((bidTarget(null, 3, null, "USD") as { error: string }).error, /нет ставки/);
+assert.match((bidTarget(2.5, -1, null, "USD") as { error: string }).error, /больше нуля/);
 assert.deepEqual(budgetTarget(50, null, 20), { usd: 60 });
 assert.deepEqual(budgetTarget(50, null, -50), { usd: 25 });
 assert.ok("error" in budgetTarget(50, 100.01, null), "больше чем вдвое — нет");

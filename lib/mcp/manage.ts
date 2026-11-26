@@ -9,8 +9,8 @@ import { ToolError, type ToolDef } from "./protocol";
 // владелец дашборда — все. Выключателя у баера нет: в Live Manager он и так может то же самое.
 // Страховка — лимиты ниже, просьба модели спросить человека, журнал mcp_changes и Telegram.
 
-export const MAX_ITEMS = 20;      // объектов за вызов
-export const MAX_PER_HOUR = 100;  // удачных изменений в час на человека
+export const MAX_ITEMS = 50;      // объектов за вызов (27.11.2026: было 20, попросил баер)
+export const MAX_PER_HOUR = 300; // удачных изменений в час на человека (было 100)
 export const BUDGET_X = 2;        // бюджет за раз — не больше чем вдвое в любую сторону
 
 interface Ctx { me: Profile; tokenId?: string }
@@ -27,6 +27,16 @@ export function budgetTarget(current: number | null, usd: number | null, pct: nu
   const lo = Math.ceil((current / BUDGET_X) * 100) / 100, hi = Math.floor(current * BUDGET_X * 100) / 100;
   if (t < lo || t > hi) return { error: `за раз — не больше чем вдвое: сейчас ${money(current)}, можно от ${money(lo)} до ${money(hi)}` };
   return { usd: t };
+}
+
+// Новая ставка (bid cap) адсета — в валюте кабинета, как в Ads Manager; тоже не дальше чем вдвое от текущей.
+export function bidTarget(current: number | null, amount: number | null, pct: number | null, currency: string): { amount: number } | { error: string } {
+  if (current == null || !(current > 0)) return { error: "у адсета нет ставки — стратегия без bid cap; включить её можно в кабинете или автозаливом" };
+  const t = Math.round((amount ?? current * (1 + (pct ?? 0) / 100)) * 100) / 100;
+  if (!(t > 0)) return { error: "ставка должна быть больше нуля" };
+  const lo = Math.ceil((current / BUDGET_X) * 100) / 100, hi = Math.floor(current * BUDGET_X * 100) / 100;
+  if (t < lo || t > hi) return { error: `за раз — не больше чем вдвое: сейчас ${current} ${currency}, можно от ${lo} до ${hi}` };
+  return { amount: t };
 }
 
 function idsOf(v: unknown, max: number): string[] {
@@ -65,7 +75,7 @@ const itemOf = (e: Entity): Item => ({ level: e.level, id: e.id, accountId: e.ac
 const getLiveState: Tool = {
   name: "get_live_state",
   title: "Статус и бюджет сейчас",
-  description: "Статус и дневной бюджет кампаний, адсетов или объявлений прямо сейчас — вживую из кабинета, а не часовой снимок get_campaigns. Нужен перед изменением бюджета или чтобы проверить, что изменение применилось.",
+  description: "Статус, статус доставки (effective_status: на проверке, с проблемами и т. п.), дневной бюджет и ставка (bid cap адсета, в валюте кабинета; стратегия ставок у кампании и адсета) — прямо сейчас, вживую из кабинета, а не часовой снимок get_campaigns. Нужен перед изменением бюджета или ставки и чтобы проверить, что изменение применилось.",
   inputSchema: {
     type: "object",
     properties: { ids: { type: "array", items: { type: "string" }, description: "id из get_campaigns, до 100." } },
@@ -81,40 +91,44 @@ const getLiveState: Tool = {
       rows: list.map((e) => {
         const s = now.get(e.id);
         return { id: e.id, level: e.level, name: e.name, status: s?.status ?? null, effective_status: s?.effective ?? null,
-          daily_budget_usd: s?.dailyBudget ?? null, can_edit: s?.canEdit ?? false };
+          daily_budget_usd: s?.dailyBudget ?? null, bid: s?.bid ?? undefined, bid_strategy: s?.bidStrategy ?? undefined, currency: s?.currency,
+          can_edit: s?.canEdit ?? false };
       }),
       errors: errors.length ? errors : undefined,
     };
   },
 };
 
-type Action = "pause" | "activate" | "budget";
-const ACTION_RU: Record<Action, string> = { pause: "пауза", activate: "запуск", budget: "дневной бюджет" };
+type Action = "pause" | "activate" | "budget" | "bid_cap";
+const ACTION_RU: Record<Action, string> = { pause: "пауза", activate: "запуск", budget: "дневной бюджет", bid_cap: "ставка (bid cap)" };
 
 const manageCampaigns: Tool = {
   name: "manage_campaigns",
-  title: "Пауза, запуск, бюджет",
-  description: `Поставить на паузу, запустить или поменять дневной бюджет кампаний, адсетов или объявлений в своих кабинетах — как кнопки Live Manager в дашборде. Перед вызовом покажи пользователю, что именно поменяется (названия, было → станет), и дождись его согласия. Лимиты: до ${MAX_ITEMS} объектов за вызов, до ${MAX_PER_HOUR} изменений в час, бюджет за раз — не больше чем вдвое вверх или вниз. Кабинеты FB Tool и Telegram Ads отсюда не меняются. Каждое изменение пишется в журнал и приходит владельцу кабинета в Telegram.`,
+  title: "Пауза, запуск, бюджет, ставка",
+  description: `Поставить на паузу, запустить или поменять дневной бюджет кампаний, адсетов или объявлений в своих кабинетах — как кнопки Live Manager в дашборде; и поменять ставку (bid cap) адсетов. Перед вызовом покажи пользователю, что именно поменяется (названия, было → станет), и дождись его согласия. Лимиты: до ${MAX_ITEMS} объектов за вызов, до ${MAX_PER_HOUR} изменений в час, бюджет и ставка за раз — не больше чем вдвое вверх или вниз. Кабинеты FB Tool и Telegram Ads отсюда не меняются, ставку Dolphin — тоже. Каждое изменение пишется в журнал и приходит владельцу кабинета в Telegram.`,
   inputSchema: {
     type: "object",
     properties: {
       ids: { type: "array", items: { type: "string" }, description: `id из get_campaigns, до ${MAX_ITEMS}.` },
-      action: { type: "string", enum: ["pause", "activate", "budget"], description: "pause — пауза, activate — запуск, budget — дневной бюджет." },
+      action: { type: "string", enum: ["pause", "activate", "budget", "bid_cap"], description: "pause — пауза, activate — запуск, budget — дневной бюджет, bid_cap — ставка адсета (только у адсетов со стратегией bid cap)." },
       daily_budget_usd: { type: "number", description: "Для budget: новый дневной бюджет в долларах (в валюте кабинета пересчитается сам)." },
-      change_pct: { type: "number", description: "Для budget вместо daily_budget_usd: на сколько % поменять текущий, например 20 или -30." },
+      bid: { type: "number", description: "Для bid_cap: новая ставка в валюте кабинета (как в Ads Manager; текущая и валюта — в get_live_state)." },
+      change_pct: { type: "number", description: "Для budget или bid_cap вместо суммы: на сколько % поменять текущее, например 20 или -30." },
     },
     required: ["ids", "action"],
     additionalProperties: false,
   },
   // destructive: запуск и рост бюджета тратят деньги, их не вернуть — пусть клиент спрашивает.
-  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true, title: "Пауза, запуск, бюджет" },
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true, title: "Пауза, запуск, бюджет, ставка" },
   async run({ me, tokenId }, a) {
-    const action = (["pause", "activate", "budget"] as const).find((x) => x === a.action);
-    if (!action) throw new ToolError("action — pause, activate или budget");
+    const action = (["pause", "activate", "budget", "bid_cap"] as const).find((x) => x === a.action);
+    if (!action) throw new ToolError("action — pause, activate, budget или bid_cap");
     const ids = idsOf(a.ids, MAX_ITEMS);
     const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
     const usd = num(a.daily_budget_usd), pct = num(a.change_pct);
     if (action === "budget" && (usd == null) === (pct == null)) throw new ToolError("Для budget — ровно одно: daily_budget_usd или change_pct");
+    const bid = num(a.bid);
+    if (action === "bid_cap" && (bid == null) === (pct == null)) throw new ToolError("Для bid_cap — ровно одно: bid или change_pct");
 
     const db = warehouse();
     const { count } = await db.from("mcp_changes").select("id", { count: "exact", head: true })
@@ -125,16 +139,26 @@ const manageCampaigns: Tool = {
     const { states, errors } = await liveStates(me, list.map(itemOf));
     const now = new Map(states.map((s) => [s.id, s]));
 
-    type Row = { e: Entity; before: { status: string | null; budget: number | null }; after: { status?: string; budget?: number }; ok: boolean; error?: string };
+    type Row = { e: Entity; before: Before; after: After; ok: boolean; error?: string };
     const rows: Row[] = list.map((e) => ({
-      e, before: { status: now.get(e.id)?.status ?? null, budget: now.get(e.id)?.dailyBudget ?? null }, after: {}, ok: false,
+      e, before: { status: now.get(e.id)?.status ?? null, budget: now.get(e.id)?.dailyBudget ?? null, bid: now.get(e.id)?.bid ?? null, currency: now.get(e.id)?.currency },
+      after: {}, ok: false,
     }));
     const apply = async (r: Row[], act: Parameters<typeof applyLive>[2]) => {
       const res = new Map((await applyLive(me, r.map((x) => itemOf(x.e)), act)).map((x) => [x.id, x]));
       for (const x of r) { x.ok = res.get(x.e.id)?.ok ?? false; x.error = res.get(x.e.id)?.error; }
     };
 
-    if (action === "budget") {
+    if (action === "bid_cap") {
+      for (const r of rows) {
+        if (r.e.level !== "adset") { r.error = "ставка (bid cap) — у адсета: дай id адсетов"; continue; }
+        if (!now.has(r.e.id)) { r.error = `не прочиталась текущая ставка${errors.length ? ` — ${errors.join("; ")}` : ""}`; continue; }
+        const t = bidTarget(r.before.bid ?? null, bid, pct, r.before.currency ?? "");
+        if ("error" in t) { r.error = t.error; continue; }
+        r.after = { bid: t.amount };
+        await apply([r], { kind: "bid", amount: t.amount });
+      }
+    } else if (action === "budget") {
       for (const r of rows) {
         if (r.e.level === "ad") { r.error = "у объявления нет своего бюджета"; continue; }
         if (!now.has(r.e.id)) { r.error = `не прочитался текущий бюджет${errors.length ? ` — ${errors.join("; ")}` : ""}`; continue; }
@@ -163,7 +187,10 @@ const manageCampaigns: Tool = {
 };
 
 // Кто сделал, чем, что было → что стало — тому, кто попросил, и владельцам кабинетов, если это не он.
-async function tell(me: Profile, tokenId: string | undefined, action: Action, done: { e: Entity; before: { status: string | null; budget: number | null }; after: { status?: string; budget?: number } }[]) {
+type Before = { status: string | null; budget: number | null; bid?: number | null; currency?: string };
+type After = { status?: string; budget?: number; bid?: number };
+
+async function tell(me: Profile, tokenId: string | undefined, action: Action, done: { e: Entity; before: Before; after: After }[]) {
   if (!done.length) return;
   const db = warehouse();
   const [{ data: tok }, { data: own }] = await Promise.all([
@@ -174,7 +201,9 @@ async function tell(me: Profile, tokenId: string | undefined, action: Action, do
   const who = `${escapeHtml((tok?.client_name as string | undefined) || "AI")} · ${escapeHtml(self.name || self.email)}`;
   const lines = done.map(({ e, before, after }) => `• ${LEVEL_RU[e.level]} «${escapeHtml(e.name)}» — ` + (action === "budget"
     ? `${before.budget == null ? "?" : money(before.budget)} → ${money(after.budget!)}`
-    : `${escapeHtml(before.status ?? "?")} → ${after.status}`));
+    : action === "bid_cap"
+      ? `ставка ${before.bid ?? "?"} → ${after.bid} ${escapeHtml(before.currency ?? "")}`
+      : `${escapeHtml(before.status ?? "?")} → ${after.status}`));
   const text = `🤖 <b>Изменение через AI</b> (${who}): ${ACTION_RU[action]}\n${lines.join("\n")}`;
   const to = new Set([self.id, ...(own ?? []).map((o) => o.owner_user_id as string).filter(Boolean)]);
   await Promise.allSettled([...to].map((id) => notify(id, "ai_changes", text)));

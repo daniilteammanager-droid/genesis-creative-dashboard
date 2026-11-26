@@ -31,3 +31,15 @@ export function bmMatches(bm: { id: string | null; name: string | null }, q: str
   const v = q.trim().toLowerCase();
   return !v || bm.id === v || (!!bm.name && bm.name.toLowerCase().includes(v));
 }
+
+// Когда склад последний раз обновлялся для этих людей: последний закончившийся прогон «сегодня»
+// (крон раз в 15 минут или «Обновить сейчас»). Московское время — модели и человеку.
+export async function dataAsOf(userIds: string[]): Promise<string | null> {
+  let q = warehouse().from("wh_ingest_runs").select("finished_at").eq("kind", "today").not("finished_at", "is", null).order("finished_at", { ascending: false }).limit(1);
+  if (userIds.length) q = q.in("user_id", userIds);
+  const { data } = await q;
+  const at = data?.[0]?.finished_at as string | undefined;
+  if (!at) return null;
+  const d = new Date(at);
+  return `${new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow", dateStyle: "short", timeStyle: "short" }).format(d)} МСК`;
+}

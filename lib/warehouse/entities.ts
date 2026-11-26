@@ -16,6 +16,7 @@ export interface EntityState {
   campaignId: string | null; adsetId: string | null; name: string | null;
   status: string | null; effective: string | null;
   daily: number | null; lifetime: number | null;   // в долларах
+  created?: string | null;   // когда создан в Meta (created_time, миграция 061); у FB Tool и TG Ads — нет
 }
 
 const db = () => warehouse();
@@ -25,7 +26,7 @@ export async function saveEntities(source: "meta" | "fbtool" | "tgads", accounts
   const now = new Date().toISOString();
   const rows = [...new Map(items.map((e) => [e.id, e])).values()].map((e) => ({
     entity_id: e.id, level: e.level, account_id: e.accountId, campaign_id: e.campaignId, adset_id: e.adsetId, name: e.name,
-    status: e.status, effective_status: e.effective, daily_budget: e.daily, lifetime_budget: e.lifetime,
+    status: e.status, effective_status: e.effective, daily_budget: e.daily, lifetime_budget: e.lifetime, created_time: e.created ?? null,
     source, missing: false, seen_at: now, updated_at: now,
   }));
   for (let i = 0; i < rows.length; i += 500) {
@@ -39,7 +40,7 @@ export async function saveEntities(source: "meta" | "fbtool" | "tgads", accounts
   return rows.length;
 }
 
-type MetaObj = { id: string; name?: string; status?: string; effective_status?: string; campaign_id?: string; adset_id?: string; daily_budget?: string; lifetime_budget?: string };
+type MetaObj = { id: string; name?: string; status?: string; effective_status?: string; campaign_id?: string; adset_id?: string; daily_budget?: string; lifetime_budget?: string; created_time?: string };
 
 // Meta: три выборки на кабинет. Бюджеты — в минимальных единицах валюты кабинета.
 export async function metaEntities(token: string, accountId: string, currency: string | null): Promise<EntityState[]> {
@@ -47,15 +48,15 @@ export async function metaEntities(token: string, accountId: string, currency: s
   const rate = await usdRate(cur, mskDay());
   const usd = (v?: string) => { const x = fromMinor(v, cur); return x === null ? null : Math.round(x * rate * 100) / 100; };
   const [campaigns, adsets, ads] = await Promise.all([
-    fetchEdgePaged<MetaObj>(token, act, "campaigns", "id,name,status,effective_status,daily_budget,lifetime_budget", 500),
-    fetchEdgePaged<MetaObj>(token, act, "adsets", "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget", 500),
-    fetchEdgePaged<MetaObj>(token, act, "ads", "id,name,status,effective_status,campaign_id,adset_id", 500),
+    fetchEdgePaged<MetaObj>(token, act, "campaigns", "id,name,status,effective_status,daily_budget,lifetime_budget,created_time", 500),
+    fetchEdgePaged<MetaObj>(token, act, "adsets", "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,created_time", 500),
+    fetchEdgePaged<MetaObj>(token, act, "ads", "id,name,status,effective_status,campaign_id,adset_id,created_time", 500),
   ]);
   const one = (level: EntityState["level"], o: MetaObj): EntityState => ({
     id: o.id, level, accountId, campaignId: level === "campaign" ? o.id : o.campaign_id ?? null,
     adsetId: level === "ad" ? o.adset_id ?? null : level === "adset" ? o.id : null,
     name: o.name ?? null, status: o.status ?? null, effective: o.effective_status ?? null,
-    daily: usd(o.daily_budget), lifetime: usd(o.lifetime_budget),
+    daily: usd(o.daily_budget), lifetime: usd(o.lifetime_budget), created: o.created_time ?? null,
   });
   return [...campaigns.map((o) => one("campaign", o)), ...adsets.map((o) => one("adset", o)), ...ads.map((o) => one("ad", o))];
 }
