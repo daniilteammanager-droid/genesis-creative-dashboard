@@ -111,6 +111,11 @@ function truncated(p: TorroPayload): boolean {
   return p.truncated === true || (p.rows_total ?? p.rows.length) > p.rows.length || p.rows.length > ROW_CAP;
 }
 
+// В строке нет ничего, кроме кликов: ни подписок, ни отписок, ни чатов, ни депов, ни сегментов —
+// любое другое ненулевое число, даже незнакомое поле, значит «не только клики».
+export const onlyClicks = (r: TorroRow) =>
+  Object.entries(r).every(([k, v]) => k === "group" || k === "click" || !Number(v));
+
 // Поля, по которым сверяем склейку частей с общим итогом. Если строки без страны
 // выпадут при разбиении, это всплывёт здесь, а не тихой дырой.
 const CHECKED = ["click", "sub", "chat", "dep_count", "redep_count"] as const;
@@ -123,10 +128,10 @@ const TRAFFIC_DRIFT = 5;
 // Все строки дня, сколько бы их ни было.
 //
 // Обход потолка в 100 строк: сначала целиком; не влезло — по странам; страна не
-// влезла — по кампаниям внутри страны. Разбиваем по тому, что Torro отдаёт
-// значением, годным для фильтра: споты он группирует по названию, а
-// фильтрует по id — по ним не разобьёшь. Не влезло и так — честная ошибка с
-// адресом, а не обрезанные цифры.
+// влезла — сворачивается, если в ней одни клики, иначе делится по второму признаку
+// пачками. Разбиваем по тому, что Torro отдаёт значением, годным для фильтра:
+// споты он группирует по названию, а фильтрует по id — по ним не разобьёшь.
+// Не влезло и так — честная ошибка с адресом, а не обрезанные цифры.
 export async function fetchDay(
   base: Omit<Query, "groupBy" | "country" | "campaignName" | "adName">,
   groupBy: "ad_name" | "campaign_name",
@@ -143,22 +148,31 @@ export async function fetchDay(
     const country = [c.group];
     const byCountry = await callStatistics({ ...base, groupBy, country }, doFetch);
     if (!truncated(byCountry)) { parts.push(...byCountry.rows); continue; }
-    // По кампаниям внутри страны строк не больше, чем было: дальше делить некуда.
-    if (groupBy === "campaign_name") {
-      throw new Error(`Torro: за ${base.day} в стране ${c.group} больше ${ROW_CAP} кампаний`);
+    // Страна из одних кликов — боты Meta (24.11.2026 у Артёма: США, 224 кампании, 2555 кликов,
+    // ни одной подписки). Делить её незачем и нечем: одна строка без имени с кликами страны,
+    // её не пишет никто, а сверка с итогом сходится. Хоть одна подписка, чат или деп — делим дальше
+    // или ошибка ниже, а не потеря.
+    if (onlyClicks(c)) { parts.push({ group: "", click: Number(c.click) || 0 }); continue; }
+    // Иначе делим страну по второму признаку: объявления — пачками кампаний, кампании — пачками
+    // объявлений (21.11.2026 у Артёма в US 224 кампании, но 59 объявлений и 2 настоящие подписки).
+    // Пачка не влезла — пополам. Пустое имя Torro фильтрует, как любое другое.
+    const other = groupBy === "ad_name" ? "campaign_name" : "ad_name";
+    const names = await callStatistics({ ...base, groupBy: other, country }, doFetch);
+    if (truncated(names)) {
+      throw new Error(`Torro: за ${base.day} в стране ${c.group} больше ${ROW_CAP} кампаний и больше ${ROW_CAP} объявлений`);
     }
-
-    const campaigns = await callStatistics({ ...base, groupBy: "campaign_name", country }, doFetch);
-    if (truncated(campaigns)) {
-      throw new Error(`Torro: за ${base.day} в стране ${c.group} больше ${ROW_CAP} кампаний`);
-    }
-    for (const k of campaigns.rows) {
-      const byCampaign = await callStatistics({ ...base, groupBy, country, campaignName: [k.group] }, doFetch);
-      if (truncated(byCampaign)) {
-        throw new Error(`Torro: за ${base.day} в кампании «${k.group}» больше ${ROW_CAP} объявлений`);
-      }
-      parts.push(...byCampaign.rows);
-    }
+    const walk = async (batch: string[]): Promise<void> => {
+      if (!batch.length) return;
+      const filter = other === "campaign_name" ? { campaignName: batch } : { adName: batch };
+      const p = await callStatistics({ ...base, groupBy, country, ...filter }, doFetch);
+      if (!truncated(p)) { parts.push(...p.rows); return; }
+      if (batch.length === 1) throw new Error(`Torro: за ${base.day} у «${batch[0]}» в стране ${c.group} больше ${ROW_CAP} строк`);
+      await walk(batch.slice(0, batch.length >> 1));
+      await walk(batch.slice(batch.length >> 1));
+    };
+    const all = names.rows.map((r) => r.group);
+    await walk(all.slice(0, all.length >> 1));
+    await walk(all.slice(all.length >> 1));
   }
 
   // Одно объявление может прийти из нескольких стран или кампаний — складываем.
