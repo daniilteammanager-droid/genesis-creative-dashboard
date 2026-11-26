@@ -21,7 +21,7 @@ export interface LiveState {
   id: string; status: string; effective: string;
   dailyBudget: number | null;   // в долларах; null — бюджет не на этом уровне
   canEdit: boolean;
-  // Ставка (bid cap) — у адсета, в валюте кабинета; стратегия — у кампании и адсета. Только Meta (27.11.2026, AI-доступ).
+  // Ставка (bid cap) — у адсета, в валюте кабинета; стратегия — у кампании и адсета. Только Meta (26.11.2026, AI-доступ).
   bid?: number | null; bidStrategy?: string | null; currency?: string;
 }
 

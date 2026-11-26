@@ -550,7 +550,7 @@ export async function loadCheck(
   const db = warehouse();
   const today = mskDay();
   // Живым считается чек, который целиком про сегодня. Всё прочее уже собрано. Прошлый день вживую — по просьбе
-  // (opts.live, AI-доступ, 27.11.2026): те же источники за тот день, а не склад, который перечитывает их раз в сутки.
+  // (opts.live, AI-доступ, 26.11.2026): те же источники за тот день, а не склад, который перечитывает их раз в сутки.
   const live = since === until && (since === today || opts.live === true);
 
   const { data: connected } = await db.from("buyer_connections").select("user_id");
