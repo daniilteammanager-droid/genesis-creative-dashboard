@@ -13,29 +13,63 @@ const clone = (c: Category[]): Category[] => JSON.parse(JSON.stringify(c));
 const short = (a: string) => (a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
 const move = <T,>(list: T[], from: number, to: number) => { const [x] = list.splice(from, 1); list.splice(to, 0, x); };
 
-// Перетаскивание за ручку: pointer-события (мышь и палец), строки — дети списка с data-row. Строка встаёт туда,
-// где указатель прошёл середину соседей — как в «Задачах», без HTML5 drag.
-function dragSort(e: React.PointerEvent, list: HTMLElement | null, index: number, onMove: (from: number, to: number) => void, onEnd: () => void) {
-  if (!list || e.button !== 0) return;
-  e.preventDefault();
-  let at = index;
-  const step = (ev: PointerEvent) => {
-    const rows = [...list.children].filter((r) => (r as HTMLElement).dataset.row !== undefined) as HTMLElement[];
-    const mid = (r: HTMLElement) => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; };
-    const to = rows.filter((r, i) => i !== at && mid(r) < ev.clientY).length;
-    if (to !== at) { onMove(at, to); at = to; }
-  };
-  const stop = () => { window.removeEventListener("pointermove", step); window.removeEventListener("pointerup", stop); window.removeEventListener("pointercancel", stop); onEnd(); };
-  window.addEventListener("pointermove", step);
-  window.addEventListener("pointerup", stop);
-  window.addEventListener("pointercancel", stop);
+// Перетаскивание за ручку (pointer-события: мышь и палец, без HTML5 drag). Строка поднимается и едет за указателем,
+// соседи плавно расступаются туда, куда она встанет; порядок меняется один раз — когда отпустили. У края экрана
+// страница прокручивается сама. Строки — дети списка с data-row; их места запоминаются в начале перетаскивания.
+interface Drag { list: string; from: number; over: number; dy: number; size: number }
+function useSort(onDrop: (list: string, from: number, to: number) => void) {
+  const [drag, setDrag] = useState<Drag | null>(null);
+  function start(e: React.PointerEvent, list: string, index: number, box: HTMLElement | null) {
+    if (!box || e.button !== 0) return;
+    e.preventDefault();
+    const rows = [...box.children].filter((r) => (r as HTMLElement).dataset.row !== undefined) as HTMLElement[];
+    const tops = rows.map((r) => r.getBoundingClientRect().top + window.scrollY);
+    const sizes = rows.map((r) => r.getBoundingClientRect().height);
+    const y0 = e.clientY, s0 = window.scrollY;
+    let last = e.clientY, over = index, raf = 0;
+    const update = () => {
+      const dy = last - y0 + (window.scrollY - s0);
+      const center = tops[index] + sizes[index] / 2 + dy;
+      over = tops.reduce((n, t, i) => (i !== index && t + sizes[i] / 2 < center ? n + 1 : n), 0);
+      setDrag({ list, from: index, over, dy, size: sizes[index] });
+    };
+    const tick = () => {
+      const edge = 80;
+      const v = last < edge ? -(edge - last) / 5 : last > window.innerHeight - edge ? (last - window.innerHeight + edge) / 5 : 0;
+      if (v) { window.scrollBy(0, v); update(); }
+      raf = requestAnimationFrame(tick);
+    };
+    const moved = (ev: PointerEvent) => { last = ev.clientY; update(); };
+    const done = () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", moved); window.removeEventListener("pointerup", done); window.removeEventListener("pointercancel", done);
+      document.body.style.userSelect = "";
+      setDrag(null);
+      if (over !== index) onDrop(list, index, over);
+    };
+    window.addEventListener("pointermove", moved); window.addEventListener("pointerup", done); window.addEventListener("pointercancel", done);
+    document.body.style.userSelect = "none";
+    raf = requestAnimationFrame(tick);
+    setDrag({ list, from: index, over: index, dy: 0, size: sizes[index] });
+  }
+  // Сдвиг строки i: перетаскиваемая — за указателем, соседи между старым и новым местом — на её высоту.
+  function style(list: string, i: number): React.CSSProperties | undefined {
+    if (!drag || drag.list !== list) return undefined;
+    if (i === drag.from) return { transform: `translateY(${drag.dy}px)`, position: "relative", zIndex: 20 };
+    const shift = drag.from < drag.over && i > drag.from && i <= drag.over ? -drag.size
+      : drag.from > drag.over && i >= drag.over && i < drag.from ? drag.size : 0;
+    return { transform: `translateY(${shift}px)`, transition: "transform 160ms ease" };
+  }
+  const lifted = (list: string, i: number) => drag?.list === list && drag.from === i;
+  return { start, style, lifted, active: Boolean(drag) };
 }
 
-function Grip({ label, onPointerDown, onKey }: { label: string; onPointerDown: (e: React.PointerEvent) => void; onKey: (d: number) => void }) {
+function Grip({ label, on, onPointerDown, onKey }: { label: string; on: boolean; onPointerDown: (e: React.PointerEvent) => void; onKey: (d: number) => void }) {
   return (
     <button type="button" aria-label={`Перетащить ${label}. Стрелки вверх и вниз — переставить`} title="Потяни, чтобы переставить"
             onPointerDown={onPointerDown} onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); onKey(e.key === "ArrowUp" ? -1 : 1); } }}
-            className="shrink-0 w-7 h-9 flex items-center justify-center rounded-md text-hint hover:text-zinc-200 hover:bg-raised cursor-grab active:cursor-grabbing touch-none">
+            className={`shrink-0 w-7 h-9 flex items-center justify-center rounded-md cursor-grab active:cursor-grabbing touch-none
+              ${on ? "text-violet-300 bg-violet-900/30" : "text-hint hover:text-zinc-200 hover:bg-raised"}`}>
       <svg viewBox="0 0 10 16" className="w-2.5 h-4" fill="currentColor" aria-hidden="true">
         {[2, 8, 14].flatMap((y) => [2, 8].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.6" />))}
       </svg>
@@ -47,11 +81,15 @@ export default function TopupSettings({ categories, rows, onSaved }: { categorie
   const [draft, setDraft] = useState(() => clone(categories));
   const [open, setOpen] = useState<string | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);   // только что добавленное «куда» — фокус на название
-  const [dragging, setDragging] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const catsRef = useRef<HTMLDivElement>(null);
   const lists = useRef(new Map<string, HTMLDivElement>());
+  // Отпустили строку — переставить в черновике: категории (список "cats") или «куда» категории (список — её id).
+  const sort = useSort((list, from, to) => edit((d) => {
+    if (list === "cats") move(d, from, to);
+    else { const c = d.find((x) => x.id === list); if (c) move(c.targets, from, to); }
+  }));
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(categories);
   const hints = useMemo(() => walletHints(rows, draft), [rows, draft]);
@@ -198,10 +236,11 @@ export default function TopupSettings({ categories, rows, onSaved }: { categorie
         <p className="text-xs text-hint mb-3">Нажми на «куда» — настройки откроются под ним. Порядок — потяни за шесть точек слева.</p>
         <div ref={catsRef}>
           {draft.map((c, ci) => (
-            <div key={c.id} data-row="" className={`border-t border-line first:border-t-0 py-3 ${dragging === c.id ? "opacity-60" : ""}`}>
+            <div key={c.id} data-row="" style={sort.style("cats", ci)}
+                 className={`border-t border-line first:border-t-0 py-3 ${sort.lifted("cats", ci) ? "rounded-xl bg-raised px-2 shadow-2xl ring-1 ring-violet-500" : ""}`}>
               <div className="flex items-center gap-1.5 mb-1.5">
-                <Grip label={`категорию «${c.name}»`}
-                      onPointerDown={(e) => { setDragging(c.id); dragSort(e, catsRef.current, ci, (a, b) => edit((d) => move(d, a, b)), () => setDragging(null)); }}
+                <Grip label={`категорию «${c.name}»`} on={sort.lifted("cats", ci)}
+                      onPointerDown={(e) => sort.start(e, "cats", ci, catsRef.current)}
                       onKey={(dd) => edit((d) => { if (ci + dd >= 0 && ci + dd < d.length) move(d, ci, ci + dd); })} />
                 <input value={c.name} onChange={(e) => edit((d) => { d[ci].name = e.target.value; })} aria-label="Название категории"
                        className="field flex-1 min-w-0 !min-h-9 font-semibold" />
@@ -212,10 +251,11 @@ export default function TopupSettings({ categories, rows, onSaved }: { categorie
               </div>
               <div ref={(el) => { if (el) lists.current.set(c.id, el); else lists.current.delete(c.id); }}>
                 {c.targets.map((t, ti) => (
-                  <div key={t.id} id={`target-${t.id}`} data-row="" className={dragging === t.id ? "opacity-60" : ""}>
+                  <div key={t.id} id={`target-${t.id}`} data-row="" style={sort.style(c.id, ti)}
+                       className={sort.lifted(c.id, ti) ? "rounded-xl bg-raised shadow-2xl ring-1 ring-violet-500" : ""}>
                     <div className="flex items-center gap-1">
-                      <Grip label={`«${t.name}»`}
-                            onPointerDown={(e) => { setDragging(t.id); dragSort(e, lists.current.get(c.id) ?? null, ti, (a, b) => edit((d) => move(d[ci].targets, a, b)), () => setDragging(null)); }}
+                      <Grip label={`«${t.name}»`} on={sort.lifted(c.id, ti)}
+                            onPointerDown={(e) => sort.start(e, c.id, ti, lists.current.get(c.id) ?? null)}
                             onKey={(dd) => edit((d) => { const l = d[ci].targets; if (ti + dd >= 0 && ti + dd < l.length) move(l, ti, ti + dd); })} />
                       <button type="button" aria-expanded={open === t.id} onClick={() => setOpen(open === t.id ? null : t.id)}
                               className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm
