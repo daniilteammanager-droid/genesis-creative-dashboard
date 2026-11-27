@@ -13,6 +13,7 @@ import OpenTopup, { BADGE, LABEL, money, stamp, type Op } from "./OpenTopup";
 import TopupForm from "./TopupForm";
 import TopupAnalytics from "./TopupAnalytics";
 import TopupSettings from "./TopupSettings";
+import Comment from "./Comment";
 
 // Заявки на пополнение (Decision 072): форма и список. Заявка уходит Top-Up ботом в платёжный чат, статус и хэш
 // возвращаются сюда. Владелец работает с открытыми заявками прямо здесь — те же кнопки, что в чате (Decision 126).
@@ -230,8 +231,9 @@ export default function Topups({ pairs, networks }: { pairs: Record<string, stri
                         <span className="text-hint"> · {r.network}</span>
                       </p>
                       <p className="text-[11px] text-hint mt-0.5 break-all">
-                        {view.admin && `${r.author} · `}{stamp(r.created_at)} · {r.address}{source(r)}{r.comment && ` · ${r.comment}`}
+                        {view.admin && `${r.author} · `}{stamp(r.created_at)} · {r.address}{source(r)}
                       </p>
+                      {r.comment && <Comment text={r.comment} className="text-xs text-zinc-300 mt-1" />}
                       <p className="text-[11px] text-zinc-400 mt-1">{detail(r)}</p>
                       {r.tx_hash && (
                         <p className="text-[11px] mt-0.5 break-all">

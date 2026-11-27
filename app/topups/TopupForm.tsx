@@ -5,6 +5,7 @@ import { chip } from "@/components/ui";
 import type { Topup } from "@/lib/topups/requests";
 import { exact, type Asset } from "@/lib/topups/chain";
 import { findTarget, OTHER, suggestTemplate, targetsOf, type Category, type Template } from "@/lib/topups/config";
+import { continueList } from "@/lib/topups/comment";
 
 // Форма новой заявки с шаблонами и закреплёнными кошельками (Decision 131). Шаблон только заполняет форму —
 // отправляет человек кнопкой. Кошелёк «куда» подставляет монету, сеть и адрес из настроек; «Другой адрес» — вручную,
@@ -118,6 +119,18 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
     }
   }
 
+  // Enter в комментарии продолжает список «- » / «1. »; пустой пункт — конец списка (continueList в lib/topups/comment.ts).
+  function listEnter(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    const el = e.currentTarget;
+    if (el.selectionStart !== el.selectionEnd) return;
+    const next = continueList(el.value, el.selectionStart);
+    if (!next) return;
+    e.preventDefault();
+    setComment(next.value);
+    requestAnimationFrame(() => el.setSelectionRange(next.caret, next.caret));
+  }
+
   const tplName = (t: Template) => (t.target === OTHER ? `${t.kind} · ${OTHER}` : t.target);
   const tplSub = (t: Template) => {
     const a = t.wallet ? findTarget(categories, t.kind, t.target)?.wallets.find((w) => w.name === t.wallet)?.asset : t.asset;
@@ -217,8 +230,9 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
           <option value={-1} disabled>Время на оплату</option>
           {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
         </select>
-        <input placeholder="Комментарий (нечего добавить — «-»)" value={comment} onChange={(e) => setComment(e.target.value)}
-               className="field w-full sm:col-span-2" aria-label="Комментарий" />
+        <textarea placeholder={"Комментарий (нечего добавить — «-»)\nСписок: «- пункт» и Enter — следующий пункт сам. Ссылки станут кликабельными."}
+                  value={comment} rows={3} onChange={(e) => setComment(e.target.value)} onKeyDown={listEnter}
+                  className="field w-full sm:col-span-2 resize-y min-h-24" aria-label="Комментарий" />
         <div className="sm:col-span-2 flex flex-wrap gap-2.5">
           <button type="submit" disabled={busy || !ready} className="btn btn-primary flex-[1_1_240px]">{busy ? "Отправляю…" : "Отправить заявку"}</button>
           <button type="button" className="btn" disabled={!target} onClick={saveTemplate}>Сохранить как шаблон</button>

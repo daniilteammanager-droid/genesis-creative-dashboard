@@ -6,6 +6,7 @@ import { addressFits, DECIMALS, exact, findPayment, PAIRS, parseHash, transferBy
 import { stage, type Stage } from "./view";
 import { dueSearches } from "./auto";
 import { findTarget, targetsOf } from "./config";
+import { blocksOf, linksOf } from "./comment";
 import { loadCategories } from "./settings";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
@@ -118,9 +119,15 @@ function fields(r: Topup, st: Stage): [string, string][] {
   // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
   if (r.fee) rows.push(["Комиссия", `${money(r.fee)} · не в переводе`]);
   if (open && r.expires_at) rows.push(["Срок", `до ${when(r.expires_at)}`]);
-  if (r.comment) rows.push(["Коммент", e(r.comment)]);
   return rows;
 }
+
+// Комментарий — под таблицей, не в ячейке: в ячейке rich message только одна строка. Строки — абзацы, «- пункт» —
+// список, ссылки — явными <a>: автоопределение ссылок в сообщении выключено (skip_entity_detection), иначе не кликаются.
+const inline = (s: string) => linksOf(s).map((p) => (p.href ? `<a href="${attr(p.href)}">${escapeHtml(p.text)}</a>` : escapeHtml(p.text))).join("");
+const commentHtml = (c: string) => blocksOf(c).map((b) => b.kind === "p" ? `<p>${inline(b.text)}</p>`
+  : b.kind === "ul" ? `<ul>${b.items.map((i) => `<li>${inline(i)}</li>`).join("")}</ul>`
+  : `<ol${b.start !== 1 ? ` start="${b.start}"` : ""}>${b.items.map((i) => `<li>${inline(i)}</li>`).join("")}</ol>`).join("");
 
 export function topupHtml(r: Topup, qr: boolean): string {
   const st = stage(r);
@@ -130,6 +137,7 @@ export function topupHtml(r: Topup, qr: boolean): string {
     `<p>${head(r, st)}</p>`,
     now ? `<blockquote>${now}</blockquote>` : "",
     `<table compact>${fields(r, st).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>`,
+    r.comment ? `<p><b>Комментарий</b></p>${commentHtml(r.comment)}` : "",
     qr ? `<details><summary>QR для оплаты</summary><figure><img src="tg://photo?id=qr"/><figcaption>${paymentUri(r).withAmount
       ? "Адрес, сумма и монета подставятся сами" : `Подставится адрес, сумму — точно: ${amount}`}</figcaption></figure></details>` +
       `<tg-button-row><tg-button type="copy_text" text="${attr(amount)}">Копировать сумму</tg-button>` +
@@ -140,7 +148,9 @@ export function topupHtml(r: Topup, qr: boolean): string {
 // Запасной вид — прежний текст: если Telegram не примет rich message, заявка всё равно дойдёт до чата.
 export function topupText(r: Topup): string {
   const st = stage(r);
-  return [head(r, st), line(r, st), ...fields(r, st).map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join("\n");
+  // В тексте переносы строк сохраняются сами; ссылки — <a>, как в rich message.
+  const comment = r.comment ? `Комментарий:\n${r.comment.split("\n").map(inline).join("\n")}` : "";
+  return [head(r, st), line(r, st), ...fields(r, st).map(([k, v]) => `${k}: ${v}`), comment].filter(Boolean).join("\n");
 }
 
 // Действия — одной строкой. Ссылка на перевод у оплаченной — кнопкой, а не строкой с хэшем.
@@ -222,6 +232,7 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
   if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
   if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
+  if (comment.length > 4000) throw new Error("Комментарий длиннее 4000 знаков — сократи или вынеси в ссылку");
   if (!PAIRS[asset]) throw new Error("Выбери монету");
   if (!net) throw new Error(`${asset} в сети ${network ?? "—"} не переводим — выбери другую сеть`);
   if (Number(exact(amount, net.asset)) !== amount) throw new Error(`У ${net.asset} не больше ${DECIMALS[net.asset]} знаков после точки — такую сумму не перевести точно`);

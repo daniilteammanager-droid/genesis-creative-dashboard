@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Topup } from "@/lib/topups/requests";
 import { exact } from "@/lib/topups/chain";
 import { openActions, stage, STAGES, type Stage } from "@/lib/topups/view";
+import Comment from "./Comment";
 
 // Открытая заявка у владельца (Decision 126): сумма и адрес с копированием, QR, кто платит и кнопки — те же, что
 // в платёжном чате. Нажатие идёт в те же функции, что у бота, поэтому чат и страница совпадают.
@@ -137,7 +138,12 @@ export default function OpenTopup({ r, me, busy, onAct }: {
           <button type="button" className="btn border-red-800/50 text-red-300" disabled={busy} onClick={() => setAsk(true)}>Отклонить</button>
         )}
       </div>
-      {r.comment && <p className="text-xs text-hint">Комментарий: {r.comment}</p>}
+      {r.comment && (
+        <div className="rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-zinc-300">
+          <p className="label mb-1">Комментарий</p>
+          <Comment text={r.comment} />
+        </div>
+      )}
     </article>
   );
 }
