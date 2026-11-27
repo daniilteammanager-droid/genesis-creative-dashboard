@@ -19,6 +19,9 @@ const SORT_KEY: Record<string, (m: Metrics) => number | null> = {
   "Цена подписки": (m) => ratio(m.subscribers ? m.spend : null, m.subscribers), "Диалоги": (m) => m.dialogs,
   "Цена диалога": (m) => ratio(m.dialogs ? m.spend : null, m.dialogs), "Депы": (m) => m.depCount, "CAC": (m) => ratio(m.depCount ? m.spend : null, m.depCount),
 };
+// Строк в DOM не больше PAGE за раз: за «всё время» крео тысячи, и таблица целиком —
+// сотня тысяч элементов, сортировка кликом встаёт на секунды. Поиск и итоги — по всем строкам.
+const PAGE = 200;
 const geoOfCode = (code: string) => (/-([a-z]{2})$/i.exec(code)?.[1] ?? "").toUpperCase();
 
 
@@ -46,6 +49,7 @@ export default function CreativesTable() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ col: string; desc: boolean }>({ col: "Расход", desc: true });
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
+  const [limit, setLimit] = useState(PAGE);
   const [data, setData] = useState<CreativesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -266,7 +270,7 @@ export default function CreativesTable() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line/50">
-                {rows.map((r) => (
+                {rows.slice(0, limit).map((r) => (
                   <Fragment key={r.code}>
                   <tr className={`hover:bg-violet-900/10 transition ${r.details && merge === "all" ? "cursor-pointer" : ""}`} onClick={() => merge === "all" && r.details && toggleRow(r.code)}>
                     <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap max-w-[48vw] sm:max-w-[280px] truncate sticky left-0 bg-card z-10" title={r.code}>
@@ -317,6 +321,14 @@ export default function CreativesTable() {
               </tbody>
             </table>
           </div>
+
+          {rows.length > limit && (
+            <div className="flex justify-center mt-4">
+              <button onClick={() => setLimit((l) => l + PAGE)} className="btn">
+                Показать ещё {Math.min(PAGE, rows.length - limit)} из {rows.length - limit}
+              </button>
+            </div>
+          )}
 
           <p className="text-[11px] text-hint mt-3">
             Страны берутся из настроек таргета адсета, а не из имени креатива: имена пишет человек,

@@ -1,7 +1,9 @@
 import { mskDay, mskDaysAgo } from "@/lib/day";
+import { periodRange } from "@/lib/home/periods";
 
 // Пресеты периодов Креативов — плитка и таблица. «Этот месяц» и «Прошлый месяц» — как в
-// «Дашборде» Артёма. Раздел открывается на сегодня.
+// «Дашборде» Артёма. Раздел открывается на сегодня. «Всё время» — с начала склада, как на Главной:
+// найти старый крео поиском одной кнопкой (Даниил, 27.11.2026).
 
 const month = (offset: number) => {
   const [y, m] = mskDay().split("-").map(Number);
@@ -17,4 +19,5 @@ export const PERIODS = [
   { label: "30 дней", since: () => mskDaysAgo(29), until: () => mskDaysAgo(0) },
   { label: "Этот месяц", since: () => month(0).since, until: () => month(0).until },
   { label: "Прошлый месяц", since: () => month(-1).since, until: () => month(-1).until },
+  { label: "Всё время", since: () => periodRange("all").since, until: () => mskDay() },
 ];
