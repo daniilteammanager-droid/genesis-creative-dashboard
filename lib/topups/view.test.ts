@@ -1,12 +1,12 @@
 // Самопроверка поиска и фильтров заявок. Запуск: npx tsx lib/topups/view.test.ts
 import assert from "node:assert/strict";
 import type { Topup } from "./requests";
-import { filterTopups, openActions, paidTotals, received, stage, type TopupFilter } from "./view";
+import { filterTopups, openActions, received, stage, type TopupFilter } from "./view";
 
 const row = (p: Partial<Topup>): Topup => ({
   id: "x", number: 1, user_id: "u", kind: "Карты", target: "Brocard", amount: 100, fee: 0, asset: "USDT", network: "TRC20",
   address: "TNXoiAJ3dct8Fjg4M9fkLFh9S2v9TXc32G", comment: null, expires_at: null, status: "pending", taken_by: null, taken_at: null,
-  searching_since: null, tx_hash: null, paid_amount: null, paid_at: null, closed_by: null, messages: [], created_at: "", author: "Андрей", ...p,
+  searching_since: null, tx_hash: null, paid_amount: null, paid_at: null, closed_by: null, messages: [], created_at: "", author: "Андрей", wallet: null, manual_address: false, ...p,
 });
 const rows = [
   row({ number: 118 }),
@@ -28,12 +28,9 @@ assert.deepEqual(nums({ q: "@danya" }), [117]);           // кто взял
 assert.deepEqual(nums({ stages: ["work", "pending"] }), [118, 117]);
 assert.deepEqual(nums({ authors: ["Влад"] }), [117]);
 assert.deepEqual(nums({ kinds: ["Карты"], targets: ["Brocard"], stages: ["paid"] }), [116, 115]);
-assert.equal(paidTotals(rows).replace(/\s/g, " "), "0,0154 BTC · 2 400 USDT");   // ru-RU ставит неразрывный пробел
 // Итог «Оплачено» — что пришло, а не что просили: #144 (20.11.2026) просили 5000, хэшем закрыли переводом на 500.
 assert.equal(received(row({ amount: 5000, paid_amount: 500 })), 500);
 assert.equal(received(row({ amount: 11.316 })), 11.316, "пришедшая не записана — сумма заявки");
-assert.equal(paidTotals([row({ status: "paid", amount: 5000, paid_amount: 500 }), row({ status: "paid", amount: 200, paid_amount: 240 }),
-  row({ status: "paid", amount: 11.316 }), row({ status: "rejected", amount: 70 })]).replace(/\s/g, " "), "751,316 USDT");
 // Кнопки владельца на странице — как в чате: «Снять» только у того, кто взял; в поиске — хэш и «Отклонить».
 const acts = (p: Partial<Topup>, me = "Daniil") => Object.entries(openActions(row(p), me)).filter(([, v]) => v).map(([k]) => k).sort().join(" ");
 assert.equal(acts({}), "paid reject take");

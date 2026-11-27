@@ -5,20 +5,15 @@ import { paymentUri, qrPng } from "./qr";
 import { addressFits, DECIMALS, exact, findPayment, PAIRS, parseHash, transferByHash, txUrl, type Asset, type Network, type SearchRule, type Transfer } from "./chain";
 import { stage, type Stage } from "./view";
 import { dueSearches } from "./auto";
+import { findTarget, targetsOf } from "./config";
+import { loadCategories } from "./settings";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
 // закрыть оплатой, отказом или по сроку. Таблицы закрыты от браузера — всё
 // сервисным ключом, доступ проверяют роуты.
 
-// Что пополняем: категория → куда именно. «Другое» — для того, чего нет в списке
-// (провайдеров прокси всех не впишешь).
-export const OTHER = "Другое";
-export const CATEGORIES: Record<string, string[]> = {
-  "Расходники": ["Кабинеты/БМ/Кинги/ФП", "Прокси", "Домены", "Почты", "Антик", "Сервера/хостинг", "Подписки/сервисы", "Кошелёк USDT", "Склад кабинетов", OTHER],
-  "Карты": ["Brocard", "AbCard", "Adpos", "FBMcards", OTHER],
-  "Агенты": ["T2A", "RentAcc", "TSR", "Monika (агенты TikTok)", OTHER],
-  "Кабинеты": ["TG Ads кабинеты (TON)", OTHER],
-};
+// Что пополняем: категория → куда именно → закреплённые кошельки — настройки «Пополнений» (Decision 131,
+// lib/topups/config.ts и settings.ts). «Другое» — для того, чего нет в списке.
 
 export interface Topup {
   id: string; number: number; user_id: string; kind: string; target: string;
@@ -29,10 +24,12 @@ export interface Topup {
   searching_since: string | null; tx_hash: string | null; paid_amount: number | null; paid_at: string | null;
   // qr — отдельное фото QR у заявок до 13.11.2026; теперь QR внутри сообщения.
   closed_by: string | null; messages: { chat_id: number; message_id: number; qr?: boolean }[]; created_at: string;
+  // wallet — подпись кошелька из настроек; manual_address — у «куда» есть кошельки, а адрес вбили руками (Decision 131).
+  wallet: string | null; manual_address: boolean;
   author?: string; tx_url?: string;
 }
 
-const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, taken_by, taken_at, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at";
+const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, taken_by, taken_at, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at, wallet, manual_address";
 const db = () => warehouse();
 const num = (r: Topup): Topup => ({ ...r, amount: Number(r.amount), fee: Number(r.fee), paid_amount: r.paid_amount === null ? null : Number(r.paid_amount) });
 
@@ -116,7 +113,7 @@ function fields(r: Topup, st: Stage): [string, string][] {
   const open = st === "pending" || st === "work" || st === "search";
   const rows: [string, string][] = [
     ["Сумма", `<code>${exact(r.amount, r.asset)}</code> <b>${r.asset}</b> · ${r.network}`],
-    ["Адрес", open || st === "paid" ? `<code>${e(r.address)}</code>` : "скрыт"],
+    ["Адрес", open || st === "paid" ? `<code>${e(r.address)}</code>${r.manual_address ? " · вручную, не из настроек" : ""}` : "скрыт"],
   ];
   // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
   if (r.fee) rows.push(["Комиссия", `${money(r.fee)} · не в переводе`]);
@@ -202,17 +199,26 @@ async function refresh(r: Topup): Promise<void> {
 export interface TopupInput {
   kind?: string; target?: string; amount?: number; fee?: number; network?: string; asset?: string;
   address?: string; comment?: string; minutes?: number | null;
+  // Подпись закреплённого кошелька «куда»: адрес, монета и сеть тогда берутся из настроек, а не из формы.
+  wallet?: string | null;
 }
 
 export async function createTopup(userId: string, input: TopupInput): Promise<Topup> {
   const kind = (input.kind ?? "").trim(), target = (input.target ?? "").trim();
   const comment = (input.comment ?? "").trim();
-  const address = (input.address ?? "").trim();
+  const cats = await loadCategories();
+  const spot = findTarget(cats, kind, target);
+  const w = input.wallet ? spot?.wallets.find((x) => x.name === input.wallet) : undefined;
+  if (input.wallet && !w) throw new Error(`У «${target}» нет кошелька «${input.wallet}» — обнови страницу`);
+  const address = w ? w.address : (input.address ?? "").trim();
   const amount = Number(input.amount), fee = Number(input.fee ?? 0);
-  const asset = input.asset as Asset, network = input.network as Network;
+  const asset = (w ? w.asset : input.asset) as Asset, network = (w ? w.network : input.network) as Network;
   const net = PAIRS[asset]?.includes(network) ? { asset, network } : null;
+  // Тот же адрес, что у кошелька, вбитый руками, — тоже кошелёк; другой при «только эти кошельки» — отказ.
+  const same = w ?? spot?.wallets.find((x) => x.address === address && x.asset === asset && x.network === network);
+  if (spot?.only && !same) throw new Error(`Для «${target}» перевод только на кошелёк из настроек`);
   // Все поля обязательны: механика для баеров новая, пропуск поля — потерянная оплата.
-  if (!CATEGORIES[kind]?.includes(target)) throw new Error("Выбери категорию и куда именно пополняем");
+  if (!targetsOf(cats, kind).includes(target)) throw new Error("Выбери категорию и куда именно пополняем");
   if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
   if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
   if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
@@ -227,6 +233,7 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   if (!chat) throw new Error("Платёжный чат ещё не привязан — заявку некуда отправить");
   const { data, error } = await db().from("topup_requests").insert({
     user_id: userId, kind, target, amount, fee, network: net.network, asset: net.asset, address,
+    wallet: same?.name ?? null, manual_address: Boolean(spot?.wallets.length) && !same,
     comment: comment === "-" ? null : comment,
     expires_at: minutes ? new Date(Date.now() + minutes * 60_000).toISOString() : null,
   }).select("id").single();

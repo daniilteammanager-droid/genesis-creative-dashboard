@@ -5,6 +5,7 @@ import { paymentUri, qrPng } from "@/lib/topups/qr";
 import {
   createTopup, getTopup, hashPaid, listTopups, openCount, pressPaid, reject, release, take, topupChat, topupTg, type TopupInput,
 } from "@/lib/topups/requests";
+import { listTemplates, loadCategories } from "@/lib/topups/settings";
 
 // Заявки на пополнение (Decision 072). Владелец видит все заявки и привязывает
 // платёжный чат, остальные — только свои. user_id всегда из сессии.
@@ -18,10 +19,13 @@ type Me = { id: string; role: string; name: string | null; email: string };
 // Имя, которым человек записывается в заявку («Платит …», «Оплатил …»). В боте — то же имя, если Telegram привязан (bot.ts).
 const nameOf = (me: Me) => me.name || me.email;
 
+// С Decision 131 ещё категории с кошельками (форма) и свои шаблоны.
 async function view(me: Me) {
   const admin = me.role === "main";
-  const chat = admin ? await topupChat() : null;
-  return { admin, me: nameOf(me), chat: chat ? { title: chat.title } : null, topups: await listTopups(admin ? null : me.id) };
+  const [chat, topups, categories, templates] = await Promise.all([
+    admin ? topupChat() : null, listTopups(admin ? null : me.id), loadCategories(), listTemplates(me.id),
+  ]);
+  return { admin, me: nameOf(me), meId: me.id, chat: chat ? { title: chat.title } : null, topups, categories, templates };
 }
 
 export async function GET(req: Request) {

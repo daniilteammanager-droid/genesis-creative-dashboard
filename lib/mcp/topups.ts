@@ -1,5 +1,7 @@
 import { selfOf, type Profile } from "@/lib/auth/types";
-import { CATEGORIES, createTopup, listTopups, what, type Topup } from "@/lib/topups/requests";
+import { createTopup, listTopups, what, type Topup } from "@/lib/topups/requests";
+import { loadCategories } from "@/lib/topups/settings";
+import { findTarget, targetsOf, type Category } from "@/lib/topups/config";
 import { filterTopups, received, stage, STAGES, type Stage } from "@/lib/topups/view";
 import { exact, PAIRS, type Asset } from "@/lib/topups/chain";
 import { mskDay, mskTime } from "@/lib/day";
@@ -100,8 +102,15 @@ export function rowOf(r: Topup) {
     address: r.address, comment: r.comment ?? undefined, expires: r.status === "pending" ? at(r.expires_at) : undefined,
     taken_by: r.taken_by ?? undefined, closed_by: r.closed_by ?? undefined, paid_at: at(r.paid_at),
     paid_amount: r.paid_amount ?? undefined, tx_url: r.tx_url,
+    wallet: r.wallet ?? undefined, manual_address: r.manual_address || undefined,
   };
 }
+
+// Категории из настроек «Пополнений» (Decision 131) — для create_topup: «куда» и его закреплённые кошельки.
+export const categoriesOf = (cats: Category[]) => Object.fromEntries(cats.map((c) => [c.name, targetsOf(cats, c.name).map((t) => {
+  const ws = findTarget(cats, c.name, t)?.wallets ?? [];
+  return ws.length ? `${t} — кошельки: ${ws.map((w) => `${w.name} (${w.asset} ${w.network})`).join(", ")}` : t;
+})]));
 
 // ── Инструмент ───────────────────────────────────────────────────────────────
 
@@ -139,7 +148,7 @@ const getTopups: Tool = {
     }
     const stages = arr(a.status).filter((s): s is Stage => s in LABEL);
     const group = (GROUPS as readonly string[]).includes(str(a.group_by)) ? (str(a.group_by) as Group) : "total";
-    const all = await listTopups(owner ? null : me.id, MAX_ROWS);
+    const [all, cats] = await Promise.all([listTopups(owner ? null : me.id, MAX_ROWS), loadCategories()]);
     const rows = pickTopups(all, { since, until, userId, stages, kinds: arr(a.kind), targets: arr(a.target), assets: arr(a.asset), q: str(a.search) });
     const limit = Math.min(200, Math.max(0, Number.isFinite(Number(a.limit)) ? Math.floor(Number(a.limit)) : 30));
     const [totals] = summarize(rows, "total");
@@ -150,6 +159,7 @@ const getTopups: Tool = {
       rows: limit ? rows.slice(0, limit).map(rowOf) : undefined,
       more_rows: Math.max(0, rows.length - limit) || undefined,
       notice: all.length >= MAX_ROWS ? `Учтены только последние ${MAX_ROWS} заявок` : undefined,
+      categories: categoriesOf(cats),
     };
   },
 };
@@ -163,31 +173,40 @@ const createTopupTool: Tool = {
   inputSchema: {
     type: "object",
     properties: {
-      kind: { type: "string", enum: Object.keys(CATEGORIES), description: "Категория." },
-      target: { type: "string", description: `Куда именно, из списка категории: ${Object.entries(CATEGORIES).map(([k, v]) => `${k} — ${v.join(", ")}`).join("; ")}. Чего нет в списке — «Другое», а что именно — в комментарии.` },
+      kind: { type: "string", description: "Категория из настроек «Пополнений» — список в get_topups, поле categories." },
+      target: { type: "string", description: "Куда именно, из списка категории (get_topups → categories). Чего нет в списке — «Другое», а что именно — в комментарии." },
+      wallet: { type: "string", description: "Подпись закреплённого кошелька «куда» (get_topups → categories). У «куда» с одним кошельком и без address можно не указывать — возьмём его. С кошельком asset, network и address берутся из настроек." },
       amount: { type: "number", description: "Сумма перевода точно до знака — платёжка узнаёт перевод по ней. USDT, USDC, TRX — до 6 знаков после точки, BTC — 8, GRAM — 9." },
       asset: { type: "string", enum: Object.keys(PAIRS), description: "Монета." },
       network: { type: "string", enum: [...new Set(Object.values(PAIRS).flat())], description: `Сеть, своя для монеты: ${Object.entries(PAIRS).map(([a, n]) => `${a} — ${n.join(", ")}`).join("; ")}. У монеты с одной сетью можно не указывать.` },
       fee: { type: "number", description: "Комиссия справкой, в перевод не входит. Нет комиссии — 0." },
-      address: { type: "string", description: "Адрес получателя в выбранной сети." },
+      address: { type: "string", description: "Адрес получателя в выбранной сети. У «куда» с закреплённым кошельком не нужен — берётся из настроек; другой адрес можно, если владелец не поставил «только эти кошельки»." },
       minutes: { type: "integer", enum: TIMES, description: "Время на оплату в минутах: 15, 30, 60, 120, 360, 1440 (сутки) или 0 — без срока." },
       comment: { type: "string", description: "Комментарий для тех, кто платит. Нечего добавить — «-»." },
     },
-    required: ["kind", "target", "amount", "asset", "fee", "address", "minutes", "comment"],
+    required: ["kind", "target", "amount", "fee", "minutes", "comment"],
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true, title: "Новая заявка на пополнение" },
   async run({ me: seat }, a) {
     const me = selfOf(seat);
-    const kind = oneOf(str(a.kind), Object.keys(CATEGORIES));
-    const asset = str(a.asset).toUpperCase() as Asset;
-    const network = str(a.network).toUpperCase() || (PAIRS[asset]?.length === 1 ? PAIRS[asset][0] : "");
-    const amount = Number(a.amount), address = str(a.address);
+    const cats = await loadCategories();
+    const kind = oneOf(str(a.kind), cats.map((c) => c.name));
+    const target = oneOf(str(a.target), targetsOf(cats, kind));
+    // Кошелёк «куда» из настроек: назван — он; не назван и адреса нет — единственный кошелёк «куда».
+    const ws = findTarget(cats, kind, target)?.wallets ?? [];
+    const w = str(a.wallet) ? ws.find((x) => x.name.toLowerCase() === str(a.wallet).toLowerCase())
+      : !str(a.address) && ws.length === 1 ? ws[0] : undefined;
+    if (str(a.wallet) && !w) throw new ToolError(`У «${target}» нет кошелька «${str(a.wallet)}». Есть: ${ws.map((x) => x.name).join(", ") || "никаких"}`);
+    if (!w && !str(a.address)) throw new ToolError(ws.length > 1 ? `У «${target}» несколько кошельков — укажи wallet: ${ws.map((x) => x.name).join(", ")}` : "Нужен адрес получателя");
+    const asset = (w ? w.asset : str(a.asset).toUpperCase()) as Asset;
+    const network = w ? w.network : str(a.network).toUpperCase() || (PAIRS[asset]?.length === 1 ? PAIRS[asset][0] : "");
+    const amount = Number(a.amount), address = w ? w.address : str(a.address);
     if (!TIMES.includes(Number(a.minutes))) throw new ToolError("Время на оплату — 0 (без срока), 15, 30, 60, 120, 360 или 1440 минут");
     const stop = guard(await listTopups(me.id, 50), { address, amount });
     if (stop) throw new ToolError(stop);
     const r = await createTopup(me.id, {
-      kind, target: oneOf(str(a.target), CATEGORIES[kind] ?? []), amount, fee: typeof a.fee === "number" ? a.fee : undefined,
+      kind, target, amount, fee: typeof a.fee === "number" ? a.fee : undefined, wallet: w?.name ?? null,
       asset, network, address, minutes: Number(a.minutes), comment: str(a.comment),
     }).catch((e: unknown) => { throw new ToolError(e instanceof Error ? e.message : String(e)); });
     return { created: rowOf(r), note: `Заявка #${r.number} ушла в платёжный чат. Статус — get_topups.` };
