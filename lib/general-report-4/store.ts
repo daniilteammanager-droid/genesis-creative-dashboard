@@ -8,6 +8,19 @@ import type { Gr4Kind, Gr4Row, Gr4Targets } from "./types";
 
 export interface Snapshot { rows: Gr4Row[]; targets: Gr4Targets; at: number; error: string | null }
 
+// «Сводная по баерам»: таблицы всех баеров одной выборкой. Баер в строке — из колонки «Баер» его таблицы;
+// пусто — имя из профиля. Общая для /api/general-report-4 и AI-доступа (get_general_report).
+export async function loadCombined(sources: { kind: Gr4Kind; combined?: boolean; label: string; spreadsheetId: string }[], refresh = false): Promise<Snapshot> {
+  const buyers = sources.filter((s) => s.kind === "buyer" && !s.combined);
+  const parts = await Promise.all(buyers.map(async (b) => ({ b, d: await (refresh ? syncSheet(b.spreadsheetId, "buyer") : snapshot(b.spreadsheetId, "buyer")) })));
+  return {
+    rows: parts.flatMap(({ b, d }) => d.rows.map((r) => (r.buyer ? r : { ...r, buyer: b.label }))),
+    targets: parts[0]?.d.targets ?? { costPerSub: null, costPerDialog: null, crToDialog: null, crDialogToDep: null },
+    at: parts.length ? Math.min(...parts.map(({ d }) => d.at)) : Date.now(),
+    error: parts.map(({ b, d }) => (d.error ? `${b.label}: ${d.error}` : "")).filter(Boolean).join("; ") || null,
+  };
+}
+
 function db() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Не заданы NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");

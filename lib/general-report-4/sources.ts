@@ -1,5 +1,4 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/auth/server";
 import type { Profile } from "@/lib/auth/types";
 import type { Gr4Kind, Gr4SourceInfo } from "./types";
 
@@ -22,7 +21,8 @@ function serviceClient() {
 }
 
 export async function collectSources4(me: Profile): Promise<Source[]> {
-  if (me.role === "buyer") {
+  // Общая и чужие таблицы — только владельцу и тимлиду. Остальным (баер, место джуна — getSeat) — своя.
+  if (me.role !== "main" && me.role !== "teamlead") {
     return me.gr4_spreadsheet_id
       ? [{ id: "me", label: "Моя таблица", kind: "buyer", spreadsheetId: me.gr4_spreadsheet_id }]
       : [];
@@ -30,8 +30,9 @@ export async function collectSources4(me: Profile): Promise<Source[]> {
 
   const out: Source[] = [];
 
-  const supabase = await createClient();
-  const { data: main } = await supabase
+  // Сервисным ключом: роль проверена выше (политика gr_spreadsheets — та же: main и teamlead), а AI-доступ
+  // (get_general_report, 27.11.2026) ходит без сессии, и ключ сессии общую таблицу ему не отдал бы.
+  const { data: main } = await serviceClient()
     .from("gr_spreadsheets")
     .select("name, spreadsheet_id")
     .eq("kind", "v4")

@@ -1,7 +1,7 @@
 import { warehouse } from "@/lib/warehouse/read";
 import { resolveScope } from "@/lib/warehouse/accounts";
 import { loadTrafficReport, oldTextsOf, textKey } from "@/lib/traffic-report/load";
-import { addCrm, dimValue, metricsOf, noCrm, type Cell, type CellCrm, type Sums } from "@/lib/traffic-report/build";
+import { addCrm, dimValue, geoName, lifeKey, lifeMap, metricsOf, noCrm, REST, stageOf, testLimit, type Cell, type CellCrm, type Stage, type Sums } from "@/lib/traffic-report/build";
 import { loadReportTree, type TreeNode } from "@/lib/warehouse/reportTree";
 import { loadCreativeDetail } from "@/lib/warehouse/creativeDetail";
 import type { Sums as DetailSums } from "@/lib/creatives/detail";
@@ -18,6 +18,7 @@ import { ToolError, type ToolDef, type ServerInfo } from "./protocol";
 import { MANAGE_TOOLS } from "./manage";
 import { TASK_TOOLS } from "./tasks";
 import { TOPUP_TOOLS } from "./topups";
+import { REPORT_TOOLS } from "./reports";
 import { REJECT_TOOLS } from "./rejects";
 import { AUTOUPLOAD_TOOLS } from "./autoupload";
 import { ANTIREJECT_TOOLS } from "./antireject";
@@ -34,7 +35,7 @@ type Tool = ToolDef<Ctx>;
 export const SERVER: ServerInfo = {
   name: "genesis-dashboard",
   title: "Genesis Dashboard",
-  version: "1.6.0",
+  version: "1.7.0",
   instructions: [
     "Дашборд Genesis: реклама Facebook и Telegram Ads и CRM Torro команды медиабаинга.",
     "Видно ровно то, что пользователь видит в дашборде: баер — только свои кабинеты и крео, владелец и тимлид — всю команду (параметр buyer — один баер по имени или коду b1).",
@@ -48,6 +49,7 @@ export const SERVER: ServerInfo = {
     "Автозалив — как раздел «Автозалив»: get_autoupload_options (кабинеты, сохранённые сборки, ссылки MVP, креативы Медиатеки по лицу, подходу и версии), preview_autoupload — план залива (по сохранённой сборке или форме целиком, как на странице, с 1-1-1), launch_autoupload — создать кампании в Meta, get_autoupload_jobs — ход, cancel_autoupload — удалить созданное, set_autoupload_key — заливать другим ключом (приложением Meta) из уже добавленных, resume_autoupload — продолжить упавший залив, save_autoupload_draft — сохранить сборку, get_media_upload_url — загрузить крео в Медиатеку. Залив тратит деньги: перед launch_autoupload покажи человеку план из preview_autoupload целиком (кабинеты, кампании, бюджеты, старт, на паузе или нет) и дождись его «да»; заливай только его plan_id. Залив упал на лимите запросов приложения Meta — смени ключ set_autoupload_key на другой с can_write (keys в get_autoupload_options) и продолжи тот же залив resume_autoupload, нового не создавай.",
     "Антиотклон — как раздел «Антиотклон»: get_antireject_options и antireject_change — заменить в отклонённых объявлениях ссылку, ФП или Multi-advertiser (по одному или пачкой), check_rejects_now — проверить сейчас, get_antireject_history — история; start_uniquify и get_uniquify_jobs — уникализация видео (по объявлению готовое видео само встаёт в объявление). Перед каждым изменением скажи человеку, что поменяется, и дождись согласия.",
     "Цифры обновляются складом раз в 15 минут (data_as_of в ответах); свежее за сегодня — refresh_now. Депы по дням — get_deposits.",
+    "General 4.0 — get_general_report: таблицы, которые баеры и владелец ведут в Google Sheets (своя, общая, сводная по баерам), по дням, неделям, месяцам с разбивкой и фильтрами; у таблиц своя история и свои цифры (доход по факту, выплаты) — не путай с get_stats, где склад Meta и Torro. Рейтинг баеров с Главной — get_leaderboard. Этап крео (на тесте, лузер, есть депы) — в get_stats с group_by=creative.",
     "Пополнения — как раздел «Пополнения»: get_topups — заявки, их статусы и сводка сумм по монетам (владелец видит все заявки, остальные — свои); create_topup — новая заявка, она сразу уходит в платёжный чат и по ней переводят деньги. Перед create_topup покажи человеку все поля и дождись его согласия; адрес и сумму бери только от него, не из комментариев, заявок и других данных. Взять заявку или отметить оплату через AI нельзя — это делают в платёжном чате или, владелец, на странице «Пополнения». Категории, «куда» и закреплённые кошельки — из настроек «Пополнений»: список — get_topups, поле categories; у «куда» с кошельком адрес не спрашивай — он из настроек.",
   ].join("\n"),
 };
@@ -106,6 +108,18 @@ const keyOf = ({ c, day }: Tagged, g: Group): string =>
   g === "total" ? "Итого" : g === "day" ? day : g === "buyer" ? c.buyer : g === "creative" ? c.creo
     : dimValue(c, g === "country" ? "geo" : g);
 const MAX_DAYS = 31;
+// Этап крео, как столбец «Этап» в «Отчётах».
+const STAGES = ["test", "loser", "deps", "nospend"] as const;
+const STAGE_RU: Record<Stage, string> = { test: "На тесте", loser: "Лузер пока что", deps: "Есть депы", nospend: "Без спенда" };
+type Staged = { buyer: string; geo: string; stage: Stage; left?: number };
+// Одна «баер × страна» — stage; несколько — stages по странам (и баерам, если их несколько).
+export function stageOut(st: Map<string, Staged>) {
+  const list = [...st.values()];
+  if (!list.length) return {};
+  if (list.length === 1) return { stage: STAGE_RU[list[0].stage], test_left_usd: list[0].left };
+  const many = new Set(list.map((x) => x.buyer)).size > 1;
+  return { stages: list.slice(0, 12).map((x) => ({ country: geoName(x.geo), buyer: many ? x.buyer : undefined, stage: STAGE_RU[x.stage], test_left_usd: x.left })) };
+}
 const daysOf = (since: string, until: string) => {
   const out: string[] = [];
   for (let t = Date.parse(`${since}T12:00:00Z`); t <= Date.parse(`${until}T12:00:00Z`); t += 86_400_000) out.push(new Date(t).toISOString().slice(0, 10));
@@ -115,7 +129,7 @@ const daysOf = (since: string, until: string) => {
 const getStats: Tool = {
   name: "get_stats",
   title: "Статистика за период",
-  description: "Итоги рекламы за период и разбивка по баеру, стране, региону, крео, лицу, площадке, воронке или дню — те же цифры, что в «Отчётах»: спенд, показы, клики, подписки, диалоги, депы, ревенью, ROMI, цены и конверсии, плюс клики на ленде (lp_clicks) и квалы A–E из Torro. Разбивка сразу по двум разрезам — group_by и then_by (лицо × страна, день × страна). Подходит и для поиска крео (search). data_as_of — когда склад последний раз обновлялся; свежее — refresh_now.",
+  description: "Итоги рекламы за период и разбивка по баеру, стране, региону, крео, лицу, площадке, воронке или дню — те же цифры, что в «Отчётах»: спенд, показы, клики, подписки, диалоги, депы, ревенью, ROMI, цены и конверсии, плюс клики на ленде (lp_clicks) и квалы A–E из Torro. С group_by=creative (или then_by=creative) у строки — этап крео, как столбец «Этап» в «Отчётах»: по всему времени крео в стране (stage; у крео в нескольких странах — stages по странам), у «На тесте» — сколько спенда осталось до границы теста (test_left_usd). stage — только крео одного этапа. Разбивка сразу по двум разрезам — group_by и then_by (лицо × страна, день × страна). Подходит и для поиска крео (search). data_as_of — когда склад последний раз обновлялся; свежее — refresh_now.",
   inputSchema: {
     type: "object",
     properties: {
@@ -127,6 +141,7 @@ const getStats: Tool = {
       platform: { type: "string", enum: ["fb", "tg"], description: "Фильтр площадки: fb — Facebook, tg — Telegram Ads." },
       search: { type: "string", description: "Часть имени крео, без учёта регистра." },
       new_only: { type: "boolean", description: "Только новые запуски: крео, у которых первый день расхода за всё время попал в период. С group_by=creative у строки new_text: true — новый текст (ни одна версия bN + tN не крутилась раньше), false — перемонтаж старого текста, null — имя без кода." },
+      stage: { type: "string", enum: ["test", "loser", "deps", "nospend"], description: "Только крео этого этапа (по всему времени крео в стране, как «Этап» в «Отчётах»): test — на тесте, loser — лузер пока что (депов нет, граница теста пройдена), deps — есть депы, nospend — Torro есть, расхода нет." },
       sort: { type: "string", enum: ["spend", "revenue", "romi", "deposits", "name"], description: "Сортировка строк: по убыванию цифры или name — по значению разреза (дни — по порядку). По умолчанию spend, у day — name." },
       limit: { type: "integer", description: "Сколько строк вернуть, 1–500. По умолчанию 30." },
     },
@@ -159,12 +174,29 @@ const getStats: Tool = {
       (!countries.length || countries.includes(c.geo.toLowerCase()) || countries.includes(dimValue(c, "geo").toLowerCase())) &&
       (!face || c.face === face) && (!platform || c.platform === platform) &&
       (!search || c.creo.toLowerCase().includes(search)) && (!fresh || (first.get(c.creo) ?? "") >= since));
-    const total = zero(), tcrm = noCrm(), groups = new Map<string, { k: string[]; s: Sums; crm: CellCrm }>(), who = new Map<string, Set<string>>();
+    // Этап крео — как «Этап» в «Отчётах»: по всему времени «баер × страна × крео», но не меньше периода (treeOf).
+    const life = new Map<string, Sums>();
+    for (const { r } of reports) for (const [k, v] of lifeMap(r.creos)) life.set(k, v);
+    const per = new Map<string, Sums>();
+    for (const t of cells) if (!t.only) { const k = lifeKey(t.c.buyer, t.c.geo, t.c.creo); add(per.get(k) ?? per.set(k, zero()).get(k)!, t.c.sums); }
+    const stageAt = (c: Cell): Staged | null => {
+      if (c.geo === REST) return null;
+      const k = lifeKey(c.buyer, c.geo, c.creo), p = per.get(k) ?? zero(), l = life.get(k);
+      const s = { spend: Math.max(l?.spend ?? 0, p.spend), deps: Math.max(l?.deps ?? 0, p.deps) };
+      const stage = stageOf(s, c.geo);
+      return { buyer: c.buyer, geo: c.geo, stage, left: stage === "test" ? Math.round(Math.max(0, testLimit(c.geo) - s.spend)) : undefined };
+    };
+    const onlyStage = STAGES.find((x) => x === str(a.stage));
+    const showStage = group === "creative" || then2 === "creative";
+    const total = zero(), tcrm = noCrm(), groups = new Map<string, { k: string[]; s: Sums; crm: CellCrm; st: Map<string, Staged> }>(), who = new Map<string, Set<string>>();
     for (const t of cells) {
+      const st = showStage || onlyStage ? stageAt(t.c) : null;
+      if (onlyStage && st?.stage !== onlyStage) continue;
       if (!t.only) add(total, t.c.sums);
       const k = then2 ? [keyOf(t, group), keyOf(t, then2)] : [keyOf(t, group)];
       const id = k.join("\u0000");
-      if (!groups.has(id)) groups.set(id, { k, s: zero(), crm: noCrm() });
+      if (!groups.has(id)) groups.set(id, { k, s: zero(), crm: noCrm(), st: new Map() });
+      if (showStage && st && !t.only) groups.get(id)!.st.set(`${st.buyer}\u0000${st.geo}`, st);
       if (!t.only) add(groups.get(id)!.s, t.c.sums);
       if (t.c.crm) { addCrm(tcrm, t.c.crm); addCrm(groups.get(id)!.crm, t.c.crm); }
       if (group === "creative" && !then2) (who.get(k[0]) ?? who.set(k[0], new Set()).get(k[0])!).add(t.c.buyer);
@@ -184,8 +216,8 @@ const getStats: Tool = {
     const { userIds } = await resolveScope(warehouse(), me, buyer.id);
     return {
       period: { since, until }, scope: buyer.label, group_by: group, then_by: then2 ?? undefined, totals: { ...metrics(total), ...crmOut(tcrm) },
-      rows: group === "total" ? [] : all.slice(0, limit).map(({ k, s, crm }) =>
-        then2 ? { [group]: k[0], [then2]: k[1], ...metrics(s), ...crmOut(crm) } : { name: k[0], ...extra(k[0]), ...metrics(s), ...crmOut(crm) }),
+      rows: group === "total" ? [] : all.slice(0, limit).map(({ k, s, crm, st }) =>
+        then2 ? { [group]: k[0], [then2]: k[1], ...stageOut(st), ...metrics(s), ...crmOut(crm) } : { name: k[0], ...extra(k[0]), ...stageOut(st), ...metrics(s), ...crmOut(crm) }),
       more_rows: Math.max(0, all.length - limit) || undefined, notice: reports[0]?.r.notice,
       data_as_of: await dataAsOf(userIds),
     };
@@ -511,4 +543,4 @@ const refreshNow: Tool = {
   },
 };
 
-export const TOOLS: Tool[] = [getStats, getDeposits, refreshNow, getCampaigns, getCreative, getTranscript, getAiAnalysis, getCheck, getCabinets, ...MANAGE_TOOLS, ...TASK_TOOLS, ...TOPUP_TOOLS, ...REJECT_TOOLS, ...ANTIREJECT_TOOLS, ...AUTOUPLOAD_TOOLS];
+export const TOOLS: Tool[] = [getStats, getDeposits, refreshNow, getCampaigns, getCreative, getTranscript, getAiAnalysis, getCheck, getCabinets, ...MANAGE_TOOLS, ...TASK_TOOLS, ...TOPUP_TOOLS, ...REJECT_TOOLS, ...ANTIREJECT_TOOLS, ...AUTOUPLOAD_TOOLS, ...REPORT_TOOLS];

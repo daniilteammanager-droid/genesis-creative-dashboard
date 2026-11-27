@@ -101,7 +101,7 @@ export function juniorMay(path: string, areas: string[], mcp: boolean): boolean 
 
 // Инструменты MCP джуна — по тем же разделам. Нет в списке — джуну не виден.
 const TOOL_AREAS: Record<string, string[]> = {
-  get_stats: ["/traffic-report"],
+  get_stats: ["/traffic-report"], get_general_report: ["/general-report-4"], get_leaderboard: ["/home"],
   get_campaigns: ["/live-manager"], get_live_state: ["/live-manager"], manage_campaigns: ["/live-manager"], get_cabinets: ["/live-manager"],
   get_creative: ["/creatives", "/traffic-report"], get_transcript: ["/creatives", "/traffic-report"], get_ai_analysis: ["/creatives", "/traffic-report"],
   get_check: ["/check"],

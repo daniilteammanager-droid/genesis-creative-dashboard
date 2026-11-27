@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSeat } from "@/lib/auth/server";
 import { COMBINED_ID, collectSources4, publicSources4 } from "@/lib/general-report-4/sources";
-import { snapshot, syncSheet } from "@/lib/general-report-4/store";
+import { loadCombined, snapshot, syncSheet } from "@/lib/general-report-4/store";
 import type { Gr4Kind, Gr4SourceInfo } from "@/lib/general-report-4/types";
 
 // GR 4.0 читает свою базу (Decision 084): снимки таблиц обновляет крон раз в 15
@@ -13,18 +13,7 @@ export const maxDuration = 120;
 
 const get = (id: string, kind: Gr4Kind, refresh: boolean) => (refresh ? syncSheet(id, kind) : snapshot(id, kind));
 
-// Сводная по баерам: таблицы всех баеров одной выборкой.
-// Баер в строке — из колонки «Баер» его таблицы; пусто — имя из профиля.
-async function loadCombined(all: Awaited<ReturnType<typeof collectSources4>>, refresh: boolean) {
-  const buyers = all.filter((s) => s.kind === "buyer" && !s.combined);
-  const parts = await Promise.all(buyers.map(async (b) => ({ b, d: await get(b.spreadsheetId, "buyer", refresh) })));
-  return {
-    rows: parts.flatMap(({ b, d }) => d.rows.map((r) => (r.buyer ? r : { ...r, buyer: b.label }))),
-    targets: parts[0]?.d.targets ?? { costPerSub: null, costPerDialog: null, crToDialog: null, crDialogToDep: null },
-    at: Math.min(...parts.map(({ d }) => d.at)),
-    error: parts.map(({ b, d }) => (d.error ? `${b.label}: ${d.error}` : "")).filter(Boolean).join("; ") || null,
-  };
-}
+// Сводная по баерам — loadCombined (lib/general-report-4/store.ts), общая с AI-доступом.
 
 export async function GET(req: Request) {
   // Список источников уходит и в ответе с ошибкой: иначе со сломанной таблицы
