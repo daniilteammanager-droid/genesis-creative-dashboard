@@ -17,7 +17,7 @@ const rows = [
 ];
 
 const t = totalsOf(rows);
-assert.deepEqual(t, { sent: 4000, sentN: 3, paid: 4, fee: 1, other: { GRAM: 350 }, waiting: 1, waitingSum: 300 });
+assert.deepEqual(t, { sent: 4000, sentN: 3, paid: 4, fee: 1, net: 3999, other: { GRAM: 350 }, waiting: 1, waitingSum: 300 });
 
 // Период — по дню создания в Москве: 21.11 22:30 UTC — уже 22.11.
 assert.equal(inRange(rows, { since: "2026-11-22", until: "2026-11-22" }).length, 1);

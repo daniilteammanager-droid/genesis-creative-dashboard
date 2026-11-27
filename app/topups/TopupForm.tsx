@@ -1,15 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { chip } from "@/components/ui";
+import { chip, seg } from "@/components/ui";
+import Select from "@/components/Select";
 import type { Topup } from "@/lib/topups/requests";
 import { exact, type Asset } from "@/lib/topups/chain";
 import { findTarget, OTHER, suggestTemplate, targetsOf, type Category, type Template } from "@/lib/topups/config";
 import { continueList } from "@/lib/topups/comment";
+import { feeCalc, feeTag, type Fee } from "@/lib/topups/fee";
 
 // Форма новой заявки с шаблонами и закреплёнными кошельками (Decision 131). Шаблон только заполняет форму —
 // отправляет человек кнопкой. Кошелёк «куда» подставляет монету, сеть и адрес из настроек; «Другой адрес» — вручную,
-// если владелец не поставил «только эти кошельки».
+// если владелец не поставил «только эти кошельки». Комиссия «из суммы» / «сверху» (Decision 132) — из настроек «куда»,
+// меняется для одной заявки; форма сразу считает, сколько переводим и сколько зайдёт (feeCalc — тот же, что у сервера).
 
 const TIMES = [
   { minutes: 0, label: "Без срока" }, { minutes: 15, label: "15 минут" }, { minutes: 30, label: "30 минут" },
@@ -41,6 +44,8 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [noSuggest, setNoSuggest] = useState(false);
+  const [feeMode, setFeeMode] = useState<"none" | Fee["mode"]>("none");
+  const [feePct, setFeePct] = useState("");
 
   const spot = findTarget(categories, kind, target);
   const wallets = spot?.wallets ?? [];
@@ -48,17 +53,27 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
   const useWallet = Boolean(wallet) && !other;
   const suggest = useMemo(() => (noSuggest ? null : suggestTemplate(own, templates)), [own, templates, noSuggest]);
   const asset = useWallet ? wallet!.asset : coin;
+  const feeNow: Fee | null = feeMode === "none" ? null : { mode: feeMode, pct: num(feePct) || 0 };
+  const calc = feeCalc(feeNow, num(amount) || 0, num(fee) || 0);
+  const feeNote = spot?.fee || feeMode !== "none"
+    ? (spot?.fee?.mode === (feeNow?.mode ?? undefined) && spot?.fee?.pct === feeNow?.pct ? "из настроек «куда»" : "изменено для этой заявки") : "";
+  const targetTag = (k: string, t: string) => {
+    const x = findTarget(categories, k, t);
+    return [x?.wallets.length ? "кошелёк" : "", feeTag(x?.fee)].filter(Boolean).join(" · ");
+  };
 
   const pickTarget = (t: string, k = kind) => {
+    const x = findTarget(categories, k, t);
     setTarget(t);
-    setWalletName(findTarget(categories, k, t)?.wallets[0]?.name ?? "");
+    setWalletName(x?.wallets[0]?.name ?? "");
     setOther(false);
+    setFeeMode(x?.fee?.mode ?? "none"); setFeePct(x?.fee ? String(x.fee.pct) : "");
   };
   // Монета задаёт сети: у монеты одна сеть — встаёт сама, иначе выбирать заново.
   const pickCoin = (c: string) => { setCoin(c); setNet(pairs[c]?.length === 1 ? pairs[c][0] : ""); };
 
   function fill(t: Template) {
-    setTplId(t.id); setKind(t.kind); setTarget(t.target);
+    setTplId(t.id); setKind(t.kind); pickTarget(t.target, t.kind);
     const w = t.wallet ? findTarget(categories, t.kind, t.target)?.wallets.find((x) => x.name === t.wallet) : undefined;
     setWalletName(w?.name ?? findTarget(categories, t.kind, t.target)?.wallets[0]?.name ?? "");
     setOther(!w && Boolean(t.address));
@@ -83,7 +98,7 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
   }
   const saveTemplate = () => templateCall({ op: "save", template: {
     kind, target, wallet: useWallet ? wallet!.name : null, asset: useWallet ? null : coin || null, network: useWallet ? null : net || null,
-    address: useWallet ? null : address || null, amount: amount.trim() ? num(amount) : null, fee: fee.trim() ? num(fee) : 0,
+    address: useWallet ? null : address || null, amount: amount.trim() ? num(amount) : null, fee: feeMode === "none" && fee.trim() ? num(fee) : 0,
     minutes: minutes < 0 ? null : minutes, comment: comment.trim() || null,
   } }, "Шаблон сохранён — он наверху. Нажмёшь — форма заполнится.");
   const removeTemplate = () => templateCall({ op: "delete", id: tplId }, "Шаблон убран.").then((ok) => ok && setTplId(""));
@@ -103,7 +118,8 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
     try {
       const res = await fetch("/api/topups", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, target, amount: num(amount), fee: fee.trim() === "" ? null : num(fee),
+        body: JSON.stringify({ kind, target, ...(feeMode === "none" ? { amount: num(amount), fee: fee.trim() === "" ? null : num(fee) }
+          : feeMode === "top" ? { budget: num(amount), feeMode, feePct: num(feePct) } : { amount: num(amount), feeMode, feePct: num(feePct) }),
           wallet: useWallet ? wallet!.name : null, network: useWallet ? undefined : net, asset: useWallet ? undefined : coin,
           address: useWallet ? undefined : address, minutes: minutes < 0 ? null : minutes, comment }),
       });
@@ -136,7 +152,8 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
     const a = t.wallet ? findTarget(categories, t.kind, t.target)?.wallets.find((w) => w.name === t.wallet)?.asset : t.asset;
     return [t.amount === null ? "сумма каждый раз" : `${money(t.amount)} ${a ?? ""}`.trim(), timeLabel(t.minutes)].filter(Boolean).join(" · ");
   };
-  const ready = target && amount && fee.trim() !== "" && minutes >= 0 && comment.trim() && (useWallet || (net && address));
+  const ready = target && num(amount) > 0 && (feeMode === "none" ? fee.trim() !== "" : num(feePct) > 0 && num(feePct) < 100)
+    && minutes >= 0 && comment.trim() && (useWallet || (net && address));
 
   return (
     <>
@@ -167,17 +184,20 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
         </section>
       )}
 
-      <form data-tour="topups-form" onSubmit={submit} className="card p-5 sm:p-6 grid gap-2.5 sm:grid-cols-2">
-        <select value={kind} onChange={(e) => { setKind(e.target.value); setTarget(""); setWalletName(""); setOther(false); setTplId(""); }} className="field w-full" aria-label="Категория">
-          <option value="" disabled>Категория</option>
-          {categories.map((c) => <option key={c.id}>{c.name}</option>)}
-        </select>
-        <select value={target} onChange={(e) => { pickTarget(e.target.value); setTplId(""); }} disabled={!kind} className="field w-full disabled:opacity-50" aria-label="Куда именно">
-          <option value="" disabled>Куда именно</option>
-          {targetsOf(categories, kind).map((t) => (
-            <option key={t} value={t}>{findTarget(categories, kind, t)?.wallets.length ? `${t} — кошелёк из настроек` : t}</option>
-          ))}
-        </select>
+      <form data-tour="topups-form" onSubmit={submit} className="card p-5 sm:p-6 grid gap-3 sm:grid-cols-2">
+        <h2 className="text-base font-semibold sm:col-span-2">Новая заявка</h2>
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <span className="label">Категория</span>
+          <Select label="Категория" placeholder="Категория" value={kind}
+                  options={categories.map((c) => ({ value: c.name, label: c.name, sub: `${c.targets.length + 1} «куда»` }))}
+                  onChange={(k) => { setKind(k); setTarget(""); setWalletName(""); setOther(false); setTplId(""); setFeeMode("none"); }} />
+        </div>
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <span className="label">Куда именно</span>
+          <Select label="Куда именно" placeholder="Куда именно" value={target} disabled={!kind}
+                  options={targetsOf(categories, kind).map((t) => ({ value: t, label: t, sub: targetTag(kind, t) }))}
+                  onChange={(t) => { pickTarget(t); setTplId(""); }} />
+        </div>
 
         {useWallet && (
           <div className="sm:col-span-2 rounded-xl border border-violet-600 bg-raised p-3.5 space-y-2">
@@ -205,16 +225,20 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
 
         {!useWallet && (
           <>
-            <select value={coin} onChange={(e) => pickCoin(e.target.value)} className="field w-full" aria-label="Монета">
-              <option value="" disabled>Монета</option>
-              {Object.keys(pairs).map((c) => <option key={c}>{c}</option>)}
-            </select>
-            <select value={net} onChange={(e) => setNet(e.target.value)} disabled={!coin} className="field w-full disabled:opacity-50" aria-label="Сеть">
-              <option value="" disabled>Сеть</option>
-              {Object.entries(networks).map(([n, label]) => <option key={n} value={n} disabled={!pairs[coin]?.includes(n)}>{label}</option>)}
-            </select>
-            <input placeholder={`Адрес получателя${net ? ` (${ADDRESS[net]})` : ""}`} value={address} onChange={(e) => setAddress(e.target.value.trim())}
-                   className="field w-full sm:col-span-2 font-mono" aria-label="Адрес получателя" />
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <span className="label">Монета</span>
+              <Select label="Монета" placeholder="Монета" value={coin} onChange={pickCoin}
+                      options={Object.keys(pairs).map((c) => ({ value: c, label: c, sub: pairs[c].join(" · ") }))} />
+            </div>
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <span className="label">Сеть</span>
+              <Select label="Сеть" placeholder="Сеть" value={net} onChange={setNet} disabled={!coin}
+                      options={Object.entries(networks).map(([n, l]) => ({ value: n, label: l, disabled: !pairs[coin]?.includes(n) }))} />
+            </div>
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="label">Адрес получателя</span>
+              <input placeholder={net ? ADDRESS[net] : "Сначала монета и сеть"} value={address} onChange={(e) => setAddress(e.target.value.trim())} className="field w-full font-mono" />
+            </label>
           </>
         )}
         {other && wallets.length > 0 && (
@@ -224,17 +248,66 @@ export default function TopupForm({ categories, pairs, networks, templates, own,
           </div>
         )}
 
-        <input inputMode="decimal" placeholder={`Сумма${asset ? `, ${asset as Asset}` : ""}`} value={amount} onChange={(e) => setAmount(e.target.value)} className="field w-full" aria-label="Сумма" />
-        <input inputMode="decimal" placeholder="Комиссия (нет — 0)" value={fee} onChange={(e) => setFee(e.target.value)} className="field w-full" aria-label="Комиссия" />
-        <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="field w-full sm:col-span-2" aria-label="Время на оплату">
-          <option value={-1} disabled>Время на оплату</option>
-          {TIMES.map((t) => <option key={t.minutes} value={t.minutes}>Время на оплату: {t.label}</option>)}
-        </select>
-        <textarea placeholder={"Комментарий (нечего добавить — «-»)\nСписок: «- пункт» и Enter — следующий пункт сам. Ссылки станут кликабельными."}
-                  value={comment} rows={3} onChange={(e) => setComment(e.target.value)} onKeyDown={listEnter}
-                  className="field w-full sm:col-span-2 resize-y min-h-24" aria-label="Комментарий" />
+        <div className="sm:col-span-2 rounded-xl border border-line bg-raised p-3.5 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="label">Комиссия</span>
+            <div className="seg" role="group" aria-label="Вид комиссии">
+              <button type="button" {...seg(feeMode === "none")} onClick={() => setFeeMode("none")}>Нет</button>
+              <button type="button" {...seg(feeMode === "deduct")} onClick={() => { setFeeMode("deduct"); if (!feePct) setFeePct("4.5"); }}>Из суммы</button>
+              <button type="button" {...seg(feeMode === "top")} onClick={() => { setFeeMode("top"); if (!feePct) setFeePct("8"); }}>Сверху</button>
+            </div>
+            {feeMode !== "none" && (
+              <label className="flex items-center gap-1.5">
+                <input inputMode="decimal" value={feePct} onChange={(e) => setFeePct(e.target.value)} className="field !w-20 text-right" aria-label="Процент комиссии" />
+                <span className="text-sm">%</span>
+              </label>
+            )}
+            {feeNote && <span className="text-xs text-hint">{feeNote}</span>}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5 min-w-0">
+              <span className="label">{feeMode === "top" ? `Нужно на бюджет${asset ? `, ${asset}` : ""}` : feeMode === "deduct" ? `Переводим${asset ? `, ${asset}` : ""}` : `Сумма${asset ? `, ${asset}` : ""} — точно до знака`}</span>
+              <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="field w-full text-base font-semibold" />
+            </label>
+            {feeMode === "none" ? (
+              <label className="flex flex-col gap-1.5 min-w-0">
+                <span className="label">Комиссия суммой (нет — 0)</span>
+                <input inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} className="field w-full" />
+              </label>
+            ) : (
+              <div className="flex flex-col gap-1.5 min-w-0">
+                <span className="label">{feeMode === "top" ? "Переводим" : "Зайдёт"}</span>
+                <div className="rounded-xl border border-violet-600 bg-violet-900/20 px-3.5 py-2 min-h-[2.75rem]">
+                  <p className="text-base font-semibold tabular-nums">{money(feeMode === "top" ? calc.amount : calc.net)} {asset}</p>
+                  <p className="text-xs text-hint">комиссия {money(calc.fee)} · {feeTag(feeNow!)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+          {num(amount) > 0 && feeMode !== "none" && (
+            <p className="text-xs text-hint">
+              {feeMode === "top"
+                ? `В чат уйдёт и искаться будет «Переводим» — ${money(calc.amount)}. На бюджет — ${money(calc.net)}.`
+                : `В чат уйдёт и искаться будет ${money(calc.amount)}. Платёжка снимет ${feeTag(feeNow!).split(" ")[0]}, зайдёт ${money(calc.net)}.`}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className="label">Время на оплату</span>
+          <Select label="Время на оплату" placeholder="Время на оплату" value={minutes < 0 ? "" : String(minutes)} onChange={(v) => setMinutes(Number(v))}
+                  options={TIMES.map((t) => ({ value: String(t.minutes), label: t.label }))} />
+        </div>
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className="label">Комментарий</span>
+          <textarea placeholder={"Нечего добавить — «-»\nСписок: «- пункт» и Enter — следующий пункт сам. Ссылки станут кликабельными."}
+                    value={comment} rows={3} onChange={(e) => setComment(e.target.value)} onKeyDown={listEnter}
+                    className="field w-full resize-y min-h-24" />
+        </label>
         <div className="sm:col-span-2 flex flex-wrap gap-2.5">
-          <button type="submit" disabled={busy || !ready} className="btn btn-primary flex-[1_1_240px]">{busy ? "Отправляю…" : "Отправить заявку"}</button>
+          <button type="submit" disabled={busy || !ready} className="btn btn-primary flex-[1_1_240px]">
+            {busy ? "Отправляю…" : calc.amount > 0 ? `Отправить заявку · ${money(calc.amount)} ${asset}` : "Отправить заявку"}
+          </button>
           <button type="button" className="btn" disabled={!target} onClick={saveTemplate}>Сохранить как шаблон</button>
           {tplId && <button type="button" className="btn" onClick={removeTemplate}>Убрать шаблон</button>}
         </div>

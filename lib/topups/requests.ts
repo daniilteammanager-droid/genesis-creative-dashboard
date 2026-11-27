@@ -7,6 +7,7 @@ import { stage, type Stage } from "./view";
 import { dueSearches } from "./auto";
 import { findTarget, targetsOf } from "./config";
 import { blocksOf, linksOf } from "./comment";
+import { feeCalc, feeLine, type FeeMode } from "./fee";
 import { loadCategories } from "./settings";
 
 // Заявки на пополнение (Decision 072): создать, показать в платёжном чате,
@@ -27,12 +28,15 @@ export interface Topup {
   closed_by: string | null; messages: { chat_id: number; message_id: number; qr?: boolean }[]; created_at: string;
   // wallet — подпись кошелька из настроек; manual_address — у «куда» есть кошельки, а адрес вбили руками (Decision 131).
   wallet: string | null; manual_address: boolean;
+  // Комиссия процентом (Decision 132): «из суммы» или «сверху»; пусто — без процента, fee суммой справкой.
+  fee_mode: FeeMode | null; fee_pct: number | null;
   author?: string; tx_url?: string;
 }
 
-const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, taken_by, taken_at, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at, wallet, manual_address";
+const COLS = "id, number, user_id, kind, target, amount, fee, asset, network, address, comment, expires_at, status, taken_by, taken_at, searching_since, tx_hash, paid_amount, paid_at, closed_by, messages, created_at, wallet, manual_address, fee_mode, fee_pct";
 const db = () => warehouse();
-const num = (r: Topup): Topup => ({ ...r, amount: Number(r.amount), fee: Number(r.fee), paid_amount: r.paid_amount === null ? null : Number(r.paid_amount) });
+const num = (r: Topup): Topup => ({ ...r, amount: Number(r.amount), fee: Number(r.fee), paid_amount: r.paid_amount === null ? null : Number(r.paid_amount),
+  fee_pct: r.fee_pct === null || r.fee_pct === undefined ? null : Number(r.fee_pct) });
 
 export function topupToken(): string {
   const t = process.env.TOPUP_BOT_TOKEN;
@@ -117,7 +121,9 @@ function fields(r: Topup, st: Stage): [string, string][] {
     ["Адрес", open || st === "paid" ? `<code>${e(r.address)}</code>${r.manual_address ? " · вручную, не из настроек" : ""}` : "скрыт"],
   ];
   // Комиссия — справкой: в сумму перевода не входит, агент и платёжка считают её сами от пополнения.
-  if (r.fee) rows.push(["Комиссия", `${money(r.fee)} · не в переводе`]);
+  // Комиссия процентом — сколько зайдёт или на бюджет; без процента — справкой, как было (Decision 132).
+  if (r.fee && r.fee_mode) rows.push([r.fee_mode === "top" ? "На бюджет" : "Зайдёт", e(feeLine(r).replace(/^(на бюджет|зайдёт) /, ""))]);
+  else if (r.fee) rows.push(["Комиссия", `${money(r.fee)} · не в переводе`]);
   if (open && r.expires_at) rows.push(["Срок", `до ${when(r.expires_at)}`]);
   return rows;
 }
@@ -211,6 +217,9 @@ export interface TopupInput {
   address?: string; comment?: string; minutes?: number | null;
   // Подпись закреплённого кошелька «куда»: адрес, монета и сеть тогда берутся из настроек, а не из формы.
   wallet?: string | null;
+  // Комиссия процентом (Decision 132): «из суммы» — amount это перевод; «сверху» — budget это сколько нужно на бюджет,
+  // перевод считается. Без feeMode — fee суммой, справкой, как было.
+  feeMode?: FeeMode | null; feePct?: number | null; budget?: number | null;
 }
 
 export async function createTopup(userId: string, input: TopupInput): Promise<Topup> {
@@ -221,7 +230,12 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   const w = input.wallet ? spot?.wallets.find((x) => x.name === input.wallet) : undefined;
   if (input.wallet && !w) throw new Error(`У «${target}» нет кошелька «${input.wallet}» — обнови страницу`);
   const address = w ? w.address : (input.address ?? "").trim();
-  const amount = Number(input.amount), fee = Number(input.fee ?? 0);
+  const pct = Number(input.feePct);
+  const feeMode = input.feeMode === "deduct" || input.feeMode === "top" ? input.feeMode : null;
+  if (feeMode && !(pct > 0 && pct < 100)) throw new Error("Комиссия — от 0 до 100%");
+  if (feeMode === "top" && !(Number(input.budget) > 0)) throw new Error("Укажи, сколько нужно на бюджет");
+  const calc = feeCalc(feeMode ? { mode: feeMode, pct } : null, Number(feeMode === "top" ? input.budget : input.amount), Number(input.fee ?? 0));
+  const amount = calc.amount, fee = calc.fee;
   const asset = (w ? w.asset : input.asset) as Asset, network = (w ? w.network : input.network) as Network;
   const net = PAIRS[asset]?.includes(network) ? { asset, network } : null;
   // Тот же адрес, что у кошелька, вбитый руками, — тоже кошелёк; другой при «только эти кошельки» — отказ.
@@ -230,7 +244,7 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   // Все поля обязательны: механика для баеров новая, пропуск поля — потерянная оплата.
   if (!targetsOf(cats, kind).includes(target)) throw new Error("Выбери категорию и куда именно пополняем");
   if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
-  if (input.fee === undefined || input.fee === null || !(fee >= 0)) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
+  if (!feeMode && (input.fee === undefined || input.fee === null || !(fee >= 0))) throw new Error("Укажи комиссию — нет комиссии, ставь 0");
   if (!comment) throw new Error("Комментарий обязателен — нечего добавить, ставь «-»");
   if (comment.length > 4000) throw new Error("Комментарий длиннее 4000 знаков — сократи или вынеси в ссылку");
   if (!PAIRS[asset]) throw new Error("Выбери монету");
@@ -245,6 +259,7 @@ export async function createTopup(userId: string, input: TopupInput): Promise<To
   const { data, error } = await db().from("topup_requests").insert({
     user_id: userId, kind, target, amount, fee, network: net.network, asset: net.asset, address,
     wallet: same?.name ?? null, manual_address: Boolean(spot?.wallets.length) && !same,
+    fee_mode: feeMode, fee_pct: feeMode ? pct : null,
     comment: comment === "-" ? null : comment,
     expires_at: minutes ? new Date(Date.now() + minutes * 60_000).toISOString() : null,
   }).select("id").single();

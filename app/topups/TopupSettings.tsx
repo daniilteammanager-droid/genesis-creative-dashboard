@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Topup } from "@/lib/topups/requests";
 import { PAIRS, type Asset, type Network } from "@/lib/topups/chain";
 import { newId, OTHER, walletHints, type Category, type Hint, type Target, type Wallet } from "@/lib/topups/config";
+import { feeCalc, feeTag } from "@/lib/topups/fee";
+import { seg } from "@/components/ui";
+import Select from "@/components/Select";
 
 // Настройки «Пополнений» — только владельцу (Decision 131; роль проверяет и /api/topups/settings). Категории, «куда»,
 // порядок, закреплённые кошельки и «только эти кошельки». «Куда» настраивается прямо под своей строкой, порядок —
@@ -168,15 +171,13 @@ export default function TopupSettings({ categories, rows, onSaved }: { categorie
           </label>
           <label className="flex flex-col gap-1.5 min-w-0">
             <span className="label">Монета</span>
-            <select className="field" value={w.asset} onChange={(e) => onWallet(t.id, i, { asset: e.target.value as Asset })}>
-              {Object.keys(PAIRS).map((a) => <option key={a}>{a}</option>)}
-            </select>
+            <Select label="Монета" value={w.asset} onChange={(v) => onWallet(t.id, i, { asset: v as Asset })}
+                    options={Object.keys(PAIRS).map((a) => ({ value: a, label: a }))} />
           </label>
           <label className="flex flex-col gap-1.5 min-w-0">
             <span className="label">Сеть</span>
-            <select className="field" value={w.network} onChange={(e) => onWallet(t.id, i, { network: e.target.value as Network })}>
-              {PAIRS[w.asset].map((n) => <option key={n}>{n}</option>)}
-            </select>
+            <Select label="Сеть" value={w.network} onChange={(v) => onWallet(t.id, i, { network: v as Network })}
+                    options={PAIRS[w.asset].map((n) => ({ value: n, label: n }))} />
           </label>
           <label className="col-span-2 sm:col-span-3 flex flex-col gap-1.5">
             <span className="label">Адрес</span>
@@ -194,6 +195,30 @@ export default function TopupSettings({ categories, rows, onSaved }: { categorie
                checked={Boolean(t.only)} onChange={(e) => onTarget(t.id, (x) => { x.only = e.target.checked; })} />
         <span>Только эти кошельки<br /><span className="text-xs text-hint">В форме нет «Другой адрес»: перевести можно только на кошелёк отсюда.</span></span>
       </label>
+      <div className="rounded-xl border border-line bg-panel p-3 space-y-2.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <h3 className="text-sm font-semibold">Комиссия</h3>
+          <div className="seg" role="group" aria-label="Вид комиссии">
+            <button type="button" {...seg(!t.fee)} onClick={() => onTarget(t.id, (x) => { delete x.fee; })}>Нет</button>
+            <button type="button" {...seg(t.fee?.mode === "deduct")} onClick={() => onTarget(t.id, (x) => { x.fee = { mode: "deduct", pct: x.fee?.pct ?? 4.5 }; })}>Из суммы</button>
+            <button type="button" {...seg(t.fee?.mode === "top")} onClick={() => onTarget(t.id, (x) => { x.fee = { mode: "top", pct: x.fee?.pct ?? 8 }; })}>Сверху</button>
+          </div>
+          {t.fee && (
+            <label className="flex items-center gap-1.5">
+              <input inputMode="decimal" className="field !w-20 text-right" aria-label="Процент комиссии" value={String(t.fee.pct)}
+                     onChange={(e) => onTarget(t.id, (x) => { if (x.fee) x.fee.pct = Number(e.target.value.replace(",", ".")) || 0; })} />
+              <span className="text-sm">%</span>
+            </label>
+          )}
+        </div>
+        <p className="text-xs text-hint">
+          {!t.fee ? "Без процента — разовый сбор вписывают в форме суммой, справкой."
+            : t.fee.mode === "deduct"
+              ? `Из суммы — платёжка снимает процент с перевода: перевели 5 000 — зайдёт ${feeCalc(t.fee, 5000).net.toLocaleString("ru-RU")}.`
+              : `Сверху — агент добавляет процент к бюджету: на бюджет 1 500 — переводим ${feeCalc(t.fee, 1500).amount.toLocaleString("ru-RU")}.`}
+          {" "}В форме подставится сам, для одной заявки его можно поменять.
+        </p>
+      </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <button type="button" className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={save}>{busy ? "Сохраняю…" : "Сохранить"}</button>
         <button type="button" className="btn btn-sm" onClick={() => setOpen(null)}>Свернуть</button>
@@ -263,7 +288,7 @@ export default function TopupSettings({ categories, rows, onSaved }: { categorie
                         <span className="flex-1 min-w-0 truncate">{t.name || "Без названия"}</span>
                         <span className={`text-xs shrink-0 ${t.wallets.length ? "text-violet-300" : "text-hint"}`}>
                           {t.wallets.length === 0 ? "адрес вручную" : t.wallets.length === 1 ? `${t.wallets[0].network} · ${short(t.wallets[0].address)}` : `${t.wallets.length} кошелька`}
-                          {t.only && " · только эти"}
+                          {t.only && " · только эти"}{t.fee && ` · ${feeTag(t.fee)}`}
                         </span>
                         <span className="text-hint text-xs" aria-hidden="true">{open === t.id ? "▴" : "▾"}</span>
                       </button>

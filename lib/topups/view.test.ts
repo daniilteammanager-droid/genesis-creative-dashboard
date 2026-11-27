@@ -6,7 +6,7 @@ import { filterTopups, openActions, received, stage, type TopupFilter } from "./
 const row = (p: Partial<Topup>): Topup => ({
   id: "x", number: 1, user_id: "u", kind: "Карты", target: "Brocard", amount: 100, fee: 0, asset: "USDT", network: "TRC20",
   address: "TNXoiAJ3dct8Fjg4M9fkLFh9S2v9TXc32G", comment: null, expires_at: null, status: "pending", taken_by: null, taken_at: null,
-  searching_since: null, tx_hash: null, paid_amount: null, paid_at: null, closed_by: null, messages: [], created_at: "", author: "Андрей", wallet: null, manual_address: false, ...p,
+  searching_since: null, tx_hash: null, paid_amount: null, paid_at: null, closed_by: null, messages: [], created_at: "", author: "Андрей", wallet: null, manual_address: false, fee_mode: null, fee_pct: null, ...p,
 });
 const rows = [
   row({ number: 118 }),

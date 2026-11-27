@@ -2,6 +2,7 @@ import { selfOf, type Profile } from "@/lib/auth/types";
 import { createTopup, listTopups, what, type Topup } from "@/lib/topups/requests";
 import { loadCategories } from "@/lib/topups/settings";
 import { findTarget, targetsOf, type Category } from "@/lib/topups/config";
+import { feeCalc, feeLine, feeTag, type FeeMode } from "@/lib/topups/fee";
 import { filterTopups, received, stage, STAGES, type Stage } from "@/lib/topups/view";
 import { exact, PAIRS, type Asset } from "@/lib/topups/chain";
 import { mskDay, mskTime } from "@/lib/day";
@@ -103,13 +104,15 @@ export function rowOf(r: Topup) {
     taken_by: r.taken_by ?? undefined, closed_by: r.closed_by ?? undefined, paid_at: at(r.paid_at),
     paid_amount: r.paid_amount ?? undefined, tx_url: r.tx_url,
     wallet: r.wallet ?? undefined, manual_address: r.manual_address || undefined,
+    fee_mode: r.fee_mode ?? undefined, fee_pct: r.fee_pct ?? undefined, fee_line: feeLine(r) || undefined,
   };
 }
 
 // Категории из настроек «Пополнений» (Decision 131) — для create_topup: «куда» и его закреплённые кошельки.
 export const categoriesOf = (cats: Category[]) => Object.fromEntries(cats.map((c) => [c.name, targetsOf(cats, c.name).map((t) => {
-  const ws = findTarget(cats, c.name, t)?.wallets ?? [];
-  return ws.length ? `${t} — кошельки: ${ws.map((w) => `${w.name} (${w.asset} ${w.network})`).join(", ")}` : t;
+  const spot = findTarget(cats, c.name, t), ws = spot?.wallets ?? [];
+  const parts = [ws.length ? `кошельки: ${ws.map((w) => `${w.name} (${w.asset} ${w.network})`).join(", ")}` : "", spot?.fee ? `комиссия ${feeTag(spot.fee)}` : ""];
+  return [t, ...parts.filter(Boolean)].join(" — ");
 })]));
 
 // ── Инструмент ───────────────────────────────────────────────────────────────
@@ -176,15 +179,18 @@ const createTopupTool: Tool = {
       kind: { type: "string", description: "Категория из настроек «Пополнений» — список в get_topups, поле categories." },
       target: { type: "string", description: "Куда именно, из списка категории (get_topups → categories). Чего нет в списке — «Другое», а что именно — в комментарии." },
       wallet: { type: "string", description: "Подпись закреплённого кошелька «куда» (get_topups → categories). У «куда» с одним кошельком и без address можно не указывать — возьмём его. С кошельком asset, network и address берутся из настроек." },
-      amount: { type: "number", description: "Сумма перевода точно до знака — платёжка узнаёт перевод по ней. USDT, USDC, TRX — до 6 знаков после точки, BTC — 8, GRAM — 9." },
+      amount: { type: "number", description: "Сумма перевода точно до знака — платёжка узнаёт перевод по ней. USDT, USDC, TRX — до 6 знаков после точки, BTC — 8, GRAM — 9. У «куда» с комиссией «сверху» вместо неё — budget." },
+      budget: { type: "number", description: "Только для комиссии «сверху» (агенты): сколько нужно на бюджет. Перевод посчитается: бюджет + процент, до цента." },
+      fee_pct: { type: "number", description: "Процент комиссии, если человек назвал другой, чем в настройках «куда» (get_topups → categories). Без него — процент из настроек." },
+      fee_mode: { type: "string", enum: ["deduct", "top", "none"], description: "Вид комиссии, если отличается от настроек «куда»: deduct — снимают из суммы перевода, top — сверху бюджета, none — без процента (fee суммой)." },
       asset: { type: "string", enum: Object.keys(PAIRS), description: "Монета." },
       network: { type: "string", enum: [...new Set(Object.values(PAIRS).flat())], description: `Сеть, своя для монеты: ${Object.entries(PAIRS).map(([a, n]) => `${a} — ${n.join(", ")}`).join("; ")}. У монеты с одной сетью можно не указывать.` },
-      fee: { type: "number", description: "Комиссия справкой, в перевод не входит. Нет комиссии — 0." },
+      fee: { type: "number", description: "Комиссия суммой справкой, в перевод не входит — только без процента. Нет комиссии — 0." },
       address: { type: "string", description: "Адрес получателя в выбранной сети. У «куда» с закреплённым кошельком не нужен — берётся из настроек; другой адрес можно, если владелец не поставил «только эти кошельки»." },
       minutes: { type: "integer", enum: TIMES, description: "Время на оплату в минутах: 15, 30, 60, 120, 360, 1440 (сутки) или 0 — без срока." },
       comment: { type: "string", description: "Комментарий для тех, кто платит. Нечего добавить — «-»." },
     },
-    required: ["kind", "target", "amount", "fee", "minutes", "comment"],
+    required: ["kind", "target", "minutes", "comment"],
     additionalProperties: false,
   },
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true, title: "Новая заявка на пополнение" },
@@ -201,12 +207,21 @@ const createTopupTool: Tool = {
     if (!w && !str(a.address)) throw new ToolError(ws.length > 1 ? `У «${target}» несколько кошельков — укажи wallet: ${ws.map((x) => x.name).join(", ")}` : "Нужен адрес получателя");
     const asset = (w ? w.asset : str(a.asset).toUpperCase()) as Asset;
     const network = w ? w.network : str(a.network).toUpperCase() || (PAIRS[asset]?.length === 1 ? PAIRS[asset][0] : "");
-    const amount = Number(a.amount), address = w ? w.address : str(a.address);
+    // Комиссия «куда» из настроек (Decision 132), человек мог назвать другую.
+    const spot = findTarget(cats, kind, target);
+    const mode = str(a.fee_mode) === "none" ? null : str(a.fee_mode) === "deduct" || str(a.fee_mode) === "top" ? str(a.fee_mode) as FeeMode : spot?.fee?.mode ?? null;
+    const pct = mode ? (typeof a.fee_pct === "number" ? a.fee_pct : spot?.fee?.pct ?? 0) : 0;
+    if (mode === "top" && !(Number(a.budget) > 0)) throw new ToolError(`У «${target}» комиссия ${pct}% сверху — укажи budget: сколько нужно на бюджет`);
+    if (mode !== "top" && !(Number(a.amount) > 0)) throw new ToolError("Укажи amount — сумму перевода");
+    if (!mode && typeof a.fee !== "number") throw new ToolError("Укажи fee — комиссию суммой, нет комиссии — 0");
+    const amount = feeCalc(mode ? { mode, pct } : null, Number(mode === "top" ? a.budget : a.amount)).amount;
+    const address = w ? w.address : str(a.address);
     if (!TIMES.includes(Number(a.minutes))) throw new ToolError("Время на оплату — 0 (без срока), 15, 30, 60, 120, 360 или 1440 минут");
     const stop = guard(await listTopups(me.id, 50), { address, amount });
     if (stop) throw new ToolError(stop);
     const r = await createTopup(me.id, {
-      kind, target, amount, fee: typeof a.fee === "number" ? a.fee : undefined, wallet: w?.name ?? null,
+      kind, target, amount: mode === "top" ? undefined : amount, budget: mode === "top" ? Number(a.budget) : undefined,
+      feeMode: mode, feePct: mode ? pct : null, fee: typeof a.fee === "number" ? a.fee : undefined, wallet: w?.name ?? null,
       asset, network, address, minutes: Number(a.minutes), comment: str(a.comment),
     }).catch((e: unknown) => { throw new ToolError(e instanceof Error ? e.message : String(e)); });
     return { created: rowOf(r), note: `Заявка #${r.number} ушла в платёжный чат. Статус — get_topups.` };

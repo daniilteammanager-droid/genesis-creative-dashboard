@@ -9,6 +9,7 @@ import type { Topup } from "@/lib/topups/requests";
 import { filterTopups, stage, STAGES, type Stage, type TopupFilter } from "@/lib/topups/view";
 import { DEFAULT, targetsOf, type Category, type Template } from "@/lib/topups/config";
 import { inRange, MAIN, PERIODS, totalsOf, type Range } from "@/lib/topups/analytics";
+import { feeLine } from "@/lib/topups/fee";
 import OpenTopup, { BADGE, LABEL, money, stamp, type Op } from "./OpenTopup";
 import TopupForm from "./TopupForm";
 import TopupAnalytics from "./TopupAnalytics";
@@ -208,13 +209,13 @@ export default function Topups({ pairs, networks }: { pairs: Record<string, stri
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-line bg-raised p-3.5 mb-1">
-              <div className="min-w-0"><p className="label">Ушло</p><p className="text-xl font-semibold tabular-nums mt-1">{fmt(t.sent)} <span className="text-sm font-medium text-hint">{MAIN}</span></p></div>
-              <div className="min-w-0"><p className="label">Оплачено заявок</p><p className="text-xl font-semibold tabular-nums mt-1">{t.paid}</p></div>
-              <div className="min-w-0"><p className="label">Комиссии, справкой</p><p className="text-xl font-semibold tabular-nums mt-1">{fmt(t.fee)} <span className="text-sm font-medium text-hint">{MAIN}</span></p></div>
+              <div className="min-w-0"><p className="label">Ушло · {t.paid} заяв.</p><p className="text-xl font-semibold tabular-nums mt-1">{fmt(t.sent)} <span className="text-sm font-medium text-hint">{MAIN}</span></p></div>
+              <div className="min-w-0"><p className="label">Зашло на бюджеты</p><p className="text-xl font-semibold tabular-nums mt-1">{fmt(t.net)} <span className="text-sm font-medium text-hint">{MAIN}</span></p></div>
+              <div className="min-w-0"><p className="label">Комиссии</p><p className="text-xl font-semibold tabular-nums mt-1">{fmt(t.fee)} <span className="text-sm font-medium text-hint">{MAIN}</span></p></div>
               <div className="min-w-0"><p className="label">Ждут оплаты</p><p className="text-xl font-semibold tabular-nums mt-1">{t.waiting}{t.waitingSum > 0 && <span className="text-sm font-medium text-hint"> · {fmt(t.waitingSum)} {MAIN}</span>}</p></div>
             </div>
             <p className="text-[11px] text-hint mb-2">
-              Ушло — сколько пришло на адрес по блокчейну, а не сумма заявки. Период — по дню создания заявки, по Москве. Учтены поиск и фильтры выше.
+              Ушло — сколько пришло на адрес по блокчейну, а не сумма заявки; зашло — ушло минус комиссия. Период — по дню создания заявки, по Москве. Учтены поиск и фильтры выше.
               {other && ` Другие монеты: ${other}.`}
             </p>
 
@@ -227,7 +228,7 @@ export default function Topups({ pairs, networks }: { pairs: Record<string, stri
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-zinc-200">
                         <span className="text-hint">#{r.number}</span> {r.kind}{r.target && ` · ${r.target}`} · <b>{money(r.amount)} {r.asset}</b>
-                        {r.fee > 0 && <span className="text-hint"> · комиссия {money(r.fee)}</span>}
+                        {feeLine(r) && <span className="text-hint"> · {feeLine(r)}</span>}
                         <span className="text-hint"> · {r.network}</span>
                       </p>
                       <p className="text-[11px] text-hint mt-0.5 break-all">

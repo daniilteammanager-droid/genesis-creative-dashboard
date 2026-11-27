@@ -1,4 +1,5 @@
 import { addressFits, PAIRS, type Asset, type Network } from "./chain";
+import type { Fee } from "./fee";
 
 // Настройки «Пополнений» (Decision 131): категория → «куда» → закреплённые кошельки. Чистые функции без
 // серверных зависимостей — ими пользуются страница, роуты и MCP. Хранение — lib/topups/settings.ts.
@@ -8,7 +9,8 @@ export const OTHER = "Другое";
 
 export interface Wallet { name: string; asset: Asset; network: Network; address: string }
 // only — переводить можно только на кошельки отсюда, «Другой адрес» в форме недоступен.
-export interface Target { id: string; name: string; only?: boolean; wallets: Wallet[] }
+// fee — комиссия «куда» по умолчанию: процент из суммы или сверху (Decision 132), в форме меняется для одной заявки.
+export interface Target { id: string; name: string; only?: boolean; wallets: Wallet[]; fee?: Fee }
 export interface Category { id: string; name: string; targets: Target[] }
 
 // Список до настроек — как был в форме до 27.11.2026. Пока владелец ничего не сохранил, работает он.
@@ -56,6 +58,7 @@ export function checkCategories(cats: Category[]): string | null {
         if (!addressFits(w.network, w.address.trim())) return `«${tn}» · ${wn}: адрес не похож на адрес сети ${w.network}`;
       }
       if (t.only && !t.wallets.length) return `«${tn}»: «только эти кошельки», а кошельков нет`;
+      if (t.fee && !(t.fee.pct > 0 && t.fee.pct < 100)) return `«${tn}»: комиссия — от 0 до 100%`;
     }
   }
   return null;

@@ -6,7 +6,7 @@ import type { Topup } from "@/lib/topups/requests";
 const row = (p: Partial<Topup>): Topup => ({
   id: "x", number: 1, user_id: "a", kind: "Карты", target: "Brocard", amount: 100, fee: 0, asset: "USDT", network: "TRC20",
   address: "T1", comment: null, expires_at: null, status: "pending", taken_by: null, taken_at: null,
-  searching_since: null, tx_hash: null, paid_amount: null, paid_at: null, closed_by: null, messages: [], wallet: null, manual_address: false,
+  searching_since: null, tx_hash: null, paid_amount: null, paid_at: null, closed_by: null, messages: [], wallet: null, manual_address: false, fee_mode: null, fee_pct: null,
   created_at: "2026-11-10T09:00:00Z", author: "Андрей", ...p,
 });
 const rows = [

@@ -79,8 +79,8 @@ export default function TopupAnalytics({ rows, admin }: { rows: Topup[]; admin: 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Ушло", value: `${fmt(t.sent)}`, unit: MAIN, hint: "сколько пришло по блокчейну" },
-          { label: "Оплачено заявок", value: String(t.paid), hint: t.sentN ? `средняя — ${fmt(t.sent / t.sentN)} ${MAIN}` : "за период оплат нет" },
-          { label: "Комиссии", value: fmt(t.fee), unit: MAIN, hint: "справкой, в перевод не входят" },
+          { label: "Зашло на бюджеты", value: fmt(t.net), unit: MAIN, hint: t.sentN ? `${t.paid} заявок, средняя — ${fmt(t.sent / t.sentN)}` : "за период оплат нет" },
+          { label: "Комиссии", value: fmt(t.fee), unit: MAIN, hint: t.sent ? `${(t.fee / t.sent * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от ушедшего` : "—" },
           { label: "Ждут оплаты", value: String(t.waiting), hint: t.waiting ? `на ${fmt(t.waitingSum)} ${MAIN}` : "ничего не висит" },
         ].map((c) => (
           <div key={c.label} className="card px-4 py-3.5 min-w-0">

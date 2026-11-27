@@ -33,15 +33,16 @@ export const inRange = <T extends Pick<Topup, "created_at">>(rows: T[], g: Range
 const paidMain = (rows: R[]) => rows.filter((r) => r.status === "paid" && r.asset === MAIN);
 
 // Итог периода: ушло (USDT), сколько заявок оплачено (все монеты), комиссии справкой, другие монеты, ждут оплаты.
-// sentN — сколько из оплаченных в USDT (на них делится средняя заявка).
-export interface Totals { sent: number; sentN: number; paid: number; fee: number; other: Record<string, number>; waiting: number; waitingSum: number }
+// sentN — сколько из оплаченных в USDT (на них делится средняя заявка). net — зашло на бюджеты: ушло минус комиссия
+// (Decision 132: «из суммы» — платёжка сняла, «сверху» — агент взял; у старых заявок — комиссия, вписанная руками).
+export interface Totals { sent: number; sentN: number; paid: number; fee: number; net: number; other: Record<string, number>; waiting: number; waitingSum: number }
 export function totalsOf(rows: R[]): Totals {
-  const t: Totals = { sent: 0, sentN: 0, paid: 0, fee: 0, other: {}, waiting: 0, waitingSum: 0 };
+  const t: Totals = { sent: 0, sentN: 0, paid: 0, fee: 0, net: 0, other: {}, waiting: 0, waitingSum: 0 };
   for (const r of rows) {
     if (r.status === "pending") { t.waiting++; if (r.asset === MAIN) t.waitingSum += r.amount; continue; }
     if (r.status !== "paid") continue;
     t.paid++;
-    if (r.asset === MAIN) { t.sent += received(r); t.sentN++; t.fee += r.fee; } else t.other[r.asset] = (t.other[r.asset] ?? 0) + received(r);
+    if (r.asset === MAIN) { t.sent += received(r); t.sentN++; t.fee += r.fee; t.net += Math.max(0, received(r) - r.fee); } else t.other[r.asset] = (t.other[r.asset] ?? 0) + received(r);
   }
   return t;
 }

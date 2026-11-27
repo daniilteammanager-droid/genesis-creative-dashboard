@@ -5,6 +5,7 @@ import type { Topup } from "@/lib/topups/requests";
 import { exact } from "@/lib/topups/chain";
 import { openActions, stage, STAGES, type Stage } from "@/lib/topups/view";
 import Comment from "./Comment";
+import { feeLine } from "@/lib/topups/fee";
 
 // Открытая заявка у владельца (Decision 126): сумма и адрес с копированием, QR, кто платит и кнопки — те же, что
 // в платёжном чате. Нажатие идёт в те же функции, что у бота, поэтому чат и страница совпадают.
@@ -74,7 +75,7 @@ export default function OpenTopup({ r, me, busy, onAct }: {
         <div className="rounded-xl border border-line bg-panel p-3 space-y-1.5 min-w-0">
           <p className="label">Сумма — точно до знака</p>
           <p className="text-xl font-bold font-mono">{amount} {r.asset}</p>
-          <p className="text-xs text-hint">Сеть {r.network}{r.fee > 0 && ` · комиссия ${money(r.fee)}, в перевод не входит`}</p>
+          <p className="text-xs text-hint">Сеть {r.network}{feeLine(r) && ` · ${feeLine(r)}${r.fee_mode ? "" : ", в перевод не входит"}`}</p>
           <button type="button" className="btn btn-sm" onClick={() => copy("amount", amount)}>
             {copied === "amount" ? "Скопировано" : "Копировать сумму"}
           </button>

@@ -21,6 +21,7 @@ const clean = (cats: Category[]): Category[] => cats.map((c) => ({
   targets: c.targets.map((t) => ({
     id: String(t.id), name: t.name.trim(), only: Boolean(t.only) && t.wallets.length > 0,
     wallets: t.wallets.map((w) => ({ name: w.name.trim(), asset: w.asset, network: w.network, address: w.address.trim() })),
+    ...(t.fee && (t.fee.mode === "deduct" || t.fee.mode === "top") ? { fee: { mode: t.fee.mode, pct: Number(t.fee.pct) } } : {}),
   })),
 }));
 
