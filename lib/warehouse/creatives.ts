@@ -137,7 +137,8 @@ export async function loadCreatives(
     adset_id: string | null; account_id: string | null; date: string;
     spend: number | string; clicks: number; impressions: number;
   };
-  const adDays = await selectAll<AdDay>((from, to) => {
+  // Расход и Torro друг от друга не зависят — читаются одновременно.
+  const adDaysP = selectAll<AdDay>((from, to) => {
     const q = db.from("wh_ad_days")
       .select("user_id, ad_name, ad_id, campaign_id, campaign_name, adset_id, account_id, date, spend, clicks, impressions")
       .gte("date", since).lte("date", until);
@@ -156,13 +157,14 @@ export async function loadCreatives(
     redep_count: number | null; redep_sum: number | string | null;
     qual_a: number | null; qual_b: number | null; qual_c: number | null; qual_d: number | null; qual_e: number | null;
   };
-  const crm = await selectAll<CrmPeriod>((from, to) =>
+  const crmP = selectAll<CrmPeriod>((from, to) =>
     db.from("wh_crm_ad_periods")
       .select("user_id, ad_name, period_start, period_end, clicks, subscribers, dialogs, registrations, dep_count, dep_sum, redep_count, redep_sum, qual_a, qual_b, qual_c, qual_d, qual_e")
       .in("user_id", scope).gte("period_end", since).lte("period_start", until)
       .order("user_id").order("period_start").order("ad_name")
       .range(from, to)
   );
+  const [adDays, crm] = await Promise.all([adDaysP, crmP]);
 
   const inside = crm.filter((r) => r.period_start >= since && r.period_end <= until);
   const partialKeys = new Set<string>();
@@ -253,8 +255,10 @@ export async function loadCreatives(
   // ─── Страны из таргета адсетов ───────────────────────────────────────────
   const allAdsets = [...new Set([...adsetIds.values()].flatMap((s) => [...s]))];
   const geoByAdset = new Map<string, string[]>();
-  for (let i = 0; i < allAdsets.length; i += 300) {
-    const { data } = await db.from("wh_adsets").select("adset_id, countries").in("adset_id", allAdsets.slice(i, i + 300));
+  // ponytail: все пачки по 300 разом (за всё время их 16); станет сотни — ограничить параллельность.
+  const chunks = Array.from({ length: Math.ceil(allAdsets.length / 300) }, (_, k) => allAdsets.slice(k * 300, k * 300 + 300));
+  const found = await Promise.all(chunks.map((ids) => db.from("wh_adsets").select("adset_id, countries").in("adset_id", ids)));
+  for (const { data } of found) {
     for (const a of data ?? []) geoByAdset.set(a.adset_id as string, (a.countries as string[]) ?? []);
   }
 
