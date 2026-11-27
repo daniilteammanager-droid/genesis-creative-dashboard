@@ -8,10 +8,12 @@ import { checkCategories, DEFAULT, findTarget, renames, targetsOf, type Category
 const db = () => warehouse();
 
 // Категории из настроек. Строки ещё нет или база не ответила — список по умолчанию: форма работает как раньше.
+// Через clean: jsonb хранит ключи в своём порядке, а страница сравнивает черновик с сохранённым по JSON —
+// без этого после перечитывания висело «есть несохранённые изменения» (27.11.2026).
 export async function loadCategories(): Promise<Category[]> {
   const { data, error } = await db().from("topup_settings").select("categories").eq("id", 1).maybeSingle();
   if (error || !Array.isArray(data?.categories) || !data.categories.length) return DEFAULT;
-  return data.categories as Category[];
+  return clean(data.categories as Category[]);
 }
 
 const clean = (cats: Category[]): Category[] => cats.map((c) => ({
